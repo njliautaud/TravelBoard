@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum VisitStatus {
+  TO_VISIT
+  VISITED
+}
+
+enum MediaType {
+  UPLOAD
+  IMAGE_URL
+  LINK
+}
+
+enum UserRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum MapTheme {
+  CLASSIC
+  FLAG
+}
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  passwordHash String
+  role         UserRole   @default(EDITOR)
+  mapTheme     MapTheme   @default(CLASSIC)
+  homeAirports String[]   @default([])
+  locations    Location[]
+  drafts       Draft[]
+  createdAt    DateTime   @default(now())
+}
+
+/// One wishlist/journal entry
+model Location {
+  id             String        @id @default(cuid())
+  activityName   String
+  countryCode    String /// ISO-3166 alpha-3
+  countryName    String
+  region         String?
+  city           String?
+  latitude       Float
+  longitude      Float
+  status         VisitStatus   @default(TO_VISIT)
+  notes          String?
+  reminderAt     DateTime?
+  priceThreshold Decimal?
+  starred        Boolean       @default(false)
+  coverImageUrl  String?
+  seasonSpring   Boolean       @default(false)
+  seasonSummer   Boolean       @default(false)
+  seasonFall     Boolean       @default(false)
+  seasonWinter   Boolean       @default(false)
+  media          Media[]
+  flightPrices   FlightPrice[]
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([countryCode])
+  @@index([userId])
+}
+
+model Media {
+  id         String    @id @default(cuid())
+  location   Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  locationId String
+  type       MediaType
+  url        String
+  caption    String?
+  sortOrder  Int       @default(0)
+}
+
+model FlightPrice {
+  id          String   @id @default(cuid())
+  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  locationId  String
+  price       Decimal
+  currency    String   @default("USD")
+  origin      String?
+  destination String?
+  source      String?
+  fetchedAt   DateTime @default(now())
+
+  @@index([locationId, fetchedAt])
+}
+
+/// Unsorted inbox items (e.g. shared Instagram reels via WhatsApp)
+model Draft {
+  id           String   @id @default(cuid())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  rawText      String?
+  extractedUrl String?
+  source       String   @default("whatsapp")
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}

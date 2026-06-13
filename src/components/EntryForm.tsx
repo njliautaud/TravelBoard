@@ -1,0 +1,811 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import type { DraftPrefill, GeocodeResult, LocationItem, MediaItem, MediaType, VisitStatus } from "@/lib/types";
+import { cleanThumb } from "@/lib/thumb";
+
+export interface PinDropResult {
+  latitude: number;
+  longitude: number;
+  geocode: GeocodeResult | null;
+}
+
+interface EntryFormProps {
+  open: boolean;
+  hidden: boolean; // kept mounted but visually hidden during pin-drop
+  editing: LocationItem | null;
+  draftPrefill?: DraftPrefill | null;
+  draftId?: string | null;
+  pinDropResult: PinDropResult | null;
+  onRequestPinDrop: () => void;
+  onClose: () => void;
+  onSaved: (opts?: { draftId?: string }) => void;
+}
+
+interface FormState {
+  activityName: string;
+  countryName: string;
+  countryCode: string;
+  region: string;
+  city: string;
+  latitude: string;
+  longitude: string;
+  status: VisitStatus;
+  notes: string;
+  reminderAt: string;
+  priceThreshold: string;
+  seasonSpring: boolean;
+  seasonSummer: boolean;
+  seasonFall: boolean;
+  seasonWinter: boolean;
+  coverImageUrl: string;
+  media: MediaItem[];
+}
+
+const EMPTY: FormState = {
+  activityName: "",
+  countryName: "",
+  countryCode: "",
+  region: "",
+  city: "",
+  latitude: "",
+  longitude: "",
+  status: "TO_VISIT",
+  notes: "",
+  reminderAt: "",
+  priceThreshold: "",
+  seasonSpring: false,
+  seasonSummer: false,
+  seasonFall: false,
+  seasonWinter: false,
+  coverImageUrl: "",
+  media: [],
+};
+
+function fromLocation(loc: LocationItem): FormState {
+  return {
+    activityName: loc.activityName,
+    countryName: loc.countryName,
+    countryCode: loc.countryCode,
+    region: loc.region ?? "",
+    city: loc.city ?? "",
+    latitude: String(loc.latitude),
+    longitude: String(loc.longitude),
+    status: loc.status,
+    notes: loc.notes ?? "",
+    reminderAt: loc.reminderAt ? loc.reminderAt.slice(0, 10) : "",
+    priceThreshold: loc.priceThreshold !== null ? String(loc.priceThreshold) : "",
+    seasonSpring: loc.seasonSpring,
+    seasonSummer: loc.seasonSummer,
+    seasonFall: loc.seasonFall,
+    seasonWinter: loc.seasonWinter,
+    coverImageUrl: loc.coverImageUrl ?? "",
+    media: loc.media.map((m) => ({ ...m })),
+  };
+}
+
+const inputCls =
+  "w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-amber-500/60 focus:outline-none";
+const labelCls = "block text-xs font-medium text-slate-400 mb-1";
+const amberBtnCls =
+  "rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300 hover:bg-amber-500/20 disabled:opacity-50";
+
+export default function EntryForm({
+  open,
+  hidden,
+  editing,
+  draftPrefill,
+  draftId,
+  pinDropResult,
+  onRequestPinDrop,
+  onClose,
+  onSaved,
+}: EntryFormProps) {
+  const [form, setForm] = useState<FormState>(EMPTY);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<GeocodeResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [enrichHint, setEnrichHint] = useState<string | null>(null);
+  const [generatingCover, setGeneratingCover] = useState(false);
+  const [coverIndex, setCoverIndex] = useState(-1);
+  const [coverCandidateCount, setCoverCandidateCount] = useState(0);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const coverCandidatesRef = useRef<string[]>([]);
+  const coverCandidateKeyRef = useRef("");
+
+  // Reset when (re)opened
+  useEffect(() => {
+    if (open) {
+      if (editing) {
+        setForm(fromLocation(editing));
+      } else if (draftPrefill) {
+        setForm({
+          ...EMPTY,
+          activityName: draftPrefill.activityName ?? "",
+          notes: draftPrefill.notes ?? "",
+          coverImageUrl: draftPrefill.coverImageUrl ?? "",
+          countryName: draftPrefill.countryName ?? "",
+          countryCode: draftPrefill.countryCode ?? "",
+          region: draftPrefill.region ?? "",
+          city: draftPrefill.city ?? "",
+          latitude: draftPrefill.latitude != null ? String(draftPrefill.latitude) : "",
+          longitude: draftPrefill.longitude != null ? String(draftPrefill.longitude) : "",
+          media: (draftPrefill.media ?? []).map((m, i) => ({ ...m, sortOrder: i })),
+        });
+      } else {
+        setForm(EMPTY);
+      }
+      setQuery("");
+      setResults([]);
+      setError(null);
+      setEnrichHint(null);
+      coverCandidatesRef.current = [];
+      coverCandidateKeyRef.current = "";
+      setCoverIndex(-1);
+      setCoverCandidateCount(0);
+    }
+  }, [open, editing, draftPrefill]);
+
+  const coverSearchKey = () =>
+    [form.activityName, form.city, form.region, form.countryName]
+      .map((s) => s.trim().toLowerCase())
+      .join("|");
+
+  // Drop cached candidates when the user edits activity or location fields.
+  useEffect(() => {
+    const key = coverSearchKey();
+    if (coverCandidateKeyRef.current && coverCandidateKeyRef.current !== key) {
+      coverCandidatesRef.current = [];
+      coverCandidateKeyRef.current = "";
+      setCoverIndex(-1);
+      setCoverCandidateCount(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.activityName, form.city, form.region, form.countryName]);
+
+  // Smart-fill from shared reel / post metadata
+  useEffect(() => {
+    if (!open || editing || !draftPrefill?.enrichUrl) return;
+
+    const url = draftPrefill.enrichUrl;
+    const rawText = draftPrefill.enrichRawText ?? "";
+    let cancelled = false;
+
+    (async () => {
+      setEnriching(true);
+      setEnrichHint("Reading post caption, thumbnail, and location…");
+      try {
+        const params = new URLSearchParams({ url, rawText });
+        const res = await fetch(`/api/drafts/enrich?${params}`);
+        const data = await res.json();
+        if (cancelled || !res.ok) return;
+
+        const e = data.enrichment as {
+          activityName?: string | null;
+          notes?: string | null;
+          thumbnailUrl?: string | null;
+          coverImageUrl?: string | null;
+          locationQuery?: string | null;
+          geocode?: {
+            displayName: string;
+            latitude: number;
+            longitude: number;
+            countryCode: string | null;
+            countryName: string | null;
+            region: string | null;
+            city: string | null;
+          } | null;
+        };
+
+        setForm((f) => {
+          const media = [...f.media];
+          // Keep the reel still frame in the gallery (it has the play button, so not the cover).
+          if (e.thumbnailUrl && !media.some((m) => m.url === e.thumbnailUrl)) {
+            media.push({
+              type: "IMAGE_URL",
+              url: e.thumbnailUrl,
+              caption: "Reel frame",
+              sortOrder: media.length,
+            });
+          }
+          // Prefer a clean location photo as the cover; fall back to the reel frame.
+          const cover = e.coverImageUrl ?? e.thumbnailUrl ?? f.coverImageUrl;
+          return {
+            ...f,
+            activityName: e.activityName ?? f.activityName,
+            notes: e.notes ?? f.notes,
+            coverImageUrl: cover,
+            countryName: e.geocode?.countryName ?? f.countryName,
+            countryCode: e.geocode?.countryCode ?? f.countryCode,
+            region: e.geocode?.region ?? f.region,
+            city: e.geocode?.city ?? f.city,
+            latitude: e.geocode ? String(e.geocode.latitude) : f.latitude,
+            longitude: e.geocode ? String(e.geocode.longitude) : f.longitude,
+            media: media.map((m, i) => ({ ...m, sortOrder: i })),
+          };
+        });
+
+        if (e.geocode?.displayName) setQuery(e.geocode.displayName);
+        setEnrichHint(
+          e.geocode
+            ? `Found location: ${e.geocode.displayName}`
+            : e.locationQuery
+              ? `Saw “${e.locationQuery}” but couldn’t pin it — search manually`
+              : "Filled from post — add a location if needed"
+        );
+      } catch {
+        if (!cancelled) setEnrichHint("Couldn’t read post details — fill in manually");
+      } finally {
+        if (!cancelled) setEnriching(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, editing, draftPrefill?.enrichUrl, draftPrefill?.enrichRawText]);
+
+  // Apply coordinates coming back from pin-drop mode
+  useEffect(() => {
+    if (!pinDropResult) return;
+    setForm((f) => ({
+      ...f,
+      latitude: pinDropResult.latitude.toFixed(5),
+      longitude: pinDropResult.longitude.toFixed(5),
+      countryName: pinDropResult.geocode?.countryName ?? f.countryName,
+      countryCode: pinDropResult.geocode?.countryCode ?? f.countryCode,
+      region: pinDropResult.geocode?.region ?? f.region,
+      city: pinDropResult.geocode?.city ?? f.city,
+    }));
+  }, [pinDropResult]);
+
+  // Debounced Nominatim search
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(query.trim())}`);
+        const data = await res.json();
+        setResults(data.results ?? []);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 600);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
+
+  if (!open) return null;
+
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+    setForm((f) => ({ ...f, [key]: value }));
+
+  const pickResult = (r: GeocodeResult) => {
+    setForm((f) => ({
+      ...f,
+      activityName: f.activityName || r.displayName.split(",")[0],
+      countryName: r.countryName ?? f.countryName,
+      countryCode: r.countryCode ?? f.countryCode,
+      region: r.region ?? "",
+      city: r.city ?? "",
+      latitude: r.latitude.toFixed(5),
+      longitude: r.longitude.toFixed(5),
+    }));
+    setResults([]);
+    setQuery("");
+  };
+
+  const addMedia = (type: MediaType) => {
+    if (type === "UPLOAD") {
+      fileRef.current?.click();
+      return;
+    }
+    const url = window.prompt(type === "IMAGE_URL" ? "Paste image URL" : "Paste link (Google Maps, Instagram, website...)");
+    if (!url?.trim()) return;
+    setForm((f) => ({
+      ...f,
+      media: [...f.media, { type, url: url.trim(), caption: null, sortOrder: f.media.length }],
+    }));
+  };
+
+  const handleFile = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      setForm((f) => ({
+        ...f,
+        media: [...f.media, { type: "UPLOAD", url: data.url, caption: null, sortOrder: f.media.length }],
+      }));
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const removeMedia = (idx: number) =>
+    setForm((f) => {
+      const removed = f.media[idx];
+      const clearCover = removed && f.coverImageUrl === removed.url;
+      return {
+        ...f,
+        media: f.media.filter((_, i) => i !== idx),
+        coverImageUrl: clearCover ? "" : f.coverImageUrl,
+      };
+    });
+
+  const clearCover = () => {
+    setForm((f) => ({ ...f, coverImageUrl: "" }));
+    setCoverIndex(-1);
+  };
+
+  const generateCover = async () => {
+    if (!form.activityName.trim() && !form.city.trim() && !form.countryName.trim()) {
+      setError("Add an activity name or location to search for a cover image.");
+      return;
+    }
+    setGeneratingCover(true);
+    setError(null);
+    const key = coverSearchKey();
+    try {
+      let candidates = coverCandidatesRef.current;
+      if (coverCandidateKeyRef.current !== key || candidates.length === 0) {
+        const params = new URLSearchParams();
+        if (form.activityName.trim()) params.set("activityName", form.activityName.trim());
+        if (form.city.trim()) params.set("city", form.city.trim());
+        if (form.region.trim()) params.set("region", form.region.trim());
+        if (form.countryName.trim()) params.set("countryName", form.countryName.trim());
+        const res = await fetch(`/api/cover-image?${params}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Image search failed");
+        candidates = ((data.candidates ?? []) as string[]).filter(Boolean);
+        if (candidates.length === 0) {
+          setError("No images found — try a more specific activity or location name.");
+          return;
+        }
+        coverCandidatesRef.current = candidates;
+        coverCandidateKeyRef.current = key;
+        setCoverCandidateCount(candidates.length);
+        setCoverIndex(0);
+        setForm((f) => ({ ...f, coverImageUrl: candidates[0] }));
+      } else {
+        const next = (coverIndex + 1) % candidates.length;
+        setCoverIndex(next);
+        setForm((f) => ({ ...f, coverImageUrl: candidates[next] }));
+      }
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setGeneratingCover(false);
+    }
+  };
+
+  const setCaption = (idx: number, caption: string) =>
+    setForm((f) => ({
+      ...f,
+      media: f.media.map((m, i) => (i === idx ? { ...m, caption: caption || null } : m)),
+    }));
+
+  const setCover = (url: string) => setForm((f) => ({ ...f, coverImageUrl: url }));
+
+  const save = async () => {
+    setError(null);
+    const lat = parseFloat(form.latitude);
+    const lng = parseFloat(form.longitude);
+    if (!form.activityName.trim()) return setError("Activity name is required.");
+    if (!form.countryName.trim() || !form.countryCode.trim())
+      return setError("Country is required - use search or drop a pin.");
+    if (Number.isNaN(lat) || Number.isNaN(lng))
+      return setError("Coordinates are required - use search or drop a pin.");
+
+    setSaving(true);
+    try {
+      const payload = {
+        activityName: form.activityName,
+        countryName: form.countryName,
+        countryCode: form.countryCode,
+        region: form.region || null,
+        city: form.city || null,
+        latitude: lat,
+        longitude: lng,
+        status: form.status,
+        notes: form.notes || null,
+        reminderAt: form.reminderAt ? new Date(form.reminderAt).toISOString() : null,
+        priceThreshold: form.priceThreshold ? parseFloat(form.priceThreshold) : null,
+        seasonSpring: form.seasonSpring,
+        seasonSummer: form.seasonSummer,
+        seasonFall: form.seasonFall,
+        seasonWinter: form.seasonWinter,
+        coverImageUrl: form.coverImageUrl.trim() || null,
+        media: form.media.map((m, i) => ({ type: m.type, url: m.url, caption: m.caption, sortOrder: i })),
+      };
+      const res = await fetch(editing ? `/api/locations/${editing.id}` : "/api/locations", {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      onSaved(draftId ? { draftId } : undefined);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className={`fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm ${hidden ? "hidden" : ""}`}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="panel-scroll max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-700/70 bg-slate-950 p-5 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-100">
+            {editing ? "Edit place" : "Add a place"}
+          </h2>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Cover photo — top of form */}
+        <div className="mb-4">
+          <label className={labelCls}>Cover photo</label>
+          {form.coverImageUrl ? (
+            <div className="overflow-hidden rounded-xl border border-slate-700/70">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={cleanThumb(form.coverImageUrl)} alt="" className="h-36 w-full object-cover" />
+            </div>
+          ) : (
+            <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-slate-700/70 bg-slate-900/40 text-xs text-slate-500">
+              No cover yet — generate one from Wikipedia
+            </div>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {coverIndex >= 0 && coverCandidateCount > 1 && (
+              <span className="text-xs text-slate-500">
+                {coverIndex + 1} of {coverCandidateCount}
+              </span>
+            )}
+            <div className="ml-auto flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={generatingCover}
+                onClick={generateCover}
+                className={amberBtnCls}
+              >
+                {generatingCover
+                  ? "Searching…"
+                  : coverIndex >= 0 && coverCandidateCount > 1
+                    ? "Try another"
+                    : "Generate image"}
+              </button>
+              {form.coverImageUrl && (
+                <button type="button" onClick={clearCover} className={amberBtnCls}>
+                  Remove cover
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Location search */}
+        <div className="relative mb-4">
+          <label className={labelCls}>Find a location (OpenStreetMap)</label>
+          <div className="flex gap-2">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder='Try "Hoh Rainforest" or "Mount Bromo"...'
+              className={inputCls}
+            />
+            <button
+              type="button"
+              onClick={onRequestPinDrop}
+              className={`shrink-0 ${amberBtnCls}`}
+            >
+              Drop pin on map
+            </button>
+          </div>
+          {searching && <p className="mt-1 text-xs text-slate-500">Searching&hellip;</p>}
+          {results.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
+              {results.map((r, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => pickResult(r)}
+                    className="block w-full px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+                  >
+                    {r.displayName}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {(enriching || enrichHint) && (
+          <div className="mb-4 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-200">
+            {enriching ? "…" : "✓"} {enrichHint ?? "Reading post…"}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className={labelCls}>Activity name *</label>
+            <input
+              value={form.activityName}
+              onChange={(e) => set("activityName", e.target.value)}
+              placeholder="Hike the Hall of Mosses"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Country (major location) *</label>
+            <input
+              value={form.countryName}
+              onChange={(e) => set("countryName", e.target.value)}
+              placeholder="United States"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>State / region</label>
+            <input
+              value={form.region}
+              onChange={(e) => set("region", e.target.value)}
+              placeholder="Washington"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>City (minor location)</label>
+            <input
+              value={form.city}
+              onChange={(e) => set("city", e.target.value)}
+              placeholder="Forks"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Status</label>
+            <div className="flex gap-1 rounded-lg border border-slate-700 bg-slate-900/80 p-1">
+              {(["TO_VISIT", "VISITED"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => set("status", s)}
+                  className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition ${
+                    form.status === s
+                      ? s === "VISITED"
+                        ? "bg-emerald-500/25 text-emerald-200"
+                        : "bg-amber-500/25 text-amber-200"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {s === "TO_VISIT" ? "To visit" : "Visited"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Country code (ISO-3)</label>
+            <input
+              value={form.countryCode}
+              onChange={(e) => set("countryCode", e.target.value.toUpperCase())}
+              placeholder="USA"
+              maxLength={3}
+              className={inputCls}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>Notes / journal</label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+              rows={4}
+              placeholder="Why this place? Tips, season, memories..."
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Remind me on</label>
+            <input
+              type="date"
+              value={form.reminderAt}
+              onChange={(e) => set("reminderAt", e.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Flight deal threshold (USD)</label>
+            <input
+              type="number"
+              min="0"
+              value={form.priceThreshold}
+              onChange={(e) => set("priceThreshold", e.target.value)}
+              placeholder="650"
+              className={inputCls}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>When do you want to go?</label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(
+                [
+                  ["seasonSpring", "Spring", "Mar–May"],
+                  ["seasonSummer", "Summer", "Jun–Aug"],
+                  ["seasonFall", "Fall", "Sep–Nov"],
+                  ["seasonWinter", "Winter", "Dec–Feb"],
+                ] as const
+              ).map(([key, label, range]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => set(key, !form[key])}
+                  className={`rounded-lg border px-2 py-2 text-left text-xs transition ${
+                    form[key]
+                      ? "border-amber-500/60 bg-amber-500/15 text-amber-200"
+                      : "border-slate-700 bg-slate-900/80 text-slate-400 hover:border-slate-600"
+                  }`}
+                >
+                  <span className="block font-medium">{label}</span>
+                  <span className="text-[10px] opacity-70">{range}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Media manager */}
+        <div className="mt-4">
+          <label className={labelCls}>Photos & links</label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => addMedia("UPLOAD")}
+              className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+            >
+              {uploading ? "Uploading..." : "Upload image"}
+            </button>
+            <button
+              type="button"
+              onClick={() => addMedia("IMAGE_URL")}
+              className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+            >
+              Paste image URL
+            </button>
+            <button
+              type="button"
+              onClick={() => addMedia("LINK")}
+              className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+            >
+              Paste link (Maps / Instagram / site)
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFile(file);
+              }}
+            />
+          </div>
+          {form.media.length > 0 && (
+            <ul className="mt-2 space-y-2">
+              {form.media.map((m, i) => (
+                <li key={i} className="flex items-center gap-2 rounded-lg border border-slate-700/70 bg-slate-900/60 p-2">
+                  {m.type !== "LINK" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={cleanThumb(m.url)} alt="" className="h-10 w-14 shrink-0 rounded object-cover" />
+                  ) : (
+                    <span className="shrink-0 rounded bg-sky-500/15 px-2 py-1 text-[10px] font-medium text-sky-300">LINK</span>
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-xs text-slate-400">{m.url}</span>
+                  {m.type !== "LINK" &&
+                    (form.coverImageUrl === m.url ? (
+                      <span className="shrink-0 rounded bg-amber-500/20 px-2 py-1 text-[10px] font-medium text-amber-300">Cover</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setCover(m.url)}
+                        className="shrink-0 rounded border border-slate-600 px-2 py-1 text-[10px] text-slate-400 hover:text-amber-300"
+                      >
+                        Set cover
+                      </button>
+                    ))}
+                  <input
+                    value={m.caption ?? ""}
+                    onChange={(e) => setCaption(i, e.target.value)}
+                    placeholder="caption"
+                    className="w-24 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-300 sm:w-32"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeMedia(i)}
+                    className="shrink-0 rounded p-1 text-slate-500 hover:text-rose-400"
+                    aria-label="Remove media"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Coordinates — bottom of form */}
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Latitude *</label>
+            <input
+              value={form.latitude}
+              onChange={(e) => set("latitude", e.target.value)}
+              placeholder="47.86070"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Longitude *</label>
+            <input
+              value={form.longitude}
+              onChange={(e) => set("longitude", e.target.value)}
+              placeholder="-123.93480"
+              className={inputCls}
+            />
+          </div>
+        </div>
+
+        {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-50"
+          >
+            {saving ? "Saving..." : editing ? "Save changes" : "Add place"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
