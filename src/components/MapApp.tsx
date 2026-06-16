@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import TravelMap, { type FocusPoint, type TravelMapHandle, type MapOverlayMode, type CountryDeal } from "./TravelMap";
+import TravelMap, { type FocusPoint, type TravelMapHandle, type MapOverlayMode, type CountryDeal, type JournalCountry, type DealRoute } from "./TravelMap";
 import Sidebar from "./Sidebar";
 import SidePanel, { type PanelSelection } from "./SidePanel";
 import GeoBanner from "./GeoBanner";
@@ -43,6 +43,8 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [overlayMode, setOverlayMode] = useState<MapOverlayMode>("wishes");
   const [countryDeals, setCountryDeals] = useState<CountryDeal[]>([]);
   const [ambientMode, setAmbientMode] = useState(false);
+  const [journalCountries, setJournalCountries] = useState<JournalCountry[]>([]);
+  const [dealRoutes, setDealRoutes] = useState<DealRoute[]>([]);
 
   const loggedIn = user !== null;
 
@@ -101,7 +103,25 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         if (Array.isArray(d.deals)) setCountryDeals(d.deals);
       })
       .catch(() => {});
+    // Also fetch deal routes for arc rendering
+    fetch("/api/deals/routes?limit=30")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.routes)) setDealRoutes(d.routes);
+      })
+      .catch(() => {});
   }, [overlayMode]);
+
+  // Fetch journal countries for map highlighting (always active)
+  useEffect(() => {
+    if (!loggedIn) return;
+    fetch("/api/journal/countries")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.countries)) setJournalCountries(d.countries);
+      })
+      .catch(() => {});
+  }, [loggedIn]);
 
   // Poll for new WhatsApp drafts while logged in
   useEffect(() => {
@@ -315,6 +335,8 @@ export default function MapApp({ initialLocations }: MapAppProps) {
             mapTheme={settings.mapTheme}
             overlayMode={overlayMode}
             countryDeals={countryDeals}
+            journalCountries={journalCountries}
+            dealRoutes={dealRoutes}
             onCountryClick={handleCountryClick}
             onDotClick={handleDotClick}
             onPinDrop={handlePinDrop}

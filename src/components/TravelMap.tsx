@@ -755,6 +755,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         layout: {
           "line-cap": "round",
           "line-join": "round",
+          visibility: "none",
         },
       });
 
@@ -782,6 +783,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         layout: {
           "line-cap": "round",
           "line-join": "round",
+          visibility: "none",
         },
       });
 
@@ -790,6 +792,9 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         id: DEAL_ARC_ARROW_LAYER,
         type: "circle",
         source: "deal-endpoints",
+        layout: {
+          visibility: "none",
+        },
         paint: {
           "circle-radius": [
             "interpolate", ["linear"], ["zoom"],
@@ -1047,6 +1052,70 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       if (map.getLayer(DOTS_DEAL)) map.setLayoutProperty(DOTS_DEAL, "visibility", "visible");
     }
   }, [overlayMode, countryDeals, locations, mapTheme]);
+
+  // Update journal country highlighting when data changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    const journalSource = map.getSource("journal-countries") as maplibregl.GeoJSONSource | undefined;
+    if (!journalSource) return;
+
+    // Build a set of deal country codes for combo detection
+    const dealCountryCodes = new Set(countryDealsRef.current.map((d) => d.countryCode));
+
+    // Match journal country names to GeoJSON features by name
+    const journalByName = new Map<string, JournalCountry>();
+    for (const jc of journalCountries) {
+      journalByName.set(jc.country.toLowerCase(), jc);
+    }
+
+    const matchedFeatures: GeoFeature[] = [];
+    for (const f of countriesRef.current) {
+      const jc = journalByName.get(f.properties.name.toLowerCase());
+      if (!jc) continue;
+      const hasCombo = dealCountryCodes.has(f.id);
+      matchedFeatures.push({
+        ...f,
+        properties: {
+          ...f.properties,
+          iso: f.id,
+          entryCount: jc.entryCount,
+          hasCombo,
+        } as GeoFeature["properties"] & { entryCount: number; hasCombo: boolean },
+      } as unknown as GeoFeature);
+    }
+
+    journalSource.setData({
+      type: "FeatureCollection",
+      features: matchedFeatures,
+    } as GeoJSON.GeoJSON);
+  }, [journalCountries, countryDeals]);
+
+  // Update deal flight arc paths when data changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    const arcsSource = map.getSource("deal-arcs") as maplibregl.GeoJSONSource | undefined;
+    const endpointsSource = map.getSource("deal-endpoints") as maplibregl.GeoJSONSource | undefined;
+
+    if (arcsSource) {
+      arcsSource.setData(dealArcsGeoJson(dealRoutes));
+    }
+    if (endpointsSource) {
+      endpointsSource.setData(dealEndpointsGeoJson(dealRoutes));
+    }
+
+    // Show/hide arc layers based on overlay mode
+    const visible = overlayMode === "deals" && dealRoutes.length > 0;
+    const visibility = visible ? "visible" : "none";
+    for (const layerId of [DEAL_ARC_LAYER, DEAL_ARC_GLOW_LAYER, DEAL_ARC_ARROW_LAYER]) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, "visibility", visibility);
+      }
+    }
+  }, [dealRoutes, overlayMode]);
 
   // Fly to a wish selected in the sidebar
   useEffect(() => {
