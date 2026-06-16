@@ -270,6 +270,8 @@ const JOURNAL_BADGE_LAYER = "journal-badge";
 const DEAL_ARC_LAYER = "deal-arcs";
 const DEAL_ARC_GLOW_LAYER = "deal-arcs-glow";
 const DEAL_ARC_ARROW_LAYER = "deal-arc-arrows";
+const DEAL_DOT_GLOW_LAYER = "deal-dot-glow";
+const DEAL_PRICE_LABEL = "deal-price-labels";
 const COMBO_PULSE_LAYER = "combo-pulse";
 
 /** Generate great-circle arc points between two coordinates. */
@@ -814,6 +816,54 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         },
       });
 
+      // Glow under airport deal dots
+      map.addLayer({
+        id: DEAL_DOT_GLOW_LAYER,
+        type: "circle",
+        source: "deal-endpoints",
+        layout: {
+          visibility: "none",
+        },
+        paint: {
+          "circle-radius": [
+            "interpolate", ["linear"], ["zoom"],
+            1, 10,
+            6, 16,
+            14, 22,
+          ] as unknown as number,
+          "circle-color": [
+            "case",
+            ["==", ["get", "tier"], "cheap"], "#2dd4bf",
+            ["==", ["get", "tier"], "fair"], "#f59e0b",
+            "#fb7185",
+          ] as unknown as string,
+          "circle-blur": 1,
+          "circle-opacity": 0.4,
+        },
+      });
+
+      // Price labels at deal airport dots
+      map.addLayer({
+        id: DEAL_PRICE_LABEL,
+        type: "symbol",
+        source: "deal-endpoints",
+        layout: {
+          "text-field": ["get", "label"],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 3, 9, 6, 11, 10, 13] as unknown as number,
+          "text-offset": [0, 1.5],
+          "text-anchor": "top",
+          "text-allow-overlap": false,
+          "text-ignore-placement": false,
+          visibility: "none",
+        },
+        paint: {
+          "text-color": "#e2e8f0",
+          "text-halo-color": "#0f172a",
+          "text-halo-width": 1.5,
+        },
+        minzoom: 3,
+      });
+
       // Pulse animation for flight-deal rings + combo country glow
       const start = performance.now();
       const pulse = (now: number) => {
@@ -838,6 +888,15 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         if (pinDropRef.current) {
           callbacksRef.current.onPinDrop(e.lngLat.lat, e.lngLat.lng);
           return;
+        }
+        // Check for deal airport dot clicks first (in deals mode)
+        if (overlayModeRef.current === "deals" && map.getLayer(DEAL_ARC_ARROW_LAYER)) {
+          const dealDots = map.queryRenderedFeatures(e.point, { layers: [DEAL_ARC_ARROW_LAYER] });
+          if (dealDots.length > 0) {
+            const props = dealDots[0].properties;
+            callbacksRef.current.onDotClick(props.id as string);
+            return;
+          }
         }
         const dots = map.queryRenderedFeatures(e.point, { layers: [DOTS_CORE, DOTS_GLOW] });
         if (dots.length > 0) {
@@ -891,6 +950,22 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
           hideHover();
           return;
         }
+        // Check deal endpoint dots first (in deals mode)
+        if (overlayModeRef.current === "deals" && map.getLayer(DEAL_ARC_ARROW_LAYER)) {
+          const dealDotHit = map.queryRenderedFeatures(e.point, { layers: [DEAL_ARC_ARROW_LAYER] });
+          if (dealDotHit.length > 0) {
+            const p = dealDotHit[0].properties;
+            setHover({
+              x: e.point.x + 14,
+              y: e.point.y + 14,
+              name: `${p.destCity} — $${p.price}`,
+            });
+            map.getCanvas().style.cursor = "pointer";
+            setCountryHover(null);
+            return;
+          }
+        }
+
         const hits = map.queryRenderedFeatures(e.point, { layers: [DOTS_CORE, DOTS_GLOW, FILL_LAYER] });
         const dotHit = hits.find((h) => h.layer.id !== FILL_LAYER);
         const countryHit = hits.find((h) => h.layer.id === FILL_LAYER);
@@ -1029,6 +1104,11 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       if (map.getLayer(DOTS_CORE)) map.setLayoutProperty(DOTS_CORE, "visibility", "none");
       if (map.getLayer(DOTS_DEAL)) map.setLayoutProperty(DOTS_DEAL, "visibility", "none");
 
+      // Show deal airport dots and price labels
+      if (map.getLayer(DEAL_ARC_ARROW_LAYER)) map.setLayoutProperty(DEAL_ARC_ARROW_LAYER, "visibility", "visible");
+      if (map.getLayer(DEAL_DOT_GLOW_LAYER)) map.setLayoutProperty(DEAL_DOT_GLOW_LAYER, "visibility", "visible");
+      if (map.getLayer(DEAL_PRICE_LABEL)) map.setLayoutProperty(DEAL_PRICE_LABEL, "visibility", "visible");
+
     } else {
       // Restore wishes mode: re-apply heatmap and show dots
       const counts = countryCounts(locations);
@@ -1050,6 +1130,11 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       if (map.getLayer(DOTS_GLOW)) map.setLayoutProperty(DOTS_GLOW, "visibility", "visible");
       if (map.getLayer(DOTS_CORE)) map.setLayoutProperty(DOTS_CORE, "visibility", "visible");
       if (map.getLayer(DOTS_DEAL)) map.setLayoutProperty(DOTS_DEAL, "visibility", "visible");
+
+      // Hide deal airport dots and price labels
+      if (map.getLayer(DEAL_ARC_ARROW_LAYER)) map.setLayoutProperty(DEAL_ARC_ARROW_LAYER, "visibility", "none");
+      if (map.getLayer(DEAL_DOT_GLOW_LAYER)) map.setLayoutProperty(DEAL_DOT_GLOW_LAYER, "visibility", "none");
+      if (map.getLayer(DEAL_PRICE_LABEL)) map.setLayoutProperty(DEAL_PRICE_LABEL, "visibility", "none");
     }
   }, [overlayMode, countryDeals, locations, mapTheme]);
 
@@ -1110,7 +1195,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     // Show/hide arc layers based on overlay mode
     const visible = overlayMode === "deals" && dealRoutes.length > 0;
     const visibility = visible ? "visible" : "none";
-    for (const layerId of [DEAL_ARC_LAYER, DEAL_ARC_GLOW_LAYER, DEAL_ARC_ARROW_LAYER]) {
+    for (const layerId of [DEAL_ARC_LAYER, DEAL_ARC_GLOW_LAYER, DEAL_ARC_ARROW_LAYER, DEAL_DOT_GLOW_LAYER, DEAL_PRICE_LABEL]) {
       if (map.getLayer(layerId)) {
         map.setLayoutProperty(layerId, "visibility", visibility);
       }
