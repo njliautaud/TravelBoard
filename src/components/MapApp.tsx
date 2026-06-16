@@ -48,7 +48,10 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [dealRoutes, setDealRoutes] = useState<DealRoute[]>([]);
 
   const loggedIn = user !== null;
-  const isDemoActive = getDemoMode();
+  // In demo mode (API unreachable), hide login prompts.
+  // Also suppress during initial load before auth check completes.
+  const [authChecked, setAuthChecked] = useState(false);
+  const isDemoActive = getDemoMode() || !authChecked;
 
   const refreshLocations = useCallback(async () => {
     try {
@@ -95,6 +98,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           setUser(d.user);
           refreshAll();
         }
+        setAuthChecked(true);
       })
       .catch(() => {
         // Static/demo mode — populate with sample data
@@ -103,6 +107,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         setCountryDeals(DEMO_COUNTRY_DEALS);
         setJournalCountries(DEMO_JOURNAL_COUNTRIES);
         setDealRoutes(DEMO_DEAL_ROUTES);
+        setAuthChecked(true);
       });
   }, [refreshAll]);
 
