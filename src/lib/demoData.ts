@@ -249,6 +249,192 @@ export const DEMO_DEAL_ROUTES: DealRoute[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Demo deal items for the DealsView in static mode
+// ---------------------------------------------------------------------------
+
+export interface DemoDealItem {
+  id: string;
+  origin: string;
+  destination: string;
+  flyToCode: string;
+  month: number;
+  price: number;
+  currency: string;
+  airline: string | null;
+  source: string | null;
+  dealScore: number | null;
+  tier: string | null;
+  lastSeen: string;
+  savingsPercent: number;
+  outboundDate: string | null;
+  returnDate: string | null;
+  transfers?: number | null;
+  duration?: number | null;
+  deepLink?: string;
+  countryTo?: string;
+  isAward?: boolean;
+  miles?: number;
+  program?: string;
+  programName?: string;
+  cabin?: string;
+  cabinLabel?: string;
+  tripType?: string;
+}
+
+const now = new Date().toISOString();
+
+export const DEMO_DEALS: DemoDealItem[] = [
+  {
+    id: "demo-deal-1", origin: "MCO", destination: "Reykjavik", flyToCode: "KEF",
+    month: 8, price: 285, currency: "USD", airline: "Icelandair", source: "seats.aero",
+    dealScore: 95, tier: "cheap", lastSeen: now, savingsPercent: 42,
+    outboundDate: "2026-09-12", returnDate: "2026-09-19",
+    transfers: 0, duration: 620, countryTo: "Iceland",
+  },
+  {
+    id: "demo-deal-2", origin: "MCO", destination: "Lisbon", flyToCode: "LIS",
+    month: 9, price: 340, currency: "USD", airline: "TAP Portugal", source: "Kiwi",
+    dealScore: 90, tier: "cheap", lastSeen: now, savingsPercent: 38,
+    outboundDate: "2026-10-05", returnDate: "2026-10-14",
+    transfers: 0, duration: 890, countryTo: "Portugal",
+  },
+  {
+    id: "demo-deal-3", origin: "MCO", destination: "Cancun", flyToCode: "CUN",
+    month: 10, price: 148, currency: "USD", airline: "Spirit", source: "Kiwi",
+    dealScore: 88, tier: "cheap", lastSeen: now, savingsPercent: 55,
+    outboundDate: "2026-11-02", returnDate: "2026-11-09",
+    transfers: 0, duration: 210, countryTo: "Mexico",
+  },
+  {
+    id: "demo-deal-4", origin: "MCO", destination: "Tokyo Narita", flyToCode: "NRT",
+    month: 2, price: 542, currency: "USD", airline: "United", source: "seats.aero",
+    dealScore: 92, tier: "cheap", lastSeen: now, savingsPercent: 45,
+    outboundDate: "2027-03-15", returnDate: "2027-03-28",
+    transfers: 1, duration: 1680, countryTo: "Japan",
+  },
+  {
+    id: "demo-deal-5", origin: "MCO", destination: "Barcelona", flyToCode: "BCN",
+    month: 4, price: 410, currency: "USD", airline: "Norse Atlantic", source: "Kiwi",
+    dealScore: 78, tier: "fair", lastSeen: now, savingsPercent: 22,
+    outboundDate: "2027-05-10", returnDate: "2027-05-20",
+    transfers: 1, duration: 1020, countryTo: "Spain",
+  },
+  {
+    id: "demo-deal-6", origin: "MCO", destination: "Naples", flyToCode: "NAP",
+    month: 5, price: 389, currency: "USD", airline: "Eurowings", source: "seats.aero",
+    dealScore: 88, tier: "cheap", lastSeen: now, savingsPercent: 35,
+    outboundDate: "2027-06-01", returnDate: "2027-06-10",
+    transfers: 1, duration: 1100, countryTo: "Italy",
+  },
+  {
+    id: "demo-deal-7", origin: "MCO", destination: "Bogota", flyToCode: "BOG",
+    month: 7, price: 198, currency: "USD", airline: "Avianca", source: "Kiwi",
+    dealScore: 82, tier: "cheap", lastSeen: now, savingsPercent: 48,
+    outboundDate: "2026-08-20", returnDate: "2026-08-30",
+    transfers: 0, duration: 380, countryTo: "Colombia",
+  },
+  {
+    id: "demo-deal-8", origin: "MCO", destination: "Athens", flyToCode: "ATH",
+    month: 3, price: 445, currency: "USD", airline: "Delta", source: "seats.aero",
+    dealScore: 80, tier: "fair", lastSeen: now, savingsPercent: 28,
+    outboundDate: "2027-04-05", returnDate: "2027-04-15",
+    transfers: 1, duration: 1340, countryTo: "Greece",
+  },
+  {
+    id: "demo-deal-award-1", origin: "MCO", destination: "Tokyo Haneda", flyToCode: "HND",
+    month: 3, price: 0, currency: "USD", airline: "ANA", source: "seats.aero",
+    dealScore: 98, tier: "cheap", lastSeen: now, savingsPercent: 0,
+    outboundDate: "2027-04-01", returnDate: "2027-04-14",
+    transfers: 0, duration: 1580, countryTo: "Japan",
+    isAward: true, miles: 55000, program: "VS", programName: "Virgin Atlantic", cabin: "J", cabinLabel: "Business", tripType: "Round Trip",
+  },
+  {
+    id: "demo-deal-award-2", origin: "MCO", destination: "London Heathrow", flyToCode: "LHR",
+    month: 9, price: 0, currency: "USD", airline: "British Airways", source: "seats.aero",
+    dealScore: 94, tier: "cheap", lastSeen: now, savingsPercent: 0,
+    outboundDate: "2026-10-18", returnDate: "2026-10-28",
+    transfers: 0, duration: 960, countryTo: "United Kingdom",
+    isAward: true, miles: 40000, program: "BA", programName: "British Airways Avios", cabin: "W", cabinLabel: "Premium Economy", tripType: "Round Trip",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Demo search results for the SearchView in static mode
+// ---------------------------------------------------------------------------
+
+export interface DemoSearchResult {
+  id: string;
+  origin: string;
+  destination: string;
+  flyToCode: string;
+  month: number;
+  outboundDate: string | null;
+  returnDate: string | null;
+  price: number;
+  currency: string;
+  airline: string | null;
+  source: string | null;
+  dealScore: number | null;
+  tier: string | null;
+  lastSeen: string;
+}
+
+export const DEMO_SEARCH_RESULTS: DemoSearchResult[] = [
+  { id: "ds-1", origin: "MCO", destination: "Reykjavik", flyToCode: "KEF", month: 8, outboundDate: "2026-09-12", returnDate: "2026-09-19", price: 285, currency: "USD", airline: "Icelandair", source: "seats.aero", dealScore: 0.95, tier: "cheap", lastSeen: now },
+  { id: "ds-2", origin: "MCO", destination: "Cancun", flyToCode: "CUN", month: 10, outboundDate: "2026-11-02", returnDate: "2026-11-09", price: 148, currency: "USD", airline: "Spirit", source: "Kiwi", dealScore: 0.88, tier: "cheap", lastSeen: now },
+  { id: "ds-3", origin: "MCO", destination: "Lisbon", flyToCode: "LIS", month: 9, outboundDate: "2026-10-05", returnDate: "2026-10-14", price: 340, currency: "USD", airline: "TAP Portugal", source: "Kiwi", dealScore: 0.90, tier: "cheap", lastSeen: now },
+  { id: "ds-4", origin: "MCO", destination: "Naples", flyToCode: "NAP", month: 5, outboundDate: "2027-06-01", returnDate: "2027-06-10", price: 389, currency: "USD", airline: "Eurowings", source: "seats.aero", dealScore: 0.85, tier: "cheap", lastSeen: now },
+  { id: "ds-5", origin: "MCO", destination: "Bogota", flyToCode: "BOG", month: 7, outboundDate: "2026-08-20", returnDate: "2026-08-30", price: 198, currency: "USD", airline: "Avianca", source: "Kiwi", dealScore: 0.82, tier: "cheap", lastSeen: now },
+];
+
+// ---------------------------------------------------------------------------
+// Demo journal entries for the JournalView in static mode
+// ---------------------------------------------------------------------------
+
+export interface DemoJournalEntry {
+  id: string;
+  title: string;
+  content: string;
+  location: string | null;
+  country: string | null;
+  date: string | null;
+  mood: string | null;
+  weather: string | null;
+  tags: string[];
+  photos: string[];
+  tripId: string | null;
+  trip?: { id: string; city: string; country: string } | null;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const DEMO_JOURNAL_ENTRIES: DemoJournalEntry[] = [
+  {
+    id: "dj-1", title: "Sunset over the Medina", content: "Watched the sun set from a rooftop riad in Marrakech. The call to prayer echoing across the city as the sky turned from gold to violet was unforgettable. We had mint tea and pastilla while the city lights began to twinkle below.",
+    location: "Marrakech Medina", country: "Morocco", date: "2025-11-15", mood: "inspired", weather: "sunny",
+    tags: ["sunset", "culture", "food"], photos: [], tripId: null, isPublic: true,
+    createdAt: "2025-11-15T18:00:00Z", updatedAt: "2025-11-15T18:00:00Z",
+  },
+  {
+    id: "dj-2", title: "Roman Holiday", content: "Spent the day wandering through the Colosseum and Roman Forum. The scale of ancient Rome is hard to grasp until you're standing in the middle of it. Ended with the best cacio e pepe at a tiny trattoria near Trastevere.",
+    location: "Rome", country: "Italy", date: "2026-03-22", mood: "adventurous", weather: "cloudy",
+    tags: ["history", "food", "architecture"], photos: [], tripId: null, isPublic: false,
+    createdAt: "2026-03-22T20:00:00Z", updatedAt: "2026-03-22T20:00:00Z",
+  },
+  {
+    id: "dj-3", title: "Shibuya at Night", content: "Tokyo's energy is unlike anywhere else. Shibuya crossing at night with all the neon reflecting off wet pavement after a light rain -- pure cyberpunk. Found an incredible ramen spot down a back alley that seated maybe 8 people.",
+    location: "Shibuya, Tokyo", country: "Japan", date: "2026-01-08", mood: "excited", weather: "rainy",
+    tags: ["nightlife", "food", "city"], photos: [], tripId: null, isPublic: true,
+    createdAt: "2026-01-08T22:00:00Z", updatedAt: "2026-01-08T22:00:00Z",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Demo mode detection
+// ---------------------------------------------------------------------------
+
 /** Detect if we're running in static/demo mode (no backend API available). */
 let _demoMode: boolean | null = null;
 
@@ -261,6 +447,10 @@ export async function isDemoMode(): Promise<boolean> {
     _demoMode = true;
   }
   return _demoMode;
+}
+
+export function getDemoMode(): boolean {
+  return _demoMode === true;
 }
 
 export function setDemoMode(v: boolean) {

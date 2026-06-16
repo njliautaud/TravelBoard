@@ -11,7 +11,7 @@ import DraftInbox from "./DraftInbox";
 import AmbientMode from "./AmbientMode";
 import type { DraftItem, DraftPrefill, LocationItem, SessionUser } from "@/lib/types";
 import { DEFAULT_SETTINGS, type UserSettings } from "@/lib/settings";
-import { DEMO_LOCATIONS, DEMO_COUNTRY_DEALS, DEMO_JOURNAL_COUNTRIES, DEMO_DEAL_ROUTES, setDemoMode } from "@/lib/demoData";
+import { DEMO_LOCATIONS, DEMO_COUNTRY_DEALS, DEMO_JOURNAL_COUNTRIES, DEMO_DEAL_ROUTES, setDemoMode, getDemoMode } from "@/lib/demoData";
 
 interface MapAppProps {
   initialLocations: LocationItem[];
@@ -41,13 +41,14 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const settingsSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [overlayMode, setOverlayMode] = useState<MapOverlayMode>("wishes");
+  const [overlayMode, setOverlayMode] = useState<MapOverlayMode>("deals");
   const [countryDeals, setCountryDeals] = useState<CountryDeal[]>([]);
   const [ambientMode, setAmbientMode] = useState(false);
   const [journalCountries, setJournalCountries] = useState<JournalCountry[]>([]);
   const [dealRoutes, setDealRoutes] = useState<DealRoute[]>([]);
 
   const loggedIn = user !== null;
+  const isDemoActive = getDemoMode();
 
   const refreshLocations = useCallback(async () => {
     try {
@@ -389,8 +390,8 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           </button>
         </div>
 
-        {/* Welcome overlay for logged-out users */}
-        {!loggedIn && !authOpen && (
+        {/* Welcome overlay for logged-out users — only when NOT in demo mode (demo uses AppShell landing) */}
+        {!loggedIn && !authOpen && !isDemoActive && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
             {/* Subtle dark gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-slate-950/60" />
@@ -471,7 +472,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
                   Log out
                 </button>
               </>
-            ) : (
+            ) : !isDemoActive ? (
               <>
                 <button
                   onClick={() => requireAuth("register")}
@@ -486,7 +487,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
                   Log in
                 </button>
               </>
-            )}
+            ) : null}
           </div>
         </header>
 

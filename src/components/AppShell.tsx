@@ -11,11 +11,11 @@ import CommunityView from "./CommunityView";
 import AlertsPanel, { AlertBellBadge } from "./AlertsPanel";
 import { ErrorBoundary, DealListSkeleton, CalendarSkeleton } from "./ErrorBoundary";
 import { Changelog, useUnseenChangelog } from "./Changelog";
-import { OnboardingModal, loadLocalPrefs, persistPrefs, DEFAULT_PREFS, type TravelPrefsDto } from "./Onboarding";
+import { loadLocalPrefs, DEFAULT_PREFS, type TravelPrefsDto } from "./Onboarding";
 import UserProfile from "./UserProfile";
 import ActivityFeed from "./ActivityFeed";
-import FeatureWalkthrough, { useWalkthroughState } from "./FeatureWalkthrough";
 import type { LocationItem } from "@/lib/types";
+import { getDemoMode } from "@/lib/demoData";
 
 type Tab = "map" | "deals" | "search" | "alerts" | "journal" | "tools" | "community" | "settings";
 
@@ -114,12 +114,10 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   const [alertCount, setAlertCount] = useState(0);
   const [showChangelog, setShowChangelog] = useState(false);
   const unseenChangelog = useUnseenChangelog();
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showActivityFeed, setShowActivityFeed] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [prefs, setPrefs] = useState<TravelPrefsDto>(DEFAULT_PREFS);
-  const walkthrough = useWalkthroughState();
   const [appEntered, setAppEntered] = useState(false);
 
   // Check if first visit for onboarding, or if user has already "entered" the app
@@ -130,13 +128,13 @@ export default function AppShell({ initialLocations }: AppShellProps) {
     if (entered) {
       setAppEntered(true);
     }
-    if (!onboarded && !entered) {
-      setShowOnboarding(true);
-    }
+    // Skip onboarding wizard on first visit — the landing splash is cleaner.
+    // Users can always access preferences from Settings.
   }, []);
 
-  // Poll unread alert count periodically (stops if API unavailable)
+  // Poll unread alert count periodically (skip in demo mode)
   useEffect(() => {
+    if (getDemoMode()) return;
     let stopped = false;
     const fetchCount = () => {
       if (stopped) return;
@@ -159,6 +157,12 @@ export default function AppShell({ initialLocations }: AppShellProps) {
 
   const isOverlay = activeTab !== "map";
 
+  // In demo mode, hide tabs that require a backend
+  const isDemo = getDemoMode();
+  const visibleTabs = isDemo
+    ? TABS.filter((t) => !["alerts", "community"].includes(t.id))
+    : TABS;
+
   return (
     <div className="relative flex h-dvh w-full overflow-hidden">
       {/* Map is ALWAYS rendered — it IS the app */}
@@ -166,24 +170,44 @@ export default function AppShell({ initialLocations }: AppShellProps) {
         <MapApp initialLocations={initialLocations} />
       </div>
 
-      {/* Landing state — map visible behind, single "Explore" button */}
+      {/* Landing state — map visible behind, compelling hero card */}
       {!appEntered && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-end pb-32 sm:justify-center sm:pb-0 pointer-events-none">
-          <div className="pointer-events-auto flex flex-col items-center gap-6 rounded-3xl border border-slate-700/40 bg-slate-950/70 px-10 py-10 backdrop-blur-2xl shadow-2xl">
-            <span className="text-3xl font-bold tracking-tight text-amber-400">
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-end pb-28 sm:justify-center sm:pb-0 pointer-events-none">
+          <div className="pointer-events-auto flex flex-col items-center gap-5 rounded-3xl border border-slate-700/40 bg-slate-950/75 px-8 py-8 sm:px-12 sm:py-10 backdrop-blur-2xl shadow-2xl max-w-sm mx-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/15">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-amber-400">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+            </div>
+            <span className="text-3xl font-bold tracking-tight text-amber-400 glow-text">
               TravelBoard
             </span>
-            <p className="max-w-xs text-center text-sm text-slate-300">
-              Discover the cheapest flights, track award deals, and plan your next adventure.
+            <p className="max-w-xs text-center text-sm leading-relaxed text-slate-300">
+              Discover cheap flights, track award deals from seats.aero, and build your travel bucket list on an interactive map.
             </p>
+            <div className="flex items-center gap-3 text-[11px] text-slate-500">
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-teal-400" />
+                Live flight deals
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-purple-400" />
+                Award search
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-amber-400" />
+                Bucket list
+              </span>
+            </div>
             <button
               onClick={() => {
                 setAppEntered(true);
                 if (typeof window !== "undefined") localStorage.setItem("tb_entered", "1");
               }}
-              className="mt-2 rounded-2xl bg-amber-500 px-8 py-3.5 text-base font-bold text-slate-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-400 hover:shadow-amber-400/30 active:scale-95"
+              className="mt-1 w-full rounded-2xl bg-amber-500 px-8 py-3.5 text-base font-bold text-slate-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-400 hover:shadow-amber-400/30 active:scale-95"
             >
-              Explore
+              Explore Deals
             </button>
           </div>
         </div>
@@ -249,46 +273,48 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           <span className="text-base font-bold tracking-wider text-amber-400 glow-text select-none">TB</span>
           <span className="mt-0.5 h-px w-8 bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
         </div>
-        {/* Profile button */}
-        <button
-          onClick={() => setShowProfile(true)}
-          title="Profile"
-          className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-            <circle cx="12" cy="7" r="4" />
-          </svg>
-          <span>Profile</span>
-        </button>
-        {/* Activity Feed button */}
-        <button
-          onClick={() => setShowActivityFeed(true)}
-          title="Activity"
-          className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-          </svg>
-          <span>Activity</span>
-        </button>
-        {/* What's New / Changelog button */}
-        <button
-          onClick={() => setShowChangelog(true)}
-          title="What's New"
-          className="relative mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-          </svg>
-          <span>New</span>
-          {unseenChangelog > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-slate-950">
-              {unseenChangelog}
-            </span>
-          )}
-        </button>
-        {TABS.map((tab) => {
+        {/* Profile / Activity / Changelog — hidden in demo mode */}
+        {!isDemo && (
+          <>
+            <button
+              onClick={() => setShowProfile(true)}
+              title="Profile"
+              className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              <span>Profile</span>
+            </button>
+            <button
+              onClick={() => setShowActivityFeed(true)}
+              title="Activity"
+              className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+              <span>Activity</span>
+            </button>
+            <button
+              onClick={() => setShowChangelog(true)}
+              title="What's New"
+              className="relative mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+              </svg>
+              <span>New</span>
+              {unseenChangelog > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-slate-950">
+                  {unseenChangelog}
+                </span>
+              )}
+            </button>
+          </>
+        )}
+        {visibleTabs.map((tab) => {
           const active = activeTab === tab.id;
           return (
             <button
@@ -319,7 +345,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
 
       {/* Mobile bottom tab bar — 5 visible tabs, "More" opens overflow */}
       <nav className={`${appEntered ? "flex sm:hidden" : "hidden"} absolute bottom-0 left-0 right-0 z-40 items-stretch border-t border-slate-800/60 bg-slate-950/95 backdrop-blur-lg safe-area-bottom`}>
-        {TABS.filter((t) => ["map", "search", "deals", "journal"].includes(t.id)).map((tab) => {
+        {visibleTabs.filter((t) => ["map", "search", "deals", "journal"].includes(t.id)).map((tab) => {
           const active = activeTab === tab.id;
           return (
             <button
@@ -340,26 +366,28 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             </button>
           );
         })}
-        {/* More button */}
-        <button
-          onClick={() => setShowMoreMenu((v) => !v)}
-          className={[
-            "relative flex min-w-[3.5rem] flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all duration-200",
-            showMoreMenu || ["alerts", "tools", "community", "settings"].includes(activeTab)
-              ? "text-amber-300"
-              : "text-slate-500 active:text-slate-300",
-          ].join(" ")}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <circle cx="12" cy="5" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="19" r="1.5" fill="currentColor" />
-          </svg>
-          <span>More</span>
-          {(showMoreMenu || ["alerts", "tools", "community", "settings"].includes(activeTab)) && (
-            <span className="absolute top-0 h-0.5 w-8 rounded-b bg-amber-400" />
-          )}
-        </button>
+        {/* More button — only shown if there are overflow tabs */}
+        {visibleTabs.some((t) => ["alerts", "tools", "community", "settings"].includes(t.id)) && (
+          <button
+            onClick={() => setShowMoreMenu((v) => !v)}
+            className={[
+              "relative flex min-w-[3.5rem] flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all duration-200",
+              showMoreMenu || ["alerts", "tools", "community", "settings"].includes(activeTab)
+                ? "text-amber-300"
+                : "text-slate-500 active:text-slate-300",
+            ].join(" ")}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+              <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+              <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+            </svg>
+            <span>More</span>
+            {(showMoreMenu || ["alerts", "tools", "community", "settings"].includes(activeTab)) && (
+              <span className="absolute top-0 h-0.5 w-8 rounded-b bg-amber-400" />
+            )}
+          </button>
+        )}
       </nav>
 
       {/* Mobile "More" slide-up menu */}
@@ -370,7 +398,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             onClick={() => setShowMoreMenu(false)}
           />
           <div className="sm:hidden fixed bottom-[3.25rem] left-2 right-2 z-50 rounded-xl border border-slate-700/60 bg-slate-900/95 backdrop-blur-xl shadow-2xl safe-area-bottom animate-slide-in">
-            {TABS.filter((t) => ["alerts", "tools", "community", "settings"].includes(t.id)).map((tab) => {
+            {visibleTabs.filter((t) => ["alerts", "tools", "community", "settings"].includes(t.id)).map((tab) => {
               const active = activeTab === tab.id;
               return (
                 <button
@@ -399,19 +427,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
       {/* Changelog modal */}
       {showChangelog && <Changelog onClose={() => setShowChangelog(false)} />}
 
-      {/* Onboarding wizard */}
-      {showOnboarding && (
-        <OnboardingModal
-          initial={prefs}
-          firstVisit={true}
-          onDone={(newPrefs) => {
-            persistPrefs(newPrefs);
-            setPrefs(newPrefs);
-            setShowOnboarding(false);
-            if (walkthrough.shouldShow) walkthrough.startWalkthrough();
-          }}
-        />
-      )}
+      {/* Onboarding wizard — skipped in favor of the cleaner landing splash */}
 
       {/* User Profile panel */}
       {showProfile && (
@@ -432,10 +448,6 @@ export default function AppShell({ initialLocations }: AppShellProps) {
         </div>
       )}
 
-      {/* Feature Walkthrough */}
-      {walkthrough.walkthroughActive && (
-        <FeatureWalkthrough onComplete={() => walkthrough.dismissWalkthrough()} />
-      )}
     </div>
   );
 }

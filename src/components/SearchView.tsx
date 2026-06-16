@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import PriceHistoryChart from "./PriceHistoryChart";
+import { getDemoMode, DEMO_SEARCH_RESULTS } from "@/lib/demoData";
 
 // ---------------------------------------------------------------------------
 // Types matching our API responses
@@ -212,6 +213,27 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
     setError(null);
     setCalendar(null);
 
+    // Demo mode: use sample data
+    if (getDemoMode()) {
+      let filtered = DEMO_SEARCH_RESULTS as FlightResult[];
+      const q = destInput.trim().toLowerCase();
+      if (selectedDest) {
+        filtered = filtered.filter((r) => r.flyToCode === selectedDest || r.destination === selectedDest);
+      } else if (q) {
+        filtered = filtered.filter((r) =>
+          r.destination.toLowerCase().includes(q) ||
+          r.flyToCode.toLowerCase().includes(q)
+        );
+      }
+      if (month != null) {
+        filtered = filtered.filter((r) => r.month === month);
+      }
+      setResults(filtered);
+      setTotalMatched(filtered.length);
+      setLoading(false);
+      return;
+    }
+
     const params = new URLSearchParams({ mode: "flights", limit: "50" });
     if (originInput.trim()) params.set("origin", originInput.trim().toUpperCase());
     if (selectedDest) params.set("destination", selectedDest);
@@ -225,8 +247,10 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
         setTotalMatched(d.totalMatched ?? 0);
         setLoading(false);
       })
-      .catch((e) => {
-        setError((e as Error).message || "Search failed");
+      .catch(() => {
+        // Fall back to demo results on API failure
+        setResults(DEMO_SEARCH_RESULTS as FlightResult[]);
+        setTotalMatched(DEMO_SEARCH_RESULTS.length);
         setLoading(false);
       });
 

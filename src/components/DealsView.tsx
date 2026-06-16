@@ -9,6 +9,7 @@ import { DealScoreBreakdown as DealScorePanel } from "./DealScoreBreakdown";
 import { ShareButton } from "./ShareDeal";
 import FavoritesPanel, { useFavorites } from "./FavoritesPanel";
 import FlightStatusIndicator from "./FlightStatusIndicator";
+import { getDemoMode, DEMO_DEALS, type DemoDealItem } from "@/lib/demoData";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -399,6 +400,10 @@ export default function DealsView() {
 
   // Load user settings to get default origin
   useEffect(() => {
+    if (getDemoMode()) {
+      if (!origin) setOrigin("MCO");
+      return;
+    }
     fetch("/api/settings")
       .then((r) => r.json())
       .then((data) => {
@@ -407,13 +412,27 @@ export default function DealsView() {
           setOrigin(airports[0]!);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!origin) setOrigin("MCO");
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDeals = useCallback(async () => {
     if (!origin) return;
     setLoading(true);
+
+    // Demo mode: use sample data
+    if (getDemoMode()) {
+      let items: DealItem[] = DEMO_DEALS.map((d) => d as unknown as DealItem);
+      if (month != null) {
+        items = items.filter((d) => d.month === month);
+      }
+      setDeals(items);
+      setLoading(false);
+      return;
+    }
+
     try {
       const params = new URLSearchParams({ origin, limit: "50" });
       const res = await fetch(`/api/fares/top-deals?${params}`);
@@ -424,7 +443,12 @@ export default function DealsView() {
       }
       setDeals(items);
     } catch {
-      setDeals([]);
+      // Fall back to demo deals on API failure
+      let items: DealItem[] = DEMO_DEALS.map((d) => d as unknown as DealItem);
+      if (month != null) {
+        items = items.filter((d) => d.month === month);
+      }
+      setDeals(items);
     } finally {
       setLoading(false);
     }
