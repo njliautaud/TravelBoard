@@ -1,0 +1,10 @@
+$ eslint .
+
+/home/jupiter/meridian-work/packages/core/src/data/borders.ts
+  12:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/home/jupiter/meridian-work/packages/core/src/data/places.ts
+  20:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+✖ 2 problems (0 errors, 2 warnings)
+

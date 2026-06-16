@@ -1,7 +1,7 @@
 # TravelBoard — AI Context & Handoff Document
 
 > Purpose: lets a fresh AI session pick up where the last one left off. Read fully before editing.
-> Last updated: 2026-06-13.
+> Last updated: 2026-06-16.
 
 ---
 
@@ -30,7 +30,7 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 | Styling | Tailwind CSS v4 |
 | Map | MapLibre GL JS v5, Carto `dark_all`, `public/data/countries.geo.json` (ISO alpha-3 ids) |
 | DB | PostgreSQL 16 + **Prisma 6** (do not upgrade to v7) |
-| Auth | Username/password (bcrypt), HMAC httpOnly cookie `tb_session` |
+| Auth | **Clerk** (Google/Apple SSO) when keys configured; fallback to bcrypt/cookie `tb_session` |
 | Images | `sharp` for thumbnail declutter; Wikimedia/Wikipedia in `coverImage.ts` |
 
 ---
@@ -39,15 +39,22 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 
 ```
 src/app/page.tsx
-  └─ MapApp.tsx
-       ├─ Sidebar.tsx        — dropdown: Your wishes | Settings
-       ├─ SettingsPanel.tsx  — map theme, home airports
-       ├─ TravelMap.tsx      — heatmap, flag borders, Alaska/Hawaii zoom, world-view zoom threshold
-       ├─ SidePanel.tsx      — right panel / mobile bottom sheet (auto-closes on world view)
-       ├─ GeoBanner.tsx
-       ├─ EntryForm.tsx      — cover generate/remove, enrichment prefill, lat/lng at bottom
-       ├─ DraftInbox.tsx
-       └─ AuthModal.tsx
+  └─ AppShell.tsx           — map-first layout: map always visible, tabs overlay as panels
+       ├─ MapApp.tsx         — full-screen map + wishlist sidebar + entry forms
+       │    ├─ Sidebar.tsx   — slide-over drawer: wishes list + settings
+       │    ├─ TravelMap.tsx — MapLibre heatmap, flag borders, Alaska/Hawaii zoom
+       │    ├─ SidePanel.tsx — right panel / mobile bottom sheet (auto-closes on world view)
+       │    ├─ GeoBanner.tsx
+       │    ├─ EntryForm.tsx — cover generate/remove, enrichment prefill
+       │    ├─ DraftInbox.tsx
+       │    └─ AuthModal.tsx — dual-mode: Clerk SSO or legacy username/password
+       ├─ DealsView.tsx      — flight deals with scoring
+       ├─ SearchView.tsx     — flight search + calendar heatmap
+       ├─ JournalView.tsx    — travel journal
+       ├─ AlertsPanel.tsx    — price alerts
+       ├─ ToolsView.tsx      — points calculator, trip planner, memory map, etc.
+       ├─ CommunityView.tsx  — social deal boards
+       └─ SettingsView.tsx   — user preferences
 ```
 
 ### Map behavior
@@ -76,7 +83,7 @@ Key models:
 - **Draft**: WhatsApp inbox items (`rawText`, `extractedUrl`).
 - **FlightPrice**: ingested via API key; latest price drives `isDeal` in serialize.
 
-Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000_multi_user_drafts_seasons`, `20260613120000_user_settings`.
+Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000_multi_user_drafts_seasons`, `20260613120000_user_settings`, `20260616040831_add_clerk_fields`.
 
 ### Seed safety (`prisma/seed.ts`)
 
@@ -127,18 +134,24 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 
 ### Done
 
-- Multi-user auth, starred wishes, seasons, cover images, draft inbox
+- Multi-user auth (bcrypt + Clerk dual-mode), starred wishes, seasons, cover images, draft inbox
+- **Clerk auth integration**: `@clerk/nextjs` installed, sign-in/sign-up pages, unified auth layer (`unified-auth.ts`), `clerkId` field on User model. Activate by setting `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` in `.env`
+- **Map-first AppShell redesign**: Map is ALWAYS rendered as the full-screen background. Non-map tabs (Search, Deals, Journal, Tools, Community, Settings) slide in as glass-morphism overlay panels from the right. Desktop sidebar nav with active indicator. Mobile bottom tab bar.
 - Link enrichment, image proxy, cover generate/cycle, settings (theme + airports)
-- Flag border glow, Alaska/Hawaii zoom, world view UX, sidebar dropdown
+- Flag border glow, Alaska/Hawaii zoom, world view UX
 - Idempotent seed; cover delete no longer re-fetches on PATCH
+- Polished welcome screen with gradient overlay and animated sign-in card
+- Slide-in/fade-up animations for all panels and modals
 
 ### Open / roadmap
 
+- **Clerk API keys**: Need Clerk dashboard account and keys (Google + Apple SSO providers)
+- **PostgreSQL migration**: docker-compose.yml ready; needs Docker installed or managed Postgres
 - Filter flight deals by user's `homeAirports`
 - Reminder push notifications, price history chart, photo lightbox
 - ESP32 + partner flight script (APIs exist)
-- Console warning cleanup (reported ~29 issues, not triaged)
-- Theme preference for logged-out users (localStorage)
+- Console warning cleanup
+- Deploy updated build to Cloudflare Pages
 
 ---
 

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -32,13 +32,29 @@ enum MapTheme {
 model User {
   id           String     @id @default(cuid())
   username     String     @unique
-  passwordHash String
+  passwordHash String     @default("")
+  clerkId      String?    @unique
+  imageUrl     String?
+  email        String?
   role         UserRole   @default(EDITOR)
   mapTheme     MapTheme   @default(CLASSIC)
-  homeAirports String[]   @default([])
+  homeAirports String     @default("[]")
   locations    Location[]
   drafts       Draft[]
   createdAt    DateTime   @default(now())
+
+  // Meridian relations
+  watches              Watch[]
+  trips                Trip[]
+  tripPlans            TripPlan[]
+  journalEntries       JournalEntry[]
+  cardProfiles         CardProfile[]
+  loyaltyBalances      LoyaltyBalance[]
+  createdBoards        SocialBoard[]
+  boardDeals           BoardDeal[]
+  boardComments        BoardComment[]
+  gamificationProgress GamificationProgress?
+  notificationPref     NotificationPref?
 }
 
 /// One wishlist/journal entry
@@ -107,4 +123,293 @@ model Draft {
   createdAt    DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+// ─── Meridian Feature Models ─────────────────────────────────────────────────
+
+enum TripPlanStatus {
+  DRAFT
+  PLANNED
+  BOOKED
+  COMPLETED
+  CANCELLED
+}
+
+/// Cached flight fares from external providers
+model FareCache {
+  id           String   @id @default(cuid())
+  origin       String
+  destination  String
+  flyToCode    String
+  month        Int
+  outboundDate DateTime?
+  returnDate   DateTime?
+  price        Decimal
+  currency     String   @default("USD")
+  airline      String?
+  source       String?
+  dealScore    Float?
+  tier         String?
+  lastSeen     DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([origin, destination])
+  @@index([origin, month])
+  @@index([flyToCode])
+}
+
+/// Append-only price history for routes
+model FareHistory {
+  id          String   @id @default(cuid())
+  origin      String
+  destination String
+  month       Int
+  price       Decimal
+  source      String?
+  recordedAt  DateTime @default(now())
+
+  @@index([origin, destination])
+  @@index([recordedAt])
+}
+
+/// User price watches on routes
+model Watch {
+  id              String     @id @default(cuid())
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  origin          String
+  destinationCode String
+  targetPrice     Decimal
+  currency        String     @default("USD")
+  active          Boolean    @default(true)
+  lastChecked     DateTime?
+  lastAlertedAt   DateTime?
+  createdAt       DateTime   @default(now())
+  alerts          AlertLog[]
+
+  @@index([userId])
+  @@index([origin, destinationCode])
+}
+
+/// Triggered alert log entries
+model AlertLog {
+  id          String   @id @default(cuid())
+  watch       Watch    @relation(fields: [watchId], references: [id], onDelete: Cascade)
+  watchId     String
+  price       Decimal
+  source      String?
+  triggeredAt DateTime @default(now())
+
+  @@index([watchId])
+  @@index([triggeredAt])
+}
+
+/// Memory-map trips (places visited)
+model Trip {
+  id            String         @id @default(cuid())
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  code          String
+  city          String
+  country       String
+  lat           Float
+  lon           Float
+  startDate     DateTime?
+  endDate       DateTime?
+  note          String?
+  rating        Int?
+  coverImageUrl String?
+  createdAt     DateTime       @default(now())
+  journalEntries JournalEntry[]
+
+  @@index([userId])
+  @@index([code])
+}
+
+/// Trip planner plans
+model TripPlan {
+  id          String         @id @default(cuid())
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  name        String
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  budget      Decimal?
+  currency    String         @default("USD")
+  status      TripPlanStatus @default(DRAFT)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  legs        TripPlanLeg[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+/// Individual legs of a trip plan
+model TripPlanLeg {
+  id         String   @id @default(cuid())
+  tripPlan   TripPlan @relation(fields: [tripPlanId], references: [id], onDelete: Cascade)
+  tripPlanId String
+  origin     String
+  destination String
+  departDate DateTime?
+  returnDate DateTime?
+  fareAmount Decimal?
+  fareSource String?
+  notes      String?
+  sortOrder  Int      @default(0)
+
+  @@index([tripPlanId])
+}
+
+/// Travel journal entries
+model JournalEntry {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  trip      Trip?    @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  tripId    String?
+  title     String
+  content   String
+  location  String?
+  country   String?
+  lat       Float?
+  lon       Float?
+  date      DateTime?
+  mood      String?
+  weather   String?
+  tags      String?  /// JSON array
+  photos    String?  /// JSON array
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([tripId])
+  @@index([date])
+}
+
+/// Credit card profiles for points tracking
+model CardProfile {
+  id            String   @id @default(cuid())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  cardName      String
+  issuer        String?
+  pointsBalance Int      @default(0)
+  annualFee     Decimal?
+  category      String?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Loyalty program balances
+model LoyaltyBalance {
+  id          String    @id @default(cuid())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  programName String
+  programCode String?
+  balance     Int       @default(0)
+  tier        String?
+  expiresAt   DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+/// Shared deal boards
+model SocialBoard {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  isPublic    Boolean     @default(true)
+  creator     User        @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorId   String
+  createdAt   DateTime    @default(now())
+  deals       BoardDeal[]
+
+  @@index([creatorId])
+}
+
+/// Deals posted to social boards
+model BoardDeal {
+  id          String         @id @default(cuid())
+  board       SocialBoard    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  boardId     String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  origin      String
+  destination String
+  price       Decimal
+  currency    String         @default("USD")
+  notes       String?
+  votes       Int            @default(0)
+  createdAt   DateTime       @default(now())
+  comments    BoardComment[]
+
+  @@index([boardId])
+  @@index([userId])
+}
+
+/// Comments on board deals
+model BoardComment {
+  id        String   @id @default(cuid())
+  deal      BoardDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  dealId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([dealId])
+  @@index([userId])
+}
+
+/// User gamification state
+model GamificationProgress {
+  id             String   @id @default(cuid())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String   @unique
+  totalPoints    Int      @default(0)
+  level          Int      @default(1)
+  badges         String?  /// JSON array
+  streakDays     Int      @default(0)
+  lastActivityAt DateTime?
+
+  @@index([userId])
+}
+
+/// Notification preferences
+model NotificationPref {
+  id           String  @id @default(cuid())
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String  @unique
+  emailDigest  Boolean @default(true)
+  pushEnabled  Boolean @default(false)
+  dealAlerts   Boolean @default(true)
+  priceDrops   Boolean @default(true)
+  weeklyReport Boolean @default(true)
+}
+
+/// Key-value application settings
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+/// Telemetry / analytics events
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  eventType String
+  payload   String?  /// JSON
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
 }

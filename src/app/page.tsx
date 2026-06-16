@@ -1,7 +1,7 @@
-import MapApp from "@/components/MapApp";
+import AppShell from "@/components/AppShell";
 
 export const dynamic = "force-dynamic";
 
 export default function Home() {
-  return <MapApp initialLocations={[]} />;
+  return <AppShell initialLocations={[]} />;
 }

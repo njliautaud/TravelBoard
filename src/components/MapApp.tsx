@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import TravelMap, { type FocusPoint, type TravelMapHandle } from "./TravelMap";
+import TravelMap, { type FocusPoint, type TravelMapHandle, type MapOverlayMode, type CountryDeal } from "./TravelMap";
 import Sidebar from "./Sidebar";
 import SidePanel, { type PanelSelection } from "./SidePanel";
 import GeoBanner from "./GeoBanner";
 import EntryForm, { type PinDropResult } from "./EntryForm";
 import AuthModal from "./AuthModal";
 import DraftInbox from "./DraftInbox";
+import AmbientMode from "./AmbientMode";
 import type { DraftItem, DraftPrefill, LocationItem, SessionUser } from "@/lib/types";
 import { DEFAULT_SETTINGS, type UserSettings } from "@/lib/settings";
 
@@ -39,6 +40,9 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const settingsSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [overlayMode, setOverlayMode] = useState<MapOverlayMode>("wishes");
+  const [countryDeals, setCountryDeals] = useState<CountryDeal[]>([]);
+  const [ambientMode, setAmbientMode] = useState(false);
 
   const loggedIn = user !== null;
 
@@ -87,6 +91,17 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       })
       .catch(() => {});
   }, [refreshAll]);
+
+  // Fetch country deals for map overlay
+  useEffect(() => {
+    if (overlayMode !== "deals") return;
+    fetch("/api/deals/countries")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.deals)) setCountryDeals(d.deals);
+      })
+      .catch(() => {});
+  }, [overlayMode]);
 
   // Poll for new WhatsApp drafts while logged in
   useEffect(() => {
@@ -260,6 +275,20 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     mapRef.current?.resetWorldView();
   };
 
+  if (ambientMode) {
+    return (
+      <div className="relative h-dvh w-full">
+        <AmbientMode />
+        <button
+          onClick={() => setAmbientMode(false)}
+          className="absolute right-4 top-4 z-50 rounded-full border border-slate-700/60 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-400 backdrop-blur transition hover:text-slate-200"
+        >
+          Exit Ambient
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-dvh w-full overflow-hidden">
       <Sidebar
@@ -276,35 +305,84 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       />
 
       <div className="relative flex-1 overflow-hidden">
-        <TravelMap
-          ref={mapRef}
-          locations={locations}
-          pinDropMode={pinDropMode}
-          focusPoint={focusPoint}
-          mapTheme={settings.mapTheme}
-          onCountryClick={handleCountryClick}
-          onDotClick={handleDotClick}
-          onPinDrop={handlePinDrop}
-          onZoomStateChange={handleZoomStateChange}
-        />
+        {/* Map offset for sidebar nav on desktop */}
+        <div className="absolute inset-0 sm:left-16">
+          <TravelMap
+            ref={mapRef}
+            locations={locations}
+            pinDropMode={pinDropMode}
+            focusPoint={focusPoint}
+            mapTheme={settings.mapTheme}
+            overlayMode={overlayMode}
+            countryDeals={countryDeals}
+            onCountryClick={handleCountryClick}
+            onDotClick={handleDotClick}
+            onPinDrop={handlePinDrop}
+            onZoomStateChange={handleZoomStateChange}
+          />
+        </div>
 
+        {/* Overlay mode toggle — Wishes / Deals / Ambient */}
+        <div className="pointer-events-auto absolute bottom-14 sm:bottom-4 left-4 sm:left-20 z-20 flex rounded-full border border-slate-700/50 bg-slate-900/85 p-0.5 backdrop-blur-lg shadow-lg">
+          <button
+            onClick={() => setOverlayMode("wishes")}
+            className={[
+              "rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200",
+              overlayMode === "wishes"
+                ? "bg-amber-500/20 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]"
+                : "text-slate-500 hover:text-slate-300",
+            ].join(" ")}
+          >
+            Wishes
+          </button>
+          <button
+            onClick={() => setOverlayMode("deals")}
+            className={[
+              "rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200",
+              overlayMode === "deals"
+                ? "bg-teal-500/20 text-teal-300 shadow-[0_0_8px_rgba(20,184,166,0.2)]"
+                : "text-slate-500 hover:text-slate-300",
+            ].join(" ")}
+          >
+            Deals
+          </button>
+          <button
+            onClick={() => setAmbientMode(true)}
+            className="rounded-full px-3 py-1.5 text-xs font-medium text-slate-500 transition-all duration-200 hover:text-slate-300"
+            title="Enter ambient wall display mode"
+          >
+            Ambient
+          </button>
+        </div>
+
+        {/* Welcome overlay for logged-out users */}
         {!loggedIn && !authOpen && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-slate-950/40 backdrop-blur-[2px]">
-            <div className="pointer-events-auto max-w-sm rounded-2xl border border-slate-700/70 bg-slate-950/95 p-6 text-center shadow-2xl">
-              <h2 className="text-lg font-bold text-slate-100">Welcome to TravelBoard</h2>
-              <p className="mt-2 text-sm text-slate-400">
-                Log in or create an account to build your personal travel map and wishlist.
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            {/* Subtle dark gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-slate-950/60" />
+            <div className="pointer-events-auto relative max-w-md rounded-2xl border border-slate-700/50 bg-slate-950/90 p-8 text-center shadow-2xl backdrop-blur-xl animate-fade-up">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-amber-400">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-slate-100">
+                Welcome to <span className="text-amber-400 glow-text">TravelBoard</span>
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                Your personal travel map. Pin your dream destinations, track flight deals, and build a visual journal of everywhere you want to go.
               </p>
-              <div className="mt-4 flex justify-center gap-2">
+              <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center sm:gap-3">
                 <button
                   onClick={() => requireAuth("login")}
-                  className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400"
+                  className="rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-2.5 text-sm font-semibold text-slate-950 transition hover:from-amber-400 hover:to-amber-500 hover:shadow-[0_0_20px_rgba(245,158,11,0.3)]"
                 >
                   Log in
                 </button>
                 <button
                   onClick={() => requireAuth("register")}
-                  className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                  className="rounded-xl border border-slate-600/80 px-6 py-2.5 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:bg-slate-800/50"
                 >
                   Create account
                 </button>
@@ -313,18 +391,19 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           </div>
         )}
 
-        <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col items-center gap-2 p-3 sm:flex-row sm:items-start sm:justify-between">
+        {/* Top header bar */}
+        <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col items-center gap-2 p-3 sm:flex-row sm:items-start sm:justify-between sm:pl-20">
           <div className="pointer-events-auto flex w-full items-center justify-between gap-2 sm:w-auto">
             <button
               onClick={() => setSidebarOpen(true)}
               aria-label="Open wish list"
-              className="rounded-full border border-slate-700/60 bg-slate-900/80 p-2 text-slate-300 backdrop-blur hover:text-white sm:hidden"
+              className="rounded-full border border-slate-700/50 bg-slate-900/80 p-2 text-slate-300 backdrop-blur-lg hover:text-white sm:hidden"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M3 6h18M3 12h18M3 18h18" />
               </svg>
             </button>
-            <h1 className="rounded-full border border-slate-700/60 bg-slate-900/80 px-4 py-1.5 text-sm font-bold tracking-wide text-amber-300 backdrop-blur glow-text sm:hidden">
+            <h1 className="rounded-full border border-slate-700/50 bg-slate-900/80 px-4 py-1.5 text-sm font-bold tracking-wide text-amber-300 backdrop-blur-lg glow-text sm:hidden">
               TravelBoard
             </h1>
             <span className="w-8 sm:hidden" />
@@ -336,11 +415,11 @@ export default function MapApp({ initialLocations }: MapAppProps) {
             {loggedIn && (
               <button
                 onClick={() => setInboxOpen(true)}
-                className="relative rounded-full border border-violet-500/50 bg-violet-500/15 px-3 py-1.5 text-sm text-violet-200 backdrop-blur hover:bg-violet-500/25"
+                className="relative rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-sm text-violet-200 backdrop-blur-lg transition hover:bg-violet-500/20"
               >
                 Inbox
                 {drafts.length > 0 && (
-                  <span className="ml-1.5 rounded-full bg-violet-400 px-1.5 text-[10px] font-bold text-slate-950">
+                  <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-400 px-1 text-[10px] font-bold text-slate-950">
                     {drafts.length}
                   </span>
                 )}
@@ -348,10 +427,12 @@ export default function MapApp({ initialLocations }: MapAppProps) {
             )}
             {loggedIn ? (
               <>
-                <span className="hidden text-xs text-slate-500 sm:inline">{user.username}</span>
+                <span className="hidden rounded-full bg-slate-800/60 px-2.5 py-1 text-xs text-slate-400 sm:inline">
+                  {user.username}
+                </span>
                 <button
                   onClick={logout}
-                  className="rounded-full border border-slate-700/60 bg-slate-900/80 px-3 py-1.5 text-sm text-slate-400 backdrop-blur hover:text-slate-200"
+                  className="rounded-full border border-slate-700/50 bg-slate-900/80 px-3 py-1.5 text-sm text-slate-400 backdrop-blur-lg transition hover:text-slate-200"
                 >
                   Log out
                 </button>
@@ -360,13 +441,13 @@ export default function MapApp({ initialLocations }: MapAppProps) {
               <>
                 <button
                   onClick={() => requireAuth("register")}
-                  className="rounded-full border border-slate-700/60 bg-slate-900/80 px-3 py-1.5 text-sm text-slate-300 backdrop-blur hover:text-white"
+                  className="rounded-full border border-slate-700/50 bg-slate-900/80 px-3 py-1.5 text-sm text-slate-300 backdrop-blur-lg transition hover:text-white"
                 >
                   Sign up
                 </button>
                 <button
                   onClick={() => requireAuth("login")}
-                  className="rounded-full border border-amber-500/50 bg-amber-500/15 px-3 py-1.5 text-sm text-amber-200 backdrop-blur hover:bg-amber-500/25"
+                  className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-200 backdrop-blur-lg transition hover:bg-amber-500/20"
                 >
                   Log in
                 </button>
@@ -375,11 +456,12 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           </div>
         </header>
 
+        {/* World view button */}
         {zoomedIn && loggedIn && (
           <div
             className={[
-              "pointer-events-none absolute bottom-6 z-20 flex justify-center",
-              "left-0 transition-[left,right] duration-300 ease-out",
+              "pointer-events-none absolute bottom-14 sm:bottom-6 z-20 flex justify-center",
+              "left-0 transition-[left,right] duration-300 ease-out sm:left-16",
               sidebarOpen ? "max-sm:left-72" : "",
               selection ? "right-0 sm:right-[400px]" : "right-0",
             ]
@@ -388,7 +470,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           >
             <button
               onClick={() => mapRef.current?.resetWorldView()}
-              className="pointer-events-auto flex items-center gap-2 rounded-full border border-slate-600/80 bg-slate-900/90 px-5 py-2.5 text-sm font-medium text-slate-200 shadow-lg backdrop-blur transition hover:border-amber-500/50 hover:text-amber-200"
+              className="pointer-events-auto flex items-center gap-2 rounded-full border border-slate-600/60 bg-slate-900/85 px-5 py-2.5 text-sm font-medium text-slate-200 shadow-lg backdrop-blur-lg transition hover:border-amber-500/50 hover:text-amber-200"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />
@@ -399,9 +481,10 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           </div>
         )}
 
+        {/* Pin drop mode indicator */}
         {pinDropMode && (
           <div className="absolute inset-x-0 top-20 z-20 flex justify-center">
-            <div className="rounded-full border border-amber-500/60 bg-slate-900/90 px-4 py-2 text-sm text-amber-200 backdrop-blur">
+            <div className="rounded-full border border-amber-500/50 bg-slate-900/90 px-4 py-2 text-sm text-amber-200 shadow-lg backdrop-blur-lg animate-fade-up">
               Click anywhere on the map to drop the pin
               <button
                 onClick={() => setPinDropMode(false)}

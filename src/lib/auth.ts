@@ -6,6 +6,11 @@ import { prisma } from "./prisma";
 const SESSION_COOKIE = "tb_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+const isClerkEnabled = !!(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
+  process.env.CLERK_SECRET_KEY
+);
+
 function secret(): string {
   return process.env.SESSION_SECRET ?? "insecure-dev-secret";
 }
@@ -36,7 +41,51 @@ export function parseSessionToken(token: string | undefined): string | null {
   return userId;
 }
 
+/**
+ * Get the authenticated user. Supports both Clerk and legacy cookie auth.
+ * When Clerk is enabled, it auto-creates/links a DB user for the Clerk identity.
+ */
 export async function getSessionUser(): Promise<{ id: string; username: string } | null> {
+  // Try Clerk first when enabled
+  if (isClerkEnabled) {
+    try {
+      const { auth, currentUser } = await import("@clerk/nextjs/server");
+      const { userId } = await auth();
+      if (userId) {
+        // Find or create user linked to Clerk
+        let dbUser = await prisma.user.findFirst({
+          where: { clerkId: userId },
+          select: { id: true, username: true },
+        });
+
+        if (!dbUser) {
+          const clerkUser = await currentUser();
+          const username =
+            clerkUser?.username ||
+            clerkUser?.firstName ||
+            clerkUser?.emailAddresses?.[0]?.emailAddress?.split("@")[0] ||
+            `user_${userId.slice(-6)}`;
+
+          dbUser = await prisma.user.create({
+            data: {
+              username,
+              passwordHash: "",
+              clerkId: userId,
+              email: clerkUser?.emailAddresses?.[0]?.emailAddress,
+              imageUrl: clerkUser?.imageUrl,
+            },
+            select: { id: true, username: true },
+          });
+        }
+
+        return dbUser;
+      }
+    } catch {
+      // Fall through to legacy auth
+    }
+  }
+
+  // Legacy cookie auth
   const store = await cookies();
   const userId = parseSessionToken(store.get(SESSION_COOKIE)?.value);
   if (!userId) return null;
@@ -62,7 +111,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 
 export function validateUsername(username: string): string | null {
   const u = username.trim();
-  if (u.length < 3 || u.length > 32) return "Username must be 3–32 characters";
+  if (u.length < 3 || u.length > 32) return "Username must be 3-32 characters";
   if (!/^[a-zA-Z0-9_]+$/.test(u)) return "Username may only contain letters, numbers, and underscores";
   return null;
 }

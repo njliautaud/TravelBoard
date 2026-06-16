@@ -2,6 +2,7 @@
 
 import type { LocationItem } from "@/lib/types";
 import { cleanThumb } from "@/lib/thumb";
+import WeatherWidget from "./WeatherWidget";
 
 export type PanelSelection =
   | { type: "country"; code: string; name: string }
@@ -100,6 +101,13 @@ function EntryCard({
         )}
 
         {loc.notes && <p className="whitespace-pre-wrap text-sm text-slate-300">{loc.notes}</p>}
+
+        {/* Current weather at destination */}
+        <WeatherWidget
+          destination={loc.city || loc.countryName}
+          lat={loc.latitude}
+          lon={loc.longitude}
+        />
 
         {links.length > 0 && (
           <div className="flex flex-wrap gap-1.5">

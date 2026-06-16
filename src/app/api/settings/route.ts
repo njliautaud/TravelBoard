@@ -12,10 +12,16 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function serialize(user: { mapTheme: string; homeAirports: string[] }): UserSettings {
+function serialize(user: { mapTheme: string; homeAirports: string }): UserSettings {
+  let airports: string[] = [];
+  try {
+    airports = JSON.parse(user.homeAirports || "[]");
+  } catch {
+    airports = [];
+  }
   return {
     mapTheme: parseMapTheme(user.mapTheme),
-    homeAirports: user.homeAirports ?? [],
+    homeAirports: airports,
   };
 }
 
@@ -40,7 +46,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const data: { mapTheme?: "CLASSIC" | "FLAG"; homeAirports?: string[] } = {};
+  const data: { mapTheme?: "CLASSIC" | "FLAG"; homeAirports?: string } = {};
 
   if (body.mapTheme !== undefined) {
     const theme = body.mapTheme as MapTheme;
@@ -51,7 +57,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (body.homeAirports !== undefined) {
-    data.homeAirports = normalizeHomeAirports(body.homeAirports);
+    data.homeAirports = JSON.stringify(normalizeHomeAirports(body.homeAirports));
   }
 
   const updated = await prisma.user.update({

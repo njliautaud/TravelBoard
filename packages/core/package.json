@@ -1,0 +1,34 @@
+{
+  "name": "@travelboard/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared TravelBoard core: types, FlightProvider interface, providers, destinations, tiering, geo math, canvas map renderer.",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./seasonal": {
+      "types": "./src/data/seasonal_activities.ts",
+      "default": "./src/data/seasonal_activities.ts"
+    },
+    "./airports": {
+      "types": "./src/data/airports.ts",
+      "default": "./src/data/airports.ts"
+    }
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vitest": "4.1.8"
+  }
+}

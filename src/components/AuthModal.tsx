@@ -63,60 +63,64 @@ export default function AuthModal({ open, onClose, onSuccess, initialMode = "log
     >
       <form
         onSubmit={submit}
-        className="w-full max-w-sm rounded-2xl border border-slate-700/70 bg-slate-950 p-5 shadow-2xl"
+        className="w-full max-w-sm rounded-2xl border border-slate-700/70 bg-slate-950 p-6 shadow-2xl animate-fade-up"
       >
-        <h2 className="mb-1 text-lg font-bold text-slate-100">
-          {mode === "login" ? "Log in" : "Create account"}
-        </h2>
-        <p className="mb-4 text-xs text-slate-500">
-          {mode === "login"
-            ? "Sign in to view and edit your personal travel map."
-            : "Pick a username and password. Your wishes stay private to your account."}
-        </p>
-        <input
-          value={username}
-          autoFocus
-          autoComplete="username"
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Username"
-          className="mb-2 w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-amber-500/60 focus:outline-none"
-        />
-        <input
-          type="password"
-          value={password}
-          autoComplete={mode === "login" ? "current-password" : "new-password"}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-amber-500/60 focus:outline-none"
-        />
-        {error && <p className="mt-2 text-sm text-rose-400">{error}</p>}
-        <div className="mt-4 flex items-center justify-between gap-2">
+        <div className="mb-4 text-center">
+          <h2 className="text-xl font-bold text-amber-400 glow-text">TravelBoard</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            {mode === "login" ? "Welcome back" : "Start your journey"}
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <input
+            value={username}
+            autoFocus
+            autoComplete="username"
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username"
+            className="w-full rounded-xl border border-slate-700/80 bg-slate-900/80 px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 transition focus:border-amber-500/60 focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+          />
+          <input
+            type="password"
+            value={password}
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            className="w-full rounded-xl border border-slate-700/80 bg-slate-900/80 px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 transition focus:border-amber-500/60 focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+          />
+        </div>
+
+        {error && (
+          <p className="mt-3 rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-400">{error}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading || !username.trim() || !password}
+          className="mt-4 w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loading ? "Signing in..." : mode === "login" ? "Log in" : "Create account"}
+        </button>
+
+        <div className="mt-4 flex items-center justify-between">
           <button
             type="button"
             onClick={() => {
               setMode(mode === "login" ? "register" : "login");
               setError(null);
             }}
-            className="text-xs text-slate-400 underline hover:text-slate-200"
+            className="text-xs text-slate-400 transition hover:text-amber-300"
           >
-            {mode === "login" ? "Create account" : "Already have an account?"}
+            {mode === "login" ? "Need an account? Sign up" : "Already have an account? Log in"}
           </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !username.trim() || !password}
-              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-50"
-            >
-              {loading ? "Signing in…" : mode === "login" ? "Log in" : "Sign up"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-xs text-slate-500 transition hover:text-slate-300"
+          >
+            Cancel
+          </button>
         </div>
       </form>
     </div>

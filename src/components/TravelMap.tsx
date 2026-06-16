@@ -8,6 +8,21 @@ import { cleanThumb } from "@/lib/thumb";
 import { countryFlagAccent } from "@/lib/countryFlagColors";
 import type { MapTheme } from "@/lib/settings";
 
+export type MapOverlayMode = "wishes" | "deals";
+
+/** Deal fare data for the deals overlay. Keyed by country ISO code. */
+export interface CountryDeal {
+  countryCode: string;
+  cheapestPrice: number;
+  tier: "cheap" | "fair" | "splurge";
+}
+
+const DEAL_TIER_COLORS: Record<string, string> = {
+  cheap: "#2dd4bf",   // teal
+  fair: "#f59e0b",    // amber
+  splurge: "#fb7185", // coral
+};
+
 export interface FocusPoint {
   lng: number;
   lat: number;
@@ -24,6 +39,8 @@ interface TravelMapProps {
   pinDropMode: boolean;
   focusPoint: FocusPoint | null;
   mapTheme: MapTheme;
+  overlayMode?: MapOverlayMode;
+  countryDeals?: CountryDeal[];
   onCountryClick: (code: string, name: string) => void;
   onDotClick: (id: string) => void;
   onPinDrop: (lat: number, lng: number) => void;
@@ -290,6 +307,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     pinDropMode,
     focusPoint,
     mapTheme,
+    overlayMode = "wishes",
+    countryDeals = [],
     onCountryClick,
     onDotClick,
     onPinDrop,
@@ -303,6 +322,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   const countriesRef = useRef<GeoFeature[]>([]);
   const locationsRef = useRef(locations);
   const pinDropRef = useRef(pinDropMode);
+  const overlayModeRef = useRef(overlayMode);
+  const countryDealsRef = useRef(countryDeals);
   const callbacksRef = useRef({ onCountryClick, onDotClick, onPinDrop, onZoomStateChange });
   const pulseRafRef = useRef<number>(0);
   const selectedIsoRef = useRef<string | null>(null);
@@ -320,6 +341,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   const mapThemeRef = useRef(mapTheme);
   mapThemeRef.current = mapTheme;
   pinDropRef.current = pinDropMode;
+  overlayModeRef.current = overlayMode;
+  countryDealsRef.current = countryDeals;
   callbacksRef.current = { onCountryClick, onDotClick, onPinDrop, onZoomStateChange };
 
   const hideHover = () => setHover(null);
@@ -591,11 +614,18 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
             cover: cleanThumb(cover) || undefined,
           });
         } else if (countryHit) {
-          const { name, count } = countryHit.properties as { name: string; count: number };
+          const props = countryHit.properties as { name: string; count: number; hasDeal?: number; dealPrice?: number };
+          const isDeals = overlayModeRef.current === "deals";
+          let label: string;
+          if (isDeals && props.hasDeal && props.dealPrice) {
+            label = `${props.name} — $${props.dealPrice}`;
+          } else {
+            label = props.count > 0 ? `${props.name} - ${props.count}` : props.name;
+          }
           setHover({
             x: e.point.x + 14,
             y: e.point.y + 14,
-            name: count > 0 ? `${name} - ${count}` : name,
+            name: label,
           });
         } else {
           hideHover();
@@ -642,6 +672,92 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     const maxCount = Math.max(2, ...Object.values(counts), 0);
     applyHeatmapTheme(map, mapTheme, maxCount);
   }, [locations, mapTheme]);
+
+  // Toggle between Wishes and Deals overlay modes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    if (overlayMode === "deals") {
+      // Build a lookup of deal colors by ISO code
+      const dealsByCountry = new Map<string, CountryDeal>();
+      for (const d of countryDeals) {
+        dealsByCountry.set(d.countryCode, d);
+      }
+
+      // Update country properties with deal data
+      for (const f of countriesRef.current) {
+        const deal = dealsByCountry.get(f.id);
+        if (deal) {
+          (f.properties as Record<string, unknown>).dealTier = deal.tier;
+          (f.properties as Record<string, unknown>).dealPrice = deal.cheapestPrice;
+          (f.properties as Record<string, unknown>).hasDeal = 1;
+        } else {
+          (f.properties as Record<string, unknown>).dealTier = null;
+          (f.properties as Record<string, unknown>).dealPrice = null;
+          (f.properties as Record<string, unknown>).hasDeal = 0;
+        }
+      }
+
+      const countriesSource = map.getSource("countries") as maplibregl.GeoJSONSource | undefined;
+      countriesSource?.setData({ type: "FeatureCollection", features: countriesRef.current } as GeoJSON.GeoJSON);
+
+      // Apply deal-based fill coloring
+      if (map.getLayer(FILL_LAYER)) {
+        map.setPaintProperty(FILL_LAYER, "fill-color", [
+          "case",
+          ["==", ["get", "dealTier"], "cheap"], DEAL_TIER_COLORS.cheap,
+          ["==", ["get", "dealTier"], "fair"], DEAL_TIER_COLORS.fair,
+          ["==", ["get", "dealTier"], "splurge"], DEAL_TIER_COLORS.splurge,
+          "rgba(0,0,0,0)",
+        ] as unknown as string);
+        map.setPaintProperty(FILL_LAYER, "fill-opacity", [
+          "case",
+          [">", ["get", "hasDeal"], 0], 0.35,
+          0,
+        ] as unknown as number);
+      }
+
+      // Update glow line for deals
+      if (map.getLayer(GLOW_LINE_LAYER)) {
+        map.setFilter(GLOW_LINE_LAYER, [">", ["get", "hasDeal"], 0]);
+        map.setPaintProperty(GLOW_LINE_LAYER, "line-color", [
+          "case",
+          ["==", ["get", "dealTier"], "cheap"], DEAL_TIER_COLORS.cheap,
+          ["==", ["get", "dealTier"], "fair"], DEAL_TIER_COLORS.fair,
+          ["==", ["get", "dealTier"], "splurge"], DEAL_TIER_COLORS.splurge,
+          "#fbbf24",
+        ] as unknown as string);
+      }
+
+      // Hide wish dots in deals mode
+      if (map.getLayer(DOTS_GLOW)) map.setLayoutProperty(DOTS_GLOW, "visibility", "none");
+      if (map.getLayer(DOTS_CORE)) map.setLayoutProperty(DOTS_CORE, "visibility", "none");
+      if (map.getLayer(DOTS_DEAL)) map.setLayoutProperty(DOTS_DEAL, "visibility", "none");
+
+    } else {
+      // Restore wishes mode: re-apply heatmap and show dots
+      const counts = countryCounts(locations);
+      for (const f of countriesRef.current) {
+        f.properties.count = counts[f.id] ?? 0;
+      }
+      const countriesSource = map.getSource("countries") as maplibregl.GeoJSONSource | undefined;
+      countriesSource?.setData({ type: "FeatureCollection", features: countriesRef.current } as GeoJSON.GeoJSON);
+
+      const maxCount = Math.max(2, ...Object.values(counts), 0);
+      applyHeatmapTheme(map, mapTheme, maxCount);
+
+      // Restore glow line filter
+      if (map.getLayer(GLOW_LINE_LAYER)) {
+        map.setFilter(GLOW_LINE_LAYER, [">", ["get", "count"], 0]);
+      }
+
+      // Show wish dots
+      if (map.getLayer(DOTS_GLOW)) map.setLayoutProperty(DOTS_GLOW, "visibility", "visible");
+      if (map.getLayer(DOTS_CORE)) map.setLayoutProperty(DOTS_CORE, "visibility", "visible");
+      if (map.getLayer(DOTS_DEAL)) map.setLayoutProperty(DOTS_DEAL, "visibility", "visible");
+    }
+  }, [overlayMode, countryDeals, locations, mapTheme]);
 
   // Fly to a wish selected in the sidebar
   useEffect(() => {

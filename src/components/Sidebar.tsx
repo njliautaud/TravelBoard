@@ -11,7 +11,7 @@ export type SidebarView = "wishes" | "settings";
 interface SidebarProps {
   locations: LocationItem[];
   editor: boolean;
-  /** Mobile drawer state; ignored on sm+ where the sidebar is permanent */
+  /** Drawer open state */
   open: boolean;
   settings: UserSettings;
   settingsSaving: boolean;
@@ -82,23 +82,23 @@ export default function Sidebar({
 
   return (
     <>
+      {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm sm:hidden"
+          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm"
           onClick={onClose}
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-950/95 backdrop-blur transition-transform duration-300
-          sm:static sm:z-auto sm:translate-x-0 sm:bg-slate-950 sm:backdrop-blur-none
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col border-r border-slate-800/60 bg-slate-950/[0.97] backdrop-blur-xl transition-transform duration-300 ease-out sm:left-16
           ${open ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex items-center justify-between border-b border-slate-800 p-4">
+        <div className="flex items-center justify-between border-b border-slate-800/60 p-4">
           <h1 className="text-base font-bold tracking-wide text-amber-300 glow-text">TravelBoard</h1>
           <button
             onClick={onClose}
             aria-label="Close sidebar"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 sm:hidden"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18M6 6l12 12" />
@@ -106,19 +106,29 @@ export default function Sidebar({
           </button>
         </div>
 
-        <div className="border-b border-slate-800 px-3 py-2">
-          <label htmlFor="sidebar-view" className="sr-only">
-            Sidebar section
-          </label>
-          <select
-            id="sidebar-view"
-            value={view}
-            onChange={(e) => setView(e.target.value as SidebarView)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm font-medium text-slate-200 focus:border-amber-500/60 focus:outline-none"
-          >
-            <option value="wishes">Your wishes</option>
-            <option value="settings">Settings</option>
-          </select>
+        <div className="border-b border-slate-800/60 px-3 py-2">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setView("wishes")}
+              className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                view === "wishes"
+                  ? "bg-amber-500/15 text-amber-300"
+                  : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/60"
+              }`}
+            >
+              Wishes ({locations.length})
+            </button>
+            <button
+              onClick={() => setView("settings")}
+              className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                view === "settings"
+                  ? "bg-amber-500/15 text-amber-300"
+                  : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/60"
+              }`}
+            >
+              Settings
+            </button>
+          </div>
         </div>
 
         {view === "wishes" ? (
@@ -126,17 +136,14 @@ export default function Sidebar({
             <div className="p-3">
               <button
                 onClick={onAddPlace}
-                className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-lg transition hover:bg-amber-400"
+                className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-lg transition hover:from-amber-400 hover:to-amber-500"
               >
                 + Add place
               </button>
             </div>
 
             <p className="px-4 pb-1 text-[11px] font-medium uppercase tracking-wider text-slate-500">
-              Your wishes{" "}
-              <span className="text-slate-600">
-                — {starredCount > 0 ? "starred first" : "in season first"}
-              </span>
+              {starredCount > 0 ? "Starred first" : "In season first"}
             </p>
 
             <nav className="panel-scroll flex-1 overflow-y-auto px-2 pb-3">
