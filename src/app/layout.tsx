@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,17 +18,12 @@ export const metadata: Metadata = {
   icons: { icon: "/favicon.ico" },
 };
 
-const clerkEnabled = !!(
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
-  process.env.CLERK_SECRET_KEY
-);
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const body = (
+  return (
     <html lang="en" className="dark">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
@@ -38,14 +32,4 @@ export default function RootLayout({
       </body>
     </html>
   );
-
-  if (clerkEnabled) {
-    return (
-      <ClerkProvider>
-        {body}
-      </ClerkProvider>
-    );
-  }
-
-  return body;
 }

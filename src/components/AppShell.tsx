@@ -130,13 +130,18 @@ export default function AppShell({ initialLocations }: AppShellProps) {
     }
   }, []);
 
-  // Poll unread alert count periodically
+  // Poll unread alert count periodically (stops if API unavailable)
   useEffect(() => {
+    let stopped = false;
     const fetchCount = () => {
+      if (stopped) return;
       fetch("/api/alerts")
-        .then((r) => r.json())
-        .then((d) => setAlertCount(d.unreadCount ?? 0))
-        .catch(() => {});
+        .then((r) => {
+          if (!r.ok) { stopped = true; return null; }
+          return r.json();
+        })
+        .then((d) => { if (d) setAlertCount(d.unreadCount ?? 0); })
+        .catch(() => { stopped = true; });
     };
     fetchCount();
     const iv = setInterval(fetchCount, 60_000);

@@ -1,0 +1,268 @@
+/**
+ * Demo data for the static Cloudflare Pages deployment.
+ * When API calls fail (no backend), the app falls back to this data
+ * so users can see the full experience.
+ */
+
+import type { LocationItem } from "./types";
+import type { CountryDeal, JournalCountry, DealRoute } from "@/components/TravelMap";
+
+export const DEMO_LOCATIONS: LocationItem[] = [
+  {
+    id: "demo-1",
+    activityName: "Cherry Blossom Season",
+    countryCode: "JPN",
+    countryName: "Japan",
+    region: "Asia",
+    city: "Tokyo",
+    latitude: 35.6762,
+    longitude: 139.6503,
+    status: "TO_VISIT",
+    notes: "Visit Shinjuku Gyoen during sakura season (late March – early April)",
+    reminderAt: null,
+    priceThreshold: 800,
+    starred: true,
+    coverImageUrl: null,
+    seasonSpring: true,
+    seasonSummer: false,
+    seasonFall: false,
+    seasonWinter: false,
+    media: [],
+    latestPrice: { price: 742, currency: "USD", origin: "JFK", destination: "NRT", fetchedAt: new Date().toISOString() },
+    isDeal: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "demo-2",
+    activityName: "Amalfi Coast Road Trip",
+    countryCode: "ITA",
+    countryName: "Italy",
+    region: "Europe",
+    city: "Positano",
+    latitude: 40.6281,
+    longitude: 14.485,
+    status: "TO_VISIT",
+    notes: "Drive from Naples to Positano, stop in Ravello for sunset",
+    reminderAt: null,
+    priceThreshold: 600,
+    starred: true,
+    coverImageUrl: null,
+    seasonSpring: true,
+    seasonSummer: true,
+    seasonFall: true,
+    seasonWinter: false,
+    media: [],
+    latestPrice: { price: 489, currency: "USD", origin: "JFK", destination: "NAP", fetchedAt: new Date().toISOString() },
+    isDeal: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "demo-3",
+    activityName: "Northern Lights",
+    countryCode: "ISL",
+    countryName: "Iceland",
+    region: "Europe",
+    city: "Reykjavik",
+    latitude: 64.1466,
+    longitude: -21.9426,
+    status: "TO_VISIT",
+    notes: "Best September–March. Golden Circle + ice caves",
+    reminderAt: null,
+    priceThreshold: 500,
+    starred: false,
+    coverImageUrl: null,
+    seasonSpring: false,
+    seasonSummer: false,
+    seasonFall: true,
+    seasonWinter: true,
+    media: [],
+    latestPrice: { price: 385, currency: "USD", origin: "JFK", destination: "KEF", fetchedAt: new Date().toISOString() },
+    isDeal: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "demo-4",
+    activityName: "Bali Temples & Rice Terraces",
+    countryCode: "IDN",
+    countryName: "Indonesia",
+    region: "Asia",
+    city: "Ubud",
+    latitude: -8.5069,
+    longitude: 115.2625,
+    status: "TO_VISIT",
+    notes: "Tegallalang rice terraces, Tirta Empul temple, monkey forest",
+    reminderAt: null,
+    priceThreshold: 700,
+    starred: false,
+    coverImageUrl: null,
+    seasonSpring: true,
+    seasonSummer: true,
+    seasonFall: false,
+    seasonWinter: false,
+    media: [],
+    latestPrice: null,
+    isDeal: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "demo-5",
+    activityName: "Patagonia Trek",
+    countryCode: "ARG",
+    countryName: "Argentina",
+    region: "South America",
+    city: "El Chaltén",
+    latitude: -49.3315,
+    longitude: -72.8865,
+    status: "TO_VISIT",
+    notes: "W Trek or O Circuit in Torres del Paine",
+    reminderAt: null,
+    priceThreshold: 900,
+    starred: true,
+    coverImageUrl: null,
+    seasonSpring: false,
+    seasonSummer: false,
+    seasonFall: false,
+    seasonWinter: true,
+    media: [],
+    latestPrice: { price: 823, currency: "USD", origin: "JFK", destination: "EZE", fetchedAt: new Date().toISOString() },
+    isDeal: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "demo-6",
+    activityName: "Marrakech Medina",
+    countryCode: "MAR",
+    countryName: "Morocco",
+    region: "Africa",
+    city: "Marrakech",
+    latitude: 31.6295,
+    longitude: -7.9811,
+    status: "VISITED",
+    notes: "Jemaa el-Fnaa square, riads, Atlas Mountains day trip",
+    reminderAt: null,
+    priceThreshold: null,
+    starred: false,
+    coverImageUrl: null,
+    seasonSpring: true,
+    seasonSummer: false,
+    seasonFall: true,
+    seasonWinter: false,
+    media: [],
+    latestPrice: null,
+    isDeal: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "demo-7",
+    activityName: "Great Barrier Reef Dive",
+    countryCode: "AUS",
+    countryName: "Australia",
+    region: "Oceania",
+    city: "Cairns",
+    latitude: -16.9186,
+    longitude: 145.7781,
+    status: "TO_VISIT",
+    notes: "Outer reef liveaboard, snorkel with manta rays",
+    reminderAt: null,
+    priceThreshold: 1100,
+    starred: false,
+    coverImageUrl: null,
+    seasonSpring: false,
+    seasonSummer: false,
+    seasonFall: false,
+    seasonWinter: true,
+    media: [],
+    latestPrice: null,
+    isDeal: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+export const DEMO_COUNTRY_DEALS: CountryDeal[] = [
+  { countryCode: "JPN", cheapestPrice: 542, tier: "cheap" },
+  { countryCode: "ITA", cheapestPrice: 389, tier: "cheap" },
+  { countryCode: "ISL", cheapestPrice: 285, tier: "cheap" },
+  { countryCode: "GRC", cheapestPrice: 445, tier: "fair" },
+  { countryCode: "THA", cheapestPrice: 620, tier: "fair" },
+  { countryCode: "PRT", cheapestPrice: 340, tier: "cheap" },
+  { countryCode: "MEX", cheapestPrice: 210, tier: "cheap" },
+  { countryCode: "COL", cheapestPrice: 280, tier: "cheap" },
+  { countryCode: "ESP", cheapestPrice: 410, tier: "fair" },
+  { countryCode: "NZL", cheapestPrice: 890, tier: "splurge" },
+];
+
+export const DEMO_JOURNAL_COUNTRIES: JournalCountry[] = [
+  { country: "Morocco", countryCode: "MAR", entryCount: 3, lat: 31.63, lon: -7.98 },
+  { country: "Italy", countryCode: "ITA", entryCount: 5, lat: 41.87, lon: 12.57 },
+  { country: "Japan", countryCode: "JPN", entryCount: 2, lat: 35.68, lon: 139.65 },
+];
+
+export const DEMO_DEAL_ROUTES: DealRoute[] = [
+  {
+    origin: "JFK", destination: "NRT", destCity: "Tokyo",
+    price: 542, dealScore: 92, tier: "cheap",
+    originLat: 40.6413, originLon: -73.7781,
+    destLat: 35.7647, destLon: 140.3864,
+  },
+  {
+    origin: "JFK", destination: "NAP", destCity: "Naples",
+    price: 389, dealScore: 88, tier: "cheap",
+    originLat: 40.6413, originLon: -73.7781,
+    destLat: 40.886, destLon: 14.2908,
+  },
+  {
+    origin: "JFK", destination: "KEF", destCity: "Reykjavik",
+    price: 285, dealScore: 95, tier: "cheap",
+    originLat: 40.6413, originLon: -73.7781,
+    destLat: 63.985, destLon: -22.6056,
+  },
+  {
+    origin: "JFK", destination: "LIS", destCity: "Lisbon",
+    price: 340, dealScore: 90, tier: "cheap",
+    originLat: 40.6413, originLon: -73.7781,
+    destLat: 38.7756, destLon: -9.1354,
+  },
+  {
+    origin: "JFK", destination: "CUN", destCity: "Cancún",
+    price: 210, dealScore: 85, tier: "cheap",
+    originLat: 40.6413, originLon: -73.7781,
+    destLat: 21.0368, destLon: -86.8774,
+  },
+  {
+    origin: "JFK", destination: "BCN", destCity: "Barcelona",
+    price: 410, dealScore: 78, tier: "fair",
+    originLat: 40.6413, originLon: -73.7781,
+    destLat: 41.2971, destLon: 2.0785,
+  },
+  {
+    origin: "JFK", destination: "BOG", destCity: "Bogotá",
+    price: 280, dealScore: 82, tier: "cheap",
+    originLat: 40.6413, originLon: -73.7781,
+    destLat: 4.7016, destLon: -74.1469,
+  },
+];
+
+/** Detect if we're running in static/demo mode (no backend API available). */
+let _demoMode: boolean | null = null;
+
+export async function isDemoMode(): Promise<boolean> {
+  if (_demoMode !== null) return _demoMode;
+  try {
+    const res = await fetch("/api/auth/me", { method: "GET" });
+    _demoMode = !res.ok;
+  } catch {
+    _demoMode = true;
+  }
+  return _demoMode;
+}
+
+export function setDemoMode(v: boolean) {
+  _demoMode = v;
+}

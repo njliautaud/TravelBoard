@@ -11,6 +11,7 @@ import DraftInbox from "./DraftInbox";
 import AmbientMode from "./AmbientMode";
 import type { DraftItem, DraftPrefill, LocationItem, SessionUser } from "@/lib/types";
 import { DEFAULT_SETTINGS, type UserSettings } from "@/lib/settings";
+import { DEMO_LOCATIONS, DEMO_COUNTRY_DEALS, DEMO_JOURNAL_COUNTRIES, DEMO_DEAL_ROUTES, setDemoMode } from "@/lib/demoData";
 
 interface MapAppProps {
   initialLocations: LocationItem[];
@@ -84,36 +85,47 @@ export default function MapApp({ initialLocations }: MapAppProps) {
 
   useEffect(() => {
     fetch("/api/auth/me")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("no-api");
+        return r.json();
+      })
       .then((d) => {
         if (d.user) {
           setUser(d.user);
           refreshAll();
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        // Static/demo mode — populate with sample data
+        setDemoMode(true);
+        setLocations(DEMO_LOCATIONS);
+        setCountryDeals(DEMO_COUNTRY_DEALS);
+        setJournalCountries(DEMO_JOURNAL_COUNTRIES);
+        setDealRoutes(DEMO_DEAL_ROUTES);
+      });
   }, [refreshAll]);
 
-  // Fetch country deals for map overlay
+  // Fetch country deals for map overlay (skip if demo data already loaded)
   useEffect(() => {
     if (overlayMode !== "deals") return;
+    if (countryDeals.length > 0) return; // demo data already present
     fetch("/api/deals/countries")
       .then((r) => r.json())
       .then((d) => {
         if (Array.isArray(d.deals)) setCountryDeals(d.deals);
       })
       .catch(() => {});
-    // Also fetch deal routes for arc rendering
     fetch("/api/deals/routes?limit=30")
       .then((r) => r.json())
       .then((d) => {
         if (Array.isArray(d.routes)) setDealRoutes(d.routes);
       })
       .catch(() => {});
-  }, [overlayMode]);
+  }, [overlayMode, countryDeals.length]);
 
-  // Fetch journal countries for map highlighting (always active)
+  // Fetch journal countries for map highlighting (skip if demo data already loaded)
   useEffect(() => {
+    if (!loggedIn && journalCountries.length > 0) return; // demo data present
     if (!loggedIn) return;
     fetch("/api/journal/countries")
       .then((r) => r.json())
@@ -121,7 +133,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         if (Array.isArray(d.countries)) setJournalCountries(d.countries);
       })
       .catch(() => {});
-  }, [loggedIn]);
+  }, [loggedIn, journalCountries.length]);
 
   // Poll for new WhatsApp drafts while logged in
   useEffect(() => {
