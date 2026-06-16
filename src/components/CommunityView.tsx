@@ -4,8 +4,9 @@ import { useState } from "react";
 import GamificationPanel from "./GamificationPanel";
 import LoungeFinder from "./LoungeFinder";
 import SocialBoards from "./SocialBoards";
+import ActivityFeed from "./ActivityFeed";
 
-type Section = "hub" | "boards" | "lounges" | "achievements";
+type Section = "hub" | "boards" | "lounges" | "achievements" | "activity";
 
 interface SectionCard {
   id: Section;
@@ -50,6 +51,16 @@ const SECTIONS: SectionCard[] = [
       </svg>
     ),
   },
+  {
+    id: "activity",
+    label: "Activity Feed",
+    description: "See recent price drops, deals, and community activity",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      </svg>
+    ),
+  },
 ];
 
 export default function CommunityView() {
@@ -63,6 +74,8 @@ export default function CommunityView() {
         return <LoungeFinder />;
       case "achievements":
         return <GamificationPanel />;
+      case "activity":
+        return <ActivityFeed onClose={() => setActiveSection("hub")} />;
       default:
         return null;
     }

@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import FlightStatusIndicator from "./FlightStatusIndicator";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -184,6 +185,11 @@ export default function FlightTracker() {
               <div className="h-px flex-1 bg-slate-700" />
             </div>
             <span className="text-lg font-semibold">{flight.destination}</span>
+          </div>
+
+          {/* Flight status indicator */}
+          <div className="flex items-center gap-2">
+            <FlightStatusIndicator transfers={0} durationMin={null} compact={false} />
           </div>
 
           {/* Progress bar */}

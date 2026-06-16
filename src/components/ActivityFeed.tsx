@@ -25,6 +25,15 @@ const TYPE_META: Record<ActivityItem["type"], { icon: string; color: string }> =
   milestone:   { icon: "\uD83C\uDFC6", color: "text-amber-300 bg-amber-500/10" },
 };
 
+interface FareRecord {
+  priceDrop?: number;
+  price?: number;
+  cityTo?: string;
+  flyTo?: string;
+  dealScore?: number;
+  [key: string]: unknown;
+}
+
 function fmtAgo(ms: number): string {
   const m = Math.floor(ms / 60000);
   if (m < 1) return "just now";
@@ -43,9 +52,9 @@ async function fetchActivity(): Promise<ActivityItem[]> {
       const fares = data.fares || data || [];
 
       fares
-        .filter((f: any) => f.priceDrop && f.priceDrop > 0)
+        .filter((f: FareRecord) => f.priceDrop && f.priceDrop > 0)
         .slice(0, 3)
-        .forEach((f: any, i: number) => {
+        .forEach((f: FareRecord, i: number) => {
           items.push({
             id: `pd-${i}`,
             type: "price_drop",
@@ -56,9 +65,9 @@ async function fetchActivity(): Promise<ActivityItem[]> {
         });
 
       fares
-        .filter((f: any) => (f.dealScore ?? 0) > 70)
+        .filter((f: FareRecord) => (f.dealScore ?? 0) > 70)
         .slice(0, 2)
-        .forEach((f: any, i: number) => {
+        .forEach((f: FareRecord, i: number) => {
           items.push({
             id: `nd-${i}`,
             type: "new_deal",

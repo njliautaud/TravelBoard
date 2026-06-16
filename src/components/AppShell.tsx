@@ -12,6 +12,9 @@ import AlertsPanel, { AlertBellBadge } from "./AlertsPanel";
 import { ErrorBoundary, DealListSkeleton, CalendarSkeleton } from "./ErrorBoundary";
 import { Changelog, useUnseenChangelog } from "./Changelog";
 import { OnboardingModal, loadLocalPrefs, persistPrefs, DEFAULT_PREFS, type TravelPrefsDto } from "./Onboarding";
+import UserProfile from "./UserProfile";
+import ActivityFeed from "./ActivityFeed";
+import FeatureWalkthrough, { useWalkthroughState } from "./FeatureWalkthrough";
 import type { LocationItem } from "@/lib/types";
 
 type Tab = "map" | "deals" | "search" | "alerts" | "journal" | "tools" | "community" | "settings";
@@ -112,7 +115,10 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   const [showChangelog, setShowChangelog] = useState(false);
   const unseenChangelog = useUnseenChangelog();
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showActivityFeed, setShowActivityFeed] = useState(false);
   const [prefs, setPrefs] = useState<TravelPrefsDto>(DEFAULT_PREFS);
+  const walkthrough = useWalkthroughState();
 
   // Check if first visit for onboarding
   useEffect(() => {
@@ -209,6 +215,29 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           <span className="text-base font-bold tracking-wider text-amber-400 glow-text select-none">TB</span>
           <span className="mt-0.5 h-px w-8 bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
         </div>
+        {/* Profile button */}
+        <button
+          onClick={() => setShowProfile(true)}
+          title="Profile"
+          className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          <span>Profile</span>
+        </button>
+        {/* Activity Feed button */}
+        <button
+          onClick={() => setShowActivityFeed(true)}
+          title="Activity"
+          className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+          </svg>
+          <span>Activity</span>
+        </button>
         {/* What's New / Changelog button */}
         <button
           onClick={() => setShowChangelog(true)}
@@ -294,8 +323,33 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             persistPrefs(newPrefs);
             setPrefs(newPrefs);
             setShowOnboarding(false);
+            if (walkthrough.shouldShow) walkthrough.startWalkthrough();
           }}
         />
+      )}
+
+      {/* User Profile panel */}
+      {showProfile && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl">
+            <UserProfile onClose={() => setShowProfile(false)} />
+          </div>
+        </div>
+      )}
+
+      {/* Activity Feed slide-in panel */}
+      {showActivityFeed && (
+        <div className="absolute inset-0 z-50 flex justify-end">
+          <div className="flex-1" onClick={() => setShowActivityFeed(false)} />
+          <div className="w-full max-w-sm h-full bg-slate-950/[0.97] backdrop-blur-xl border-l border-slate-800/60 animate-slide-in-right overflow-y-auto">
+            <ActivityFeed onClose={() => setShowActivityFeed(false)} />
+          </div>
+        </div>
+      )}
+
+      {/* Feature Walkthrough */}
+      {walkthrough.walkthroughActive && (
+        <FeatureWalkthrough onComplete={() => walkthrough.dismissWalkthrough()} />
       )}
     </div>
   );

@@ -9,8 +9,10 @@ import FarePrediction from "./FarePrediction";
 import LoyaltyTracker from "./LoyaltyTracker";
 import FlightTracker from "./FlightTracker";
 import MemoryMap from "./MemoryMap";
+import SavingsDashboard from "./SavingsDashboard";
+import PackingSuggestions from "./PackingSuggestions";
 
-type ToolId = "hub" | "calculator" | "optimizer" | "cards" | "trips" | "prediction" | "loyalty" | "flight-tracker" | "memory-map";
+type ToolId = "hub" | "calculator" | "optimizer" | "cards" | "trips" | "prediction" | "loyalty" | "flight-tracker" | "memory-map" | "savings" | "packing";
 
 interface ToolCard {
   id: ToolId;
@@ -116,6 +118,29 @@ const TOOLS: ToolCard[] = [
       </svg>
     ),
   },
+  {
+    id: "savings",
+    label: "Savings Dashboard",
+    description: "See how much you have saved on flights over time",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <line x1="12" y1="1" x2="12" y2="23" />
+        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </svg>
+    ),
+  },
+  {
+    id: "packing",
+    label: "Packing List",
+    description: "Weather-aware packing suggestions for your trip",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <path d="M16 10a4 4 0 0 1-8 0" />
+      </svg>
+    ),
+  },
 ];
 
 export default function ToolsView() {
@@ -131,6 +156,8 @@ export default function ToolsView() {
       case "prediction": return <FarePrediction />;
       case "flight-tracker": return <FlightTracker />;
       case "memory-map": return <MemoryMap />;
+      case "savings": return <SavingsDashboard />;
+      case "packing": return <PackingSuggestions lat={0} lon={0} destination="Your Destination" departDate={new Date().toISOString().slice(0, 10)} />;
       default: return null;
     }
   }

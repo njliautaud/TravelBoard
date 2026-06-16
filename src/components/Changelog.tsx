@@ -108,7 +108,7 @@ export function Changelog({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-slate-100">What's New</h2>
+          <h2 className="text-lg font-bold text-slate-100">What&apos;s New</h2>
           <button
             onClick={onClose}
             className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-800 hover:text-slate-300"

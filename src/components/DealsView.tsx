@@ -6,6 +6,9 @@ import { scoreDeal, type DealScoreBreakdown } from "@/lib/services/deal-scoring"
 import { PriceTrendBadge } from "./PriceTrendBadge";
 import { CompareDeals } from "./CompareDeals";
 import { DealScoreBreakdown as DealScorePanel } from "./DealScoreBreakdown";
+import { ShareButton } from "./ShareDeal";
+import FavoritesPanel, { useFavorites } from "./FavoritesPanel";
+import FlightStatusIndicator from "./FlightStatusIndicator";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,6 +30,10 @@ interface DealItem {
   savingsPercent: number;
   outboundDate: string | null;
   returnDate: string | null;
+  transfers?: number | null;
+  duration?: number | null;
+  deepLink?: string;
+  countryTo?: string;
 }
 
 interface HistoryPoint {
@@ -69,9 +76,13 @@ function GradeBadge({ grade }: { grade: string }) {
 function DealCard({
   deal,
   onClick,
+  isFavorite,
+  onToggleFavorite,
 }: {
   deal: DealItem;
   onClick: () => void;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
 }) {
   const breakdown = scoreDeal({
     price: deal.price,
@@ -132,7 +143,36 @@ function DealCard({
         <PriceTrendBadge origin={deal.origin} dest={deal.flyToCode} />
       </div>
 
-      <p className="mt-2 text-[11px] text-slate-500">{breakdown.summary}</p>
+      {/* Flight status + actions */}
+      <div className="mt-2 flex items-center justify-between">
+        <FlightStatusIndicator transfers={deal.transfers} durationMin={deal.duration} compact />
+        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onToggleFavorite}
+            title={isFavorite ? "Remove from saved" : "Save deal"}
+            className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-800 hover:text-amber-400"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={isFavorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" className={isFavorite ? "text-amber-400" : ""}>
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+          </button>
+          <ShareButton
+            deal={{
+              origin: deal.origin,
+              dest: deal.flyToCode,
+              price: deal.price,
+              cityTo: deal.destination,
+              countryTo: deal.countryTo,
+              departDate: deal.outboundDate ?? undefined,
+              returnDate: deal.returnDate ?? undefined,
+              deepLink: deal.deepLink,
+            }}
+            className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-800 hover:text-amber-400"
+          />
+        </div>
+      </div>
+
+      <p className="mt-1.5 text-[11px] text-slate-500">{breakdown.summary}</p>
     </button>
   );
 }
@@ -299,6 +339,8 @@ export default function DealsView() {
   const [selectedDeal, setSelectedDeal] = useState<DealItem | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [showCompare, setShowCompare] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
+  const { isFavorite, toggleFavorite, count: favCount } = useFavorites(origin);
 
   // Load user settings to get default origin
   useEffect(() => {
@@ -423,6 +465,15 @@ export default function DealsView() {
           </button>
         )}
 
+        {origin && (
+          <button
+            onClick={() => setShowFavorites(true)}
+            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-amber-500/40 hover:text-amber-300"
+          >
+            Saved{favCount > 0 ? ` (${favCount})` : ""}
+          </button>
+        )}
+
         {loading && (
           <div className="ml-auto h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-amber-400" />
         )}
@@ -468,6 +519,16 @@ export default function DealsView() {
                 key={deal.id}
                 deal={deal}
                 onClick={() => openDetail(deal)}
+                isFavorite={isFavorite(deal.flyToCode)}
+                onToggleFavorite={() =>
+                  toggleFavorite({
+                    flyTo: deal.flyToCode,
+                    cityTo: deal.destination,
+                    countryTo: deal.countryTo ?? "",
+                    price: deal.price,
+                    deepLink: deal.deepLink ?? "",
+                  })
+                }
               />
             ))}
           </div>
@@ -482,6 +543,32 @@ export default function DealsView() {
           availableCodes={deals.map((d) => ({ code: d.flyToCode, city: d.destination }))}
           onClose={() => setShowCompare(false)}
         />
+      )}
+
+      {/* Favorites / Saved Deals panel */}
+      {showFavorites && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm">
+          <div className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl">
+            <FavoritesPanel
+              origin={origin}
+              currentFares={deals.map((d) => ({
+                flyTo: d.flyToCode,
+                cityTo: d.destination,
+                countryTo: d.countryTo ?? "",
+                price: d.price,
+                deepLink: d.deepLink ?? "",
+              }))}
+              onClose={() => setShowFavorites(false)}
+              onDealClick={(code) => {
+                const deal = deals.find((d) => d.flyToCode === code);
+                if (deal) {
+                  setShowFavorites(false);
+                  openDetail(deal);
+                }
+              }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
