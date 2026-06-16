@@ -143,6 +143,66 @@ const TOOLS: ToolCard[] = [
   },
 ];
 
+function PackingWrapper() {
+  const [dest, setDest] = useState("");
+  const [lat, setLat] = useState<number | null>(null);
+  const [lon, setLon] = useState<number | null>(null);
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [started, setStarted] = useState(false);
+
+  async function handleSearch() {
+    if (!dest.trim()) return;
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(dest)}`);
+      const data = await res.json();
+      if (data.lat && data.lon) {
+        setLat(data.lat);
+        setLon(data.lon);
+        setStarted(true);
+      }
+    } catch { setStarted(true); setLat(40.7); setLon(-74.0); }
+  }
+
+  if (started && lat != null && lon != null) {
+    return <PackingSuggestions lat={lat} lon={lon} destination={dest || "Your Destination"} departDate={date} />;
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="text-center py-8">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-amber-400">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" /><circle cx="12" cy="10" r="3" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-bold text-slate-100 mb-1">Where are you going?</h3>
+        <p className="text-sm text-slate-400">We&apos;ll check the weather and suggest what to pack.</p>
+      </div>
+      <input
+        type="text"
+        placeholder="City or destination..."
+        value={dest}
+        onChange={e => setDest(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && handleSearch()}
+        className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-slate-100 placeholder-slate-500 focus:border-amber-500/60 focus:outline-none"
+      />
+      <input
+        type="date"
+        value={date}
+        onChange={e => setDate(e.target.value)}
+        className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-sm text-slate-100 focus:border-amber-500/60 focus:outline-none"
+      />
+      <button
+        onClick={handleSearch}
+        disabled={!dest.trim()}
+        className="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg transition hover:bg-amber-400 disabled:opacity-50"
+      >
+        Get packing suggestions
+      </button>
+    </div>
+  );
+}
+
 export default function ToolsView() {
   const [activeTool, setActiveTool] = useState<ToolId>("hub");
 
@@ -157,7 +217,7 @@ export default function ToolsView() {
       case "flight-tracker": return <FlightTracker />;
       case "memory-map": return <MemoryMap />;
       case "savings": return <SavingsDashboard />;
-      case "packing": return <PackingSuggestions lat={0} lon={0} destination="Your Destination" departDate={new Date().toISOString().slice(0, 10)} />;
+      case "packing": return <PackingWrapper />;
       default: return null;
     }
   }
@@ -185,7 +245,7 @@ export default function ToolsView() {
             <p className="text-xs text-slate-500">
               {activeTool === "hub"
                 ? "Points, trips, predictions, and more"
-                : "Part of the TravelBoard toolkit"}
+                : ""}
             </p>
           </div>
         </div>

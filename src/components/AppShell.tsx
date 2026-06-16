@@ -117,6 +117,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showActivityFeed, setShowActivityFeed] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [prefs, setPrefs] = useState<TravelPrefsDto>(DEFAULT_PREFS);
   const walkthrough = useWalkthroughState();
 
@@ -261,6 +262,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
               key={tab.id}
               onClick={() => handleTabChange(tab.id)}
               title={tab.label}
+              data-testid={`nav-${tab.id}`}
               className={[
                 "relative flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium transition-all duration-200",
                 active
@@ -282,14 +284,14 @@ export default function AppShell({ initialLocations }: AppShellProps) {
         })}
       </nav>
 
-      {/* Mobile bottom tab bar */}
-      <nav className="flex sm:hidden absolute bottom-0 left-0 right-0 z-40 items-stretch border-t border-slate-800/60 bg-slate-950/95 backdrop-blur-lg overflow-x-auto scrollbar-hide safe-area-bottom">
-        {TABS.map((tab) => {
+      {/* Mobile bottom tab bar — 5 visible tabs, "More" opens overflow */}
+      <nav className="flex sm:hidden absolute bottom-0 left-0 right-0 z-40 items-stretch border-t border-slate-800/60 bg-slate-950/95 backdrop-blur-lg safe-area-bottom">
+        {TABS.filter((t) => ["map", "search", "deals", "journal"].includes(t.id)).map((tab) => {
           const active = activeTab === tab.id;
           return (
             <button
               key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
+              onClick={() => { handleTabChange(tab.id); setShowMoreMenu(false); }}
               className={[
                 "relative flex min-w-[3.5rem] flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all duration-200",
                 active
@@ -297,11 +299,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
                   : "text-slate-500 active:text-slate-300",
               ].join(" ")}
             >
-              {tab.id === "alerts" ? (
-                <AlertBellBadge count={alertCount} />
-              ) : (
-                tab.icon
-              )}
+              {tab.icon}
               <span>{tab.label}</span>
               {active && (
                 <span className="absolute top-0 h-0.5 w-8 rounded-b bg-amber-400" />
@@ -309,7 +307,61 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             </button>
           );
         })}
+        {/* More button */}
+        <button
+          onClick={() => setShowMoreMenu((v) => !v)}
+          className={[
+            "relative flex min-w-[3.5rem] flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all duration-200",
+            showMoreMenu || ["alerts", "tools", "community", "settings"].includes(activeTab)
+              ? "text-amber-300"
+              : "text-slate-500 active:text-slate-300",
+          ].join(" ")}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+          </svg>
+          <span>More</span>
+          {(showMoreMenu || ["alerts", "tools", "community", "settings"].includes(activeTab)) && (
+            <span className="absolute top-0 h-0.5 w-8 rounded-b bg-amber-400" />
+          )}
+        </button>
       </nav>
+
+      {/* Mobile "More" slide-up menu */}
+      {showMoreMenu && (
+        <>
+          <div
+            className="sm:hidden fixed inset-0 z-40 bg-black/30"
+            onClick={() => setShowMoreMenu(false)}
+          />
+          <div className="sm:hidden fixed bottom-[3.25rem] left-2 right-2 z-50 rounded-xl border border-slate-700/60 bg-slate-900/95 backdrop-blur-xl shadow-2xl safe-area-bottom animate-slide-in">
+            {TABS.filter((t) => ["alerts", "tools", "community", "settings"].includes(t.id)).map((tab) => {
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => { handleTabChange(tab.id); setShowMoreMenu(false); }}
+                  className={[
+                    "flex w-full items-center gap-3 px-4 py-3 text-sm font-medium transition-all duration-150",
+                    active
+                      ? "text-amber-300 bg-amber-500/10"
+                      : "text-slate-300 hover:bg-slate-800/60",
+                  ].join(" ")}
+                >
+                  {tab.id === "alerts" ? (
+                    <AlertBellBadge count={alertCount} />
+                  ) : (
+                    tab.icon
+                  )}
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* Changelog modal */}
       {showChangelog && <Changelog onClose={() => setShowChangelog(false)} />}

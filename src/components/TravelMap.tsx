@@ -17,6 +17,29 @@ export interface CountryDeal {
   tier: "cheap" | "fair" | "splurge";
 }
 
+/** Journal country data for highlighting countries with memories. */
+export interface JournalCountry {
+  country: string;           // country name (e.g. "Japan")
+  countryCode?: string;      // ISO-3 code if available
+  entryCount: number;
+  lat: number | null;
+  lon: number | null;
+}
+
+/** Flight route for arc rendering on the map. */
+export interface DealRoute {
+  origin: string;
+  destination: string;
+  destCity: string;
+  price: number;
+  dealScore: number | null;
+  tier: string | null;
+  originLat: number;
+  originLon: number;
+  destLat: number;
+  destLon: number;
+}
+
 const DEAL_TIER_COLORS: Record<string, string> = {
   cheap: "#2dd4bf",   // teal
   fair: "#f59e0b",    // amber
@@ -41,6 +64,8 @@ interface TravelMapProps {
   mapTheme: MapTheme;
   overlayMode?: MapOverlayMode;
   countryDeals?: CountryDeal[];
+  journalCountries?: JournalCountry[];
+  dealRoutes?: DealRoute[];
   onCountryClick: (code: string, name: string) => void;
   onDotClick: (id: string) => void;
   onPinDrop: (lat: number, lng: number) => void;
@@ -239,6 +264,87 @@ const BORDER_LAYER = "country-border";
 const DOTS_GLOW = "dots-glow";
 const DOTS_CORE = "dots-core";
 const DOTS_DEAL = "dots-deal";
+const JOURNAL_FILL_LAYER = "journal-country-fill";
+const JOURNAL_GLOW_LAYER = "journal-country-glow";
+const JOURNAL_BADGE_LAYER = "journal-badge";
+const DEAL_ARC_LAYER = "deal-arcs";
+const DEAL_ARC_GLOW_LAYER = "deal-arcs-glow";
+const DEAL_ARC_ARROW_LAYER = "deal-arc-arrows";
+const COMBO_PULSE_LAYER = "combo-pulse";
+
+/** Generate great-circle arc points between two coordinates. */
+function greatCircleArc(
+  lon1: number, lat1: number,
+  lon2: number, lat2: number,
+  steps = 48,
+): [number, number][] {
+  const DEG2RAD = Math.PI / 180;
+  const RAD2DEG = 180 / Math.PI;
+  const φ1 = lat1 * DEG2RAD, λ1 = lon1 * DEG2RAD;
+  const φ2 = lat2 * DEG2RAD, λ2 = lon2 * DEG2RAD;
+  const x1 = Math.cos(φ1) * Math.cos(λ1), y1 = Math.cos(φ1) * Math.sin(λ1), z1 = Math.sin(φ1);
+  const x2 = Math.cos(φ2) * Math.cos(λ2), y2 = Math.cos(φ2) * Math.sin(λ2), z2 = Math.sin(φ2);
+  const dot = Math.min(1, Math.max(-1, x1 * x2 + y1 * y2 + z1 * z2));
+  const ω = Math.acos(dot);
+  const sinω = Math.sin(ω);
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    let xi: number, yi: number, zi: number;
+    if (sinω < 1e-9) { xi = x1; yi = y1; zi = z1; }
+    else {
+      const A = Math.sin((1 - t) * ω) / sinω;
+      const B = Math.sin(t * ω) / sinω;
+      xi = A * x1 + B * x2; yi = A * y1 + B * y2; zi = A * z1 + B * z2;
+    }
+    const lat = Math.atan2(zi, Math.sqrt(xi * xi + yi * yi)) * RAD2DEG;
+    const lon = Math.atan2(yi, xi) * RAD2DEG;
+    pts.push([lon, lat]);
+  }
+  return pts;
+}
+
+/** Build GeoJSON for deal flight arcs. */
+function dealArcsGeoJson(routes: DealRoute[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: routes.map((r, i) => ({
+      type: "Feature" as const,
+      properties: {
+        id: `${r.origin}-${r.destination}`,
+        price: r.price,
+        tier: r.tier ?? "fair",
+        destCity: r.destCity,
+        dealScore: r.dealScore ?? 0,
+      },
+      geometry: {
+        type: "LineString" as const,
+        coordinates: greatCircleArc(r.originLon, r.originLat, r.destLon, r.destLat),
+      },
+    })),
+  };
+}
+
+/** Build GeoJSON for deal destination endpoint dots (for price labels). */
+function dealEndpointsGeoJson(routes: DealRoute[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: routes.map((r) => ({
+      type: "Feature" as const,
+      properties: {
+        id: `${r.origin}-${r.destination}`,
+        price: r.price,
+        tier: r.tier ?? "fair",
+        destCity: r.destCity,
+        label: `$${r.price}`,
+      },
+      geometry: {
+        type: "Point" as const,
+        coordinates: [r.destLon, r.destLat],
+      },
+    })),
+  };
+}
 
 /** True when both the left (1) and right (2) mouse buttons are held. */
 function bothMouseButtons(e: MouseEvent): boolean {
@@ -309,6 +415,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     mapTheme,
     overlayMode = "wishes",
     countryDeals = [],
+    journalCountries = [],
+    dealRoutes = [],
     onCountryClick,
     onDotClick,
     onPinDrop,
@@ -324,6 +432,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   const pinDropRef = useRef(pinDropMode);
   const overlayModeRef = useRef(overlayMode);
   const countryDealsRef = useRef(countryDeals);
+  const journalCountriesRef = useRef(journalCountries);
+  const dealRoutesRef = useRef(dealRoutes);
   const callbacksRef = useRef({ onCountryClick, onDotClick, onPinDrop, onZoomStateChange });
   const pulseRafRef = useRef<number>(0);
   const selectedIsoRef = useRef<string | null>(null);
@@ -343,6 +453,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   pinDropRef.current = pinDropMode;
   overlayModeRef.current = overlayMode;
   countryDealsRef.current = countryDeals;
+  journalCountriesRef.current = journalCountries;
+  dealRoutesRef.current = dealRoutes;
   callbacksRef.current = { onCountryClick, onDotClick, onPinDrop, onZoomStateChange };
 
   const hideHover = () => setHover(null);
@@ -526,13 +638,190 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         },
       });
 
-      // Pulse animation for flight-deal rings
+      // ── Journal country highlighting ──
+      // We add a separate source for journal-highlighted countries using the same GeoJSON
+      // but with journal-specific properties. This overlays on top of the base country layer.
+      map.addSource("journal-countries", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+        promoteId: "iso",
+      });
+
+      // Soft purple/violet fill for countries with journal entries
+      map.addLayer({
+        id: JOURNAL_FILL_LAYER,
+        type: "fill",
+        source: "journal-countries",
+        paint: {
+          "fill-color": [
+            "case",
+            ["boolean", ["get", "hasCombo"], false],
+            "#f59e0b", // gold for journal + deal combo
+            "#a78bfa", // violet for journal-only
+          ] as unknown as string,
+          "fill-opacity": [
+            "interpolate", ["linear"], ["get", "entryCount"],
+            1, 0.12,
+            5, 0.22,
+            15, 0.32,
+          ] as unknown as number,
+        },
+      });
+
+      // Glowing border for journal countries
+      map.addLayer({
+        id: JOURNAL_GLOW_LAYER,
+        type: "line",
+        source: "journal-countries",
+        paint: {
+          "line-color": [
+            "case",
+            ["boolean", ["get", "hasCombo"], false],
+            "#fbbf24", // gold glow for combo
+            "#c4b5fd", // light violet glow for journal
+          ] as unknown as string,
+          "line-width": [
+            "interpolate", ["linear"], ["zoom"],
+            1, 1.5,
+            6, 3,
+            14, 5,
+          ] as unknown as number,
+          "line-blur": [
+            "interpolate", ["linear"], ["zoom"],
+            1, 2,
+            6, 4,
+            14, 6,
+          ] as unknown as number,
+          "line-opacity": [
+            "case",
+            ["boolean", ["get", "hasCombo"], false],
+            0.85,
+            0.6,
+          ] as unknown as number,
+        },
+      });
+
+      // Pulsing highlight for combo countries (journal + deal)
+      map.addLayer({
+        id: COMBO_PULSE_LAYER,
+        type: "line",
+        source: "journal-countries",
+        filter: ["==", ["get", "hasCombo"], true],
+        paint: {
+          "line-color": "#fbbf24",
+          "line-width": 4,
+          "line-blur": 8,
+          "line-opacity": 0.7,
+        },
+      });
+
+      // ── Flight deal arc paths ──
+      map.addSource("deal-arcs", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      map.addSource("deal-endpoints", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      // Glow under the arc
+      map.addLayer({
+        id: DEAL_ARC_GLOW_LAYER,
+        type: "line",
+        source: "deal-arcs",
+        paint: {
+          "line-color": [
+            "case",
+            ["==", ["get", "tier"], "cheap"], "#2dd4bf",
+            ["==", ["get", "tier"], "fair"], "#f59e0b",
+            "#fb7185",
+          ] as unknown as string,
+          "line-width": [
+            "interpolate", ["linear"], ["zoom"],
+            1, 3,
+            6, 6,
+            14, 10,
+          ] as unknown as number,
+          "line-blur": [
+            "interpolate", ["linear"], ["zoom"],
+            1, 4,
+            6, 8,
+            14, 12,
+          ] as unknown as number,
+          "line-opacity": 0.3,
+        },
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+      });
+
+      // Main arc line
+      map.addLayer({
+        id: DEAL_ARC_LAYER,
+        type: "line",
+        source: "deal-arcs",
+        paint: {
+          "line-color": [
+            "case",
+            ["==", ["get", "tier"], "cheap"], "#2dd4bf",
+            ["==", ["get", "tier"], "fair"], "#f59e0b",
+            "#fb7185",
+          ] as unknown as string,
+          "line-width": [
+            "interpolate", ["linear"], ["zoom"],
+            1, 1.2,
+            6, 2,
+            14, 3,
+          ] as unknown as number,
+          "line-opacity": 0.75,
+          "line-dasharray": [2, 3],
+        },
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+      });
+
+      // Price label dots at destinations
+      map.addLayer({
+        id: DEAL_ARC_ARROW_LAYER,
+        type: "circle",
+        source: "deal-endpoints",
+        paint: {
+          "circle-radius": [
+            "interpolate", ["linear"], ["zoom"],
+            1, 4,
+            6, 7,
+            14, 10,
+          ] as unknown as number,
+          "circle-color": [
+            "case",
+            ["==", ["get", "tier"], "cheap"], "#2dd4bf",
+            ["==", ["get", "tier"], "fair"], "#f59e0b",
+            "#fb7185",
+          ] as unknown as string,
+          "circle-stroke-color": "#0f172a",
+          "circle-stroke-width": 1.5,
+          "circle-opacity": 0.9,
+        },
+      });
+
+      // Pulse animation for flight-deal rings + combo country glow
       const start = performance.now();
       const pulse = (now: number) => {
         const t = ((now - start) % 1600) / 1600;
         if (map.getLayer(DOTS_DEAL)) {
           map.setPaintProperty(DOTS_DEAL, "circle-radius", 9 + 7 * t);
           map.setPaintProperty(DOTS_DEAL, "circle-stroke-opacity", 0.9 * (1 - t));
+        }
+        // Combo countries get a slow breathing glow
+        const comboT = ((now - start) % 3000) / 3000;
+        const comboOpacity = 0.3 + 0.5 * Math.sin(comboT * Math.PI * 2);
+        if (map.getLayer(COMBO_PULSE_LAYER)) {
+          map.setPaintProperty(COMBO_PULSE_LAYER, "line-opacity", comboOpacity);
         }
         pulseRafRef.current = requestAnimationFrame(pulse);
       };

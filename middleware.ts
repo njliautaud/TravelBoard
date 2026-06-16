@@ -11,12 +11,15 @@ const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/journal/(.*)",
   "/api/auth/(.*)",
   "/api/cover-image(.*)",
   "/api/image-proxy(.*)",
   "/api/geocode(.*)",
   "/api/hardware-sync(.*)",
   "/api/flight-prices(.*)",
+  "/api/journal/(.*)/public",
+  "/api/drafts/ingest",
 ]);
 
 export default isClerkEnabled

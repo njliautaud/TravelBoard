@@ -322,6 +322,7 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
             To
           </label>
           <input
+            data-testid="hero-search-input"
             value={destInput}
             onChange={(e) => {
               setDestInput(e.target.value);
@@ -481,7 +482,7 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
                           {fmtPrice(r.price)}
                         </span>
                         <span className="text-slate-600 text-xs">
-                          {isExpanded ? "v" : ">"}
+                          {isExpanded ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>}
                         </span>
                       </div>
                     </button>
@@ -527,8 +528,7 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
 
               {results.length === 0 && !loading && (
                 <div className="text-center py-8 text-slate-500 text-sm">
-                  No cached fares found for this search. Fares populate as our
-                  scans discover prices.
+                  No fares found for this search. Try different dates or a different destination.
                 </div>
               )}
             </div>

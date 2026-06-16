@@ -46,7 +46,16 @@ function fmtAgo(ms: number): string {
 async function fetchActivity(): Promise<ActivityItem[]> {
   const items: ActivityItem[] = [];
   try {
-    const res = await fetch("/api/fares?origin=MCO");
+    let origin = "MCO";
+    try {
+      const settingsRes = await fetch("/api/settings");
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
+        const homes = settings.homeAirports || settings.home_airports;
+        if (Array.isArray(homes) && homes.length > 0) origin = homes[0];
+      }
+    } catch { /* use default */ }
+    const res = await fetch(`/api/fares?origin=${origin}`);
     if (res.ok) {
       const data = await res.json();
       const fares = data.fares || data || [];
@@ -80,14 +89,6 @@ async function fetchActivity(): Promise<ActivityItem[]> {
   } catch {
     // best-effort
   }
-
-  items.push({
-    id: "m-1",
-    type: "milestone",
-    title: "500+ destinations tracked",
-    detail: "Across 60+ countries",
-    timeAgo: "today",
-  });
 
   return items.slice(0, 8);
 }

@@ -409,7 +409,7 @@ export default function DealsView() {
   return (
     <div className="flex h-full flex-col bg-slate-950">
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-slate-800 px-5 py-4">
+      <div data-testid="scope-row" className="flex flex-wrap items-center gap-3 border-b border-slate-800 px-5 py-4">
         <div className="flex items-center gap-2">
           <svg
             width="22"
@@ -509,11 +509,11 @@ export default function DealsView() {
         ) : deals.length === 0 && !loading ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-slate-500">
-              No deals found. Try warming the cache or selecting a different origin.
+              No deals available for this route right now. Try a different airport or check back soon.
             </p>
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="deals-grid grid gap-3 grid-cols-1 sm:grid-cols-2">
             {deals.map((deal) => (
               <DealCard
                 key={deal.id}

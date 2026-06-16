@@ -547,6 +547,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         onClose={() => setInboxOpen(false)}
         onOpenDraft={openDraft}
         onDeleteDraft={handleDeleteDraft}
+        onRefresh={refreshDrafts}
       />
     </div>
   );

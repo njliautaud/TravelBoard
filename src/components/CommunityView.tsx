@@ -104,7 +104,7 @@ export default function CommunityView() {
             <p className="text-xs text-slate-500">
               {activeSection === "hub"
                 ? "Social boards, lounges, and achievements"
-                : "Part of the TravelBoard community"}
+                : ""}
             </p>
           </div>
         </div>
