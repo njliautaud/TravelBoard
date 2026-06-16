@@ -3,6 +3,7 @@
 import type { LocationItem } from "@/lib/types";
 import { cleanThumb } from "@/lib/thumb";
 import WeatherWidget from "./WeatherWidget";
+import { DestinationGuidePanel } from "./DestinationGuide";
 
 export type PanelSelection =
   | { type: "country"; code: string; name: string }
@@ -194,7 +195,13 @@ export default function SidePanel({ selection, locations, editor, onClose, onEdi
           </button>
         </div>
         <div className="panel-scroll flex-1 space-y-3 overflow-y-auto p-4">
-          {entries.length === 0 && <p className="text-sm text-slate-500">Nothing logged here yet.</p>}
+          {/* Destination guide for country selections */}
+          {selection?.type === "country" && (
+            <DestinationGuidePanel code={selection.code} />
+          )}
+          {entries.length === 0 && selection?.type !== "country" && (
+            <p className="text-sm text-slate-500">Nothing logged here yet.</p>
+          )}
           {entries.map((loc) => (
             <EntryCard key={loc.id} loc={loc} editor={editor} onEdit={onEdit} onDelete={onDelete} />
           ))}

@@ -9,6 +9,9 @@ import SearchView from "./SearchView";
 import ToolsView from "./ToolsView";
 import CommunityView from "./CommunityView";
 import AlertsPanel, { AlertBellBadge } from "./AlertsPanel";
+import { ErrorBoundary, DealListSkeleton, CalendarSkeleton } from "./ErrorBoundary";
+import { Changelog, useUnseenChangelog } from "./Changelog";
+import { OnboardingModal, loadLocalPrefs, persistPrefs, DEFAULT_PREFS, type TravelPrefsDto } from "./Onboarding";
 import type { LocationItem } from "@/lib/types";
 
 type Tab = "map" | "deals" | "search" | "alerts" | "journal" | "tools" | "community" | "settings";
@@ -106,6 +109,19 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 export default function AppShell({ initialLocations }: AppShellProps) {
   const [activeTab, setActiveTab] = useState<Tab>("map");
   const [alertCount, setAlertCount] = useState(0);
+  const [showChangelog, setShowChangelog] = useState(false);
+  const unseenChangelog = useUnseenChangelog();
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [prefs, setPrefs] = useState<TravelPrefsDto>(DEFAULT_PREFS);
+
+  // Check if first visit for onboarding
+  useEffect(() => {
+    const { prefs: loadedPrefs, onboarded } = loadLocalPrefs();
+    setPrefs(loadedPrefs);
+    if (!onboarded) {
+      setShowOnboarding(true);
+    }
+  }, []);
 
   // Poll unread alert count periodically
   useEffect(() => {
@@ -161,13 +177,27 @@ export default function AppShell({ initialLocations }: AppShellProps) {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {activeTab === "search" && <SearchView />}
-              {activeTab === "deals" && <DealsView />}
-              {activeTab === "alerts" && <AlertsPanel />}
-              {activeTab === "journal" && <JournalView />}
-              {activeTab === "tools" && <ToolsView />}
-              {activeTab === "community" && <CommunityView />}
-              {activeTab === "settings" && <SettingsView />}
+              {activeTab === "search" && (
+                <ErrorBoundary name="Search"><SearchView /></ErrorBoundary>
+              )}
+              {activeTab === "deals" && (
+                <ErrorBoundary name="Deals" fallback={<DealListSkeleton />}><DealsView /></ErrorBoundary>
+              )}
+              {activeTab === "alerts" && (
+                <ErrorBoundary name="Alerts"><AlertsPanel /></ErrorBoundary>
+              )}
+              {activeTab === "journal" && (
+                <ErrorBoundary name="Journal"><JournalView /></ErrorBoundary>
+              )}
+              {activeTab === "tools" && (
+                <ErrorBoundary name="Tools"><ToolsView /></ErrorBoundary>
+              )}
+              {activeTab === "community" && (
+                <ErrorBoundary name="Community"><CommunityView /></ErrorBoundary>
+              )}
+              {activeTab === "settings" && (
+                <ErrorBoundary name="Settings"><SettingsView /></ErrorBoundary>
+              )}
             </div>
           </div>
         </div>
@@ -179,6 +209,22 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           <span className="text-base font-bold tracking-wider text-amber-400 glow-text select-none">TB</span>
           <span className="mt-0.5 h-px w-8 bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
         </div>
+        {/* What's New / Changelog button */}
+        <button
+          onClick={() => setShowChangelog(true)}
+          title="What's New"
+          className="relative mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+          </svg>
+          <span>New</span>
+          {unseenChangelog > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-slate-950">
+              {unseenChangelog}
+            </span>
+          )}
+        </button>
         {TABS.map((tab) => {
           const active = activeTab === tab.id;
           return (
@@ -235,6 +281,22 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           );
         })}
       </nav>
+
+      {/* Changelog modal */}
+      {showChangelog && <Changelog onClose={() => setShowChangelog(false)} />}
+
+      {/* Onboarding wizard */}
+      {showOnboarding && (
+        <OnboardingModal
+          initial={prefs}
+          firstVisit={true}
+          onDone={(newPrefs) => {
+            persistPrefs(newPrefs);
+            setPrefs(newPrefs);
+            setShowOnboarding(false);
+          }}
+        />
+      )}
     </div>
   );
 }

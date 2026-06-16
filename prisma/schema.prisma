@@ -38,7 +38,12 @@ model User {
   email        String?
   role         UserRole   @default(EDITOR)
   mapTheme     MapTheme   @default(CLASSIC)
-  homeAirports String     @default("[]")
+  homeAirports    String     @default("[]")
+  maxTravelHours  Int        @default(24)
+  maxLayoverHours Int        @default(8)
+  cabin           String     @default("any")
+  nonstopOnly     Boolean    @default(false)
+  tripStyles      String     @default("[]")
   locations    Location[]
   drafts       Draft[]
   createdAt    DateTime   @default(now())

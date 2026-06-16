@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { HOME_AIRPORTS, type AirportOption } from "@/lib/airports";
 import { scoreDeal, type DealScoreBreakdown } from "@/lib/services/deal-scoring";
+import { PriceTrendBadge } from "./PriceTrendBadge";
+import { CompareDeals } from "./CompareDeals";
+import { DealScoreBreakdown as DealScorePanel } from "./DealScoreBreakdown";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -126,6 +129,7 @@ function DealCard({
             {deal.source}
           </span>
         )}
+        <PriceTrendBadge origin={deal.origin} dest={deal.flyToCode} />
       </div>
 
       <p className="mt-2 text-[11px] text-slate-500">{breakdown.summary}</p>
@@ -234,7 +238,7 @@ function DealDetail({
         )}
       </div>
 
-      {/* Score factors */}
+      {/* Score factors (inline) */}
       <div className="mt-6">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
           Score Breakdown
@@ -257,6 +261,11 @@ function DealDetail({
             </div>
           ))}
         </div>
+      </div>
+
+      {/* API-driven score breakdown (if available) */}
+      <div className="mt-4">
+        <DealScorePanel origin={deal.origin} dest={deal.flyToCode} />
       </div>
 
       {/* Price history */}
@@ -289,6 +298,7 @@ export default function DealsView() {
   const [loading, setLoading] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState<DealItem | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [showCompare, setShowCompare] = useState(false);
 
   // Load user settings to get default origin
   useEffect(() => {
@@ -404,6 +414,15 @@ export default function DealsView() {
           ))}
         </select>
 
+        {deals.length >= 2 && (
+          <button
+            onClick={() => setShowCompare(true)}
+            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-amber-500/40 hover:text-amber-300"
+          >
+            Compare
+          </button>
+        )}
+
         {loading && (
           <div className="ml-auto h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-amber-400" />
         )}
@@ -454,6 +473,16 @@ export default function DealsView() {
           </div>
         )}
       </div>
+
+      {/* Compare modal */}
+      {showCompare && (
+        <CompareDeals
+          origin={origin}
+          month={month ?? new Date().getMonth()}
+          availableCodes={deals.map((d) => ({ code: d.flyToCode, city: d.destination }))}
+          onClose={() => setShowCompare(false)}
+        />
+      )}
     </div>
   );
 }
