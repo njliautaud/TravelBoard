@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PointsCalculator from "./PointsCalculator";
 import PointsOptimizer from "./PointsOptimizer";
 import CardManager from "./CardManager";
@@ -11,6 +11,7 @@ import FlightTracker from "./FlightTracker";
 import MemoryMap from "./MemoryMap";
 import SavingsDashboard from "./SavingsDashboard";
 import PackingSuggestions from "./PackingSuggestions";
+import { DEMO_LOYALTY_PROGRAMS, DEMO_CARDS } from "@/lib/demoData";
 
 type ToolId = "hub" | "calculator" | "optimizer" | "cards" | "trips" | "prediction" | "loyalty" | "flight-tracker" | "memory-map" | "savings" | "packing";
 
@@ -203,6 +204,69 @@ function PackingWrapper() {
   );
 }
 
+function QuickStatsBanner() {
+  const [totalPoints, setTotalPoints] = useState<number>(0);
+  const [programCount, setProgramCount] = useState<number>(0);
+
+  useEffect(() => {
+    (async () => {
+      let loyaltyPoints = 0;
+      let loyaltyCount = 0;
+      let cardPoints = 0;
+
+      try {
+        const res = await fetch("/api/loyalty");
+        if (res.ok) {
+          const data = await res.json();
+          const items = data.balances ?? [];
+          if (items.length > 0) {
+            loyaltyPoints = items.reduce((s: number, b: { balance: number }) => s + b.balance, 0);
+            loyaltyCount = items.length;
+          }
+        }
+      } catch { /* fallback below */ }
+
+      try {
+        const res = await fetch("/api/points/cards");
+        if (res.ok) {
+          const data = await res.json();
+          const items = data.cards ?? [];
+          if (items.length > 0) {
+            cardPoints = items.reduce((s: number, c: { pointsBalance: number }) => s + c.pointsBalance, 0);
+          }
+        }
+      } catch { /* fallback below */ }
+
+      // If both empty, use demo data
+      if (loyaltyCount === 0 && cardPoints === 0) {
+        loyaltyPoints = DEMO_LOYALTY_PROGRAMS.reduce((s, b) => s + b.balance, 0);
+        loyaltyCount = DEMO_LOYALTY_PROGRAMS.length;
+        cardPoints = DEMO_CARDS.reduce((s, c) => s + c.pointsBalance, 0);
+      }
+
+      setTotalPoints(loyaltyPoints + cardPoints);
+      setProgramCount(loyaltyCount);
+    })();
+  }, []);
+
+  if (totalPoints === 0) return null;
+
+  return (
+    <div className="mb-4 rounded-xl border border-amber-500/20 bg-gradient-to-r from-amber-500/5 to-slate-900/80 p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="text-xs text-slate-400">Total Points & Miles</span>
+          <p className="text-2xl font-bold text-amber-400">{totalPoints.toLocaleString()}</p>
+        </div>
+        <div className="text-right">
+          <span className="text-xs text-slate-400">Across</span>
+          <p className="text-lg font-semibold text-slate-200">{programCount} programs</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ToolsView() {
   const [activeTool, setActiveTool] = useState<ToolId>("hub");
 
@@ -254,6 +318,7 @@ export default function ToolsView() {
       <div className="flex-1 overflow-y-auto p-4">
         {activeTool === "hub" ? (
           <div className="mx-auto max-w-lg">
+            <QuickStatsBanner />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {TOOLS.map((tool) => (
                 <button

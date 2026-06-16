@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { DEMO_CARDS } from "@/lib/demoData";
 
 interface CardProfile {
   id: string;
@@ -25,6 +26,7 @@ const KNOWN_CARDS = [
 
 export default function CardManager() {
   const [cards, setCards] = useState<CardProfile[]>([]);
+  const [usingDemo, setUsingDemo] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ cardName: "", issuer: "", pointsBalance: "", annualFee: "", category: "" });
@@ -34,9 +36,19 @@ export default function CardManager() {
       const res = await fetch("/api/points/cards");
       if (res.ok) {
         const data = await res.json();
-        setCards(data.cards ?? []);
+        const items = data.cards ?? [];
+        if (items.length > 0) {
+          setCards(items);
+          setUsingDemo(false);
+          return;
+        }
       }
-    } catch { /* */ }
+      setCards(DEMO_CARDS);
+      setUsingDemo(true);
+    } catch {
+      setCards(DEMO_CARDS);
+      setUsingDemo(true);
+    }
   }, []);
 
   useEffect(() => { loadCards(); }, [loadCards]);
@@ -106,7 +118,12 @@ export default function CardManager() {
       {/* Summary */}
       <div className="flex items-center justify-between">
         <div>
-          <span className="text-xs text-slate-500">Total points across all cards</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Total points across all cards</span>
+            {usingDemo && (
+              <span className="rounded-full bg-slate-700/60 px-2 py-0.5 text-[10px] text-slate-400">Sample data</span>
+            )}
+          </div>
           <p className="text-2xl font-bold text-amber-400">{totalPoints.toLocaleString()}</p>
         </div>
         <button
@@ -194,48 +211,55 @@ export default function CardManager() {
         </p>
       ) : (
         <div className="space-y-2">
-          {cards.map((card) => (
-            <div
-              key={card.id}
-              className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/40 p-3"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-slate-200">{card.cardName}</p>
-                <p className="text-xs text-slate-500">
-                  {card.issuer ?? "Unknown issuer"}
-                  {card.annualFee != null && ` · $${card.annualFee}/yr`}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <span className="text-sm font-semibold text-amber-400">
-                    {card.pointsBalance.toLocaleString()}
-                  </span>
-                  <span className="text-xs text-slate-500 block">points</span>
+          {cards.map((card) => {
+            const isDemo = card.id.startsWith("demo-");
+            return (
+              <div
+                key={card.id}
+                className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/40 p-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-200">{card.cardName}</p>
+                  <p className="text-xs text-slate-500">
+                    {card.issuer ?? "Unknown issuer"}
+                    {card.annualFee != null && ` · $${card.annualFee}/yr`}
+                  </p>
                 </div>
-                <button
-                  onClick={() => startEdit(card)}
-                  className="rounded p-1 text-slate-500 transition hover:text-slate-300"
-                  title="Edit"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => handleDelete(card.id)}
-                  className="rounded p-1 text-slate-500 transition hover:text-red-400"
-                  title="Delete"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <span className="text-sm font-semibold text-amber-400">
+                      {card.pointsBalance.toLocaleString()}
+                    </span>
+                    <span className="text-xs text-slate-500 block">points</span>
+                  </div>
+                  {!isDemo && (
+                    <>
+                      <button
+                        onClick={() => startEdit(card)}
+                        className="rounded p-1 text-slate-500 transition hover:text-slate-300"
+                        title="Edit"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleDelete(card.id)}
+                        className="rounded p-1 text-slate-500 transition hover:text-red-400"
+                        title="Delete"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

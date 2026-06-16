@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { DEMO_SWEET_SPOTS, type DemoSweetSpot } from "@/lib/demoData";
 
 interface CalcOption {
   partner: string;
@@ -28,6 +29,22 @@ export default function PointsCalculator() {
   const [transferBonus, setTransferBonus] = useState(0);
   const [result, setResult] = useState<CalcResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sweetSpots, setSweetSpots] = useState<DemoSweetSpot[]>(DEMO_SWEET_SPOTS);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/points/sweet-spots");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.sweetSpots?.length > 0) {
+            setSweetSpots(data.sweetSpots);
+            return;
+          }
+        }
+      } catch { /* use demo fallback */ }
+    })();
+  }, []);
 
   async function handleCalculate() {
     if (!destination.trim()) return;
@@ -224,6 +241,36 @@ export default function PointsCalculator() {
           )}
         </div>
       )}
+
+      {/* Featured Sweet Spots — always visible */}
+      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-slate-200">Featured Sweet Spots</h3>
+        <p className="text-xs text-slate-500">Best-value award chart redemptions across all programs</p>
+        <div className="space-y-2">
+          {sweetSpots.map((spot, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between rounded-lg border border-slate-800/60 bg-slate-900/30 p-3 transition hover:border-slate-700"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-200">{spot.partner}</p>
+                <p className="text-xs text-slate-500">
+                  {spot.route} &middot; {spot.cabin} &middot; {spot.airline}
+                </p>
+                {spot.notes && (
+                  <p className="text-[11px] text-slate-600 mt-0.5">{spot.notes}</p>
+                )}
+              </div>
+              <div className="text-right shrink-0 ml-3">
+                <span className="text-sm font-semibold text-emerald-400">
+                  {spot.pointsCost.toLocaleString()}
+                </span>
+                <span className="text-xs text-slate-500 block">points</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

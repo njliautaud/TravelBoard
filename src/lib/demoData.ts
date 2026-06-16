@@ -432,6 +432,63 @@ export const DEMO_JOURNAL_ENTRIES: DemoJournalEntry[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Demo loyalty programs, cards, and sweet spots
+// ---------------------------------------------------------------------------
+
+export interface DemoLoyaltyProgram {
+  id: string;
+  programName: string;
+  programCode: string | null;
+  balance: number;
+  tier: string | null;
+  expiresAt: string | null;
+  updatedAt: string;
+}
+
+export const DEMO_LOYALTY_PROGRAMS: DemoLoyaltyProgram[] = [
+  { id: "demo-loy-1", programName: "United MileagePlus", programCode: "UA", balance: 47250, tier: "Silver", expiresAt: null, updatedAt: new Date().toISOString() },
+  { id: "demo-loy-2", programName: "Delta SkyMiles", programCode: "DL", balance: 31800, tier: null, expiresAt: null, updatedAt: new Date().toISOString() },
+  { id: "demo-loy-3", programName: "American AAdvantage", programCode: "AA", balance: 22400, tier: null, expiresAt: null, updatedAt: new Date().toISOString() },
+  { id: "demo-loy-4", programName: "Southwest Rapid Rewards", programCode: "WN", balance: 15600, tier: null, expiresAt: null, updatedAt: new Date().toISOString() },
+  { id: "demo-loy-5", programName: "Marriott Bonvoy", programCode: "MAR", balance: 89000, tier: "Gold", expiresAt: null, updatedAt: new Date().toISOString() },
+  { id: "demo-loy-6", programName: "Hilton Honors", programCode: "HH", balance: 156000, tier: "Gold", expiresAt: null, updatedAt: new Date().toISOString() },
+];
+
+export interface DemoCard {
+  id: string;
+  cardName: string;
+  issuer: string | null;
+  pointsBalance: number;
+  annualFee: number | null;
+  category: string | null;
+  createdAt: string;
+}
+
+export const DEMO_CARDS: DemoCard[] = [
+  { id: "demo-card-1", cardName: "Chase Sapphire Reserve", issuer: "Chase", pointsBalance: 85000, annualFee: 550, category: "chase_ur", createdAt: new Date().toISOString() },
+  { id: "demo-card-2", cardName: "Amex Gold", issuer: "Amex", pointsBalance: 42000, annualFee: 250, category: "amex_mr", createdAt: new Date().toISOString() },
+  { id: "demo-card-3", cardName: "Capital One Venture X", issuer: "Capital One", pointsBalance: 67000, annualFee: 395, category: "capital_one", createdAt: new Date().toISOString() },
+];
+
+export interface DemoSweetSpot {
+  partner: string;
+  route: string;
+  cabin: string;
+  pointsCost: number;
+  notes: string;
+  airline: string;
+}
+
+export const DEMO_SWEET_SPOTS: DemoSweetSpot[] = [
+  { partner: "British Airways Avios", route: "US Short-Haul", cabin: "Economy", pointsCost: 7500, notes: "Under 1151 miles, off-peak", airline: "AA/Alaska" },
+  { partner: "Virgin Atlantic", route: "US to Japan", cabin: "Business", pointsCost: 60000, notes: "One-way on ANA metal", airline: "ANA" },
+  { partner: "Air France Flying Blue", route: "US to Europe", cabin: "Business", pointsCost: 53000, notes: "Monthly promo flash sales", airline: "AF/KLM" },
+  { partner: "Turkish Miles&Smiles", route: "US to Europe", cabin: "Business", pointsCost: 45000, notes: "Star Alliance partners", airline: "Turkish/United" },
+  { partner: "ANA Mileage Club", route: "US to Japan", cabin: "Business", pointsCost: 85000, notes: "Round trip required", airline: "ANA" },
+  { partner: "Hyatt World of Hyatt", route: "Anywhere", cabin: "Hotel", pointsCost: 8000, notes: "Category 1-3 free nights", airline: "Hyatt" },
+];
+
+// ---------------------------------------------------------------------------
 // Demo mode detection
 // ---------------------------------------------------------------------------
 
