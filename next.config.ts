@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "export",
+  images: { unoptimized: true },
   transpilePackages: ["@travelboard/core"],
   webpack: (config) => {
     // Allow .js imports to resolve to .ts source files in the core package
