@@ -2,11 +2,12 @@
  * Provider setup utility.
  *
  * Instantiates the FlightProvider from @travelboard/core based on environment
- * variables. Defaults to MockTequilaProvider so the app runs with zero API keys.
+ * variables. Defaults to KiwiGraphQLProvider (no API key needed — uses the
+ * same public endpoint that powers kiwi.com). Always returns real data.
  */
 
 import {
-  MockTequilaProvider,
+  KiwiGraphQLProvider,
   TequilaProvider,
   type FlightProvider,
 } from "@travelboard/core";
@@ -20,7 +21,8 @@ export function getFlightProvider(): FlightProvider {
   if (tequilaKey) {
     _provider = new TequilaProvider({ apiKey: tequilaKey });
   } else {
-    _provider = new MockTequilaProvider();
+    // KiwiGraphQLProvider uses Kiwi.com's public GraphQL API — no key required.
+    _provider = new KiwiGraphQLProvider();
   }
 
   return _provider;

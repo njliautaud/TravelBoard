@@ -120,12 +120,17 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [prefs, setPrefs] = useState<TravelPrefsDto>(DEFAULT_PREFS);
   const walkthrough = useWalkthroughState();
+  const [appEntered, setAppEntered] = useState(false);
 
-  // Check if first visit for onboarding
+  // Check if first visit for onboarding, or if user has already "entered" the app
   useEffect(() => {
     const { prefs: loadedPrefs, onboarded } = loadLocalPrefs();
     setPrefs(loadedPrefs);
-    if (!onboarded) {
+    const entered = typeof window !== "undefined" && localStorage.getItem("tb_entered") === "1";
+    if (entered) {
+      setAppEntered(true);
+    }
+    if (!onboarded && !entered) {
       setShowOnboarding(true);
     }
   }, []);
@@ -161,8 +166,31 @@ export default function AppShell({ initialLocations }: AppShellProps) {
         <MapApp initialLocations={initialLocations} />
       </div>
 
+      {/* Landing state — map visible behind, single "Explore" button */}
+      {!appEntered && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-end pb-32 sm:justify-center sm:pb-0 pointer-events-none">
+          <div className="pointer-events-auto flex flex-col items-center gap-6 rounded-3xl border border-slate-700/40 bg-slate-950/70 px-10 py-10 backdrop-blur-2xl shadow-2xl">
+            <span className="text-3xl font-bold tracking-tight text-amber-400">
+              TravelBoard
+            </span>
+            <p className="max-w-xs text-center text-sm text-slate-300">
+              Discover the cheapest flights, track award deals, and plan your next adventure.
+            </p>
+            <button
+              onClick={() => {
+                setAppEntered(true);
+                if (typeof window !== "undefined") localStorage.setItem("tb_entered", "1");
+              }}
+              className="mt-2 rounded-2xl bg-amber-500 px-8 py-3.5 text-base font-bold text-slate-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-400 hover:shadow-amber-400/30 active:scale-95"
+            >
+              Explore
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Overlay panel for non-map tabs — slides over the map with backdrop blur */}
-      {isOverlay && (
+      {isOverlay && appEntered && (
         <div className="absolute inset-0 z-30 flex">
           {/* Dismiss backdrop on desktop */}
           <div
@@ -215,8 +243,8 @@ export default function AppShell({ initialLocations }: AppShellProps) {
         </div>
       )}
 
-      {/* Desktop sidebar nav — always visible, on top of everything */}
-      <nav className="hidden sm:flex absolute left-0 top-0 bottom-0 z-40 w-16 flex-col items-center gap-1 border-r border-slate-800/60 bg-slate-950/90 backdrop-blur-lg pt-3 pb-3">
+      {/* Desktop sidebar nav — visible only after entering the app */}
+      <nav className={`${appEntered ? "hidden sm:flex" : "hidden"} absolute left-0 top-0 bottom-0 z-40 w-16 flex-col items-center gap-1 border-r border-slate-800/60 bg-slate-950/90 backdrop-blur-lg pt-3 pb-3`}>
         <div className="mb-3 flex flex-col items-center">
           <span className="text-base font-bold tracking-wider text-amber-400 glow-text select-none">TB</span>
           <span className="mt-0.5 h-px w-8 bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
@@ -290,7 +318,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
       </nav>
 
       {/* Mobile bottom tab bar — 5 visible tabs, "More" opens overflow */}
-      <nav className="flex sm:hidden absolute bottom-0 left-0 right-0 z-40 items-stretch border-t border-slate-800/60 bg-slate-950/95 backdrop-blur-lg safe-area-bottom">
+      <nav className={`${appEntered ? "flex sm:hidden" : "hidden"} absolute bottom-0 left-0 right-0 z-40 items-stretch border-t border-slate-800/60 bg-slate-950/95 backdrop-blur-lg safe-area-bottom`}>
         {TABS.filter((t) => ["map", "search", "deals", "journal"].includes(t.id)).map((tab) => {
           const active = activeTab === tab.id;
           return (

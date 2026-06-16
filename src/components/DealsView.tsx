@@ -34,6 +34,14 @@ interface DealItem {
   duration?: number | null;
   deepLink?: string;
   countryTo?: string;
+  // Award-specific fields
+  isAward?: boolean;
+  miles?: number;
+  program?: string;
+  programName?: string;
+  cabin?: string;
+  cabinLabel?: string;
+  tripType?: string;
 }
 
 interface HistoryPoint {
@@ -119,28 +127,54 @@ function DealCard({
       </div>
 
       <div className="mt-3 flex items-baseline gap-2">
-        <span className={`text-xl font-bold ${tierColor}`}>
-          ${deal.price}
-        </span>
-        {deal.savingsPercent > 0 && (
-          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-            -{deal.savingsPercent}%
-          </span>
+        {deal.isAward ? (
+          <>
+            <span className={`text-xl font-bold ${tierColor}`}>
+              {deal.miles?.toLocaleString()}
+            </span>
+            <span className="text-xs text-slate-400">miles</span>
+            {deal.cabinLabel && (
+              <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-[10px] font-semibold text-purple-300 capitalize">
+                {deal.cabinLabel}
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className={`text-xl font-bold ${tierColor}`}>
+              ${deal.price}
+            </span>
+            {deal.savingsPercent > 0 && (
+              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+                -{deal.savingsPercent}%
+              </span>
+            )}
+          </>
         )}
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1.5">
+        {deal.isAward && deal.programName && (
+          <span className="rounded-md bg-purple-500/20 px-1.5 py-0.5 text-[10px] font-medium text-purple-300">
+            {deal.programName}
+          </span>
+        )}
+        {deal.isAward && deal.tripType && (
+          <span className="rounded-md bg-slate-700/50 px-1.5 py-0.5 text-[10px] text-slate-300">
+            {deal.tripType}
+          </span>
+        )}
         {deal.airline && (
           <span className="rounded-md bg-slate-700/50 px-1.5 py-0.5 text-[10px] text-slate-300">
             {deal.airline}
           </span>
         )}
-        {deal.source && (
+        {deal.source && !deal.isAward && (
           <span className="rounded-md bg-slate-700/50 px-1.5 py-0.5 text-[10px] text-slate-300">
             {deal.source}
           </span>
         )}
-        <PriceTrendBadge origin={deal.origin} dest={deal.flyToCode} />
+        {!deal.isAward && <PriceTrendBadge origin={deal.origin} dest={deal.flyToCode} />}
       </div>
 
       {/* Flight status + actions */}
@@ -270,11 +304,32 @@ function DealDetail({
       </div>
 
       <div className="mt-4 flex items-baseline gap-3">
-        <span className="text-3xl font-bold text-teal-400">${deal.price}</span>
-        {deal.savingsPercent > 0 && (
-          <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-400">
-            Save {deal.savingsPercent}%
-          </span>
+        {deal.isAward ? (
+          <>
+            <span className="text-3xl font-bold text-purple-400">
+              {deal.miles?.toLocaleString()}
+            </span>
+            <span className="text-sm text-slate-400">miles</span>
+            {deal.cabinLabel && (
+              <span className="rounded-full bg-purple-500/15 px-2.5 py-1 text-xs font-semibold text-purple-300 capitalize">
+                {deal.cabinLabel}
+              </span>
+            )}
+            {deal.programName && (
+              <span className="rounded-full bg-purple-500/10 px-2.5 py-1 text-xs text-purple-300">
+                {deal.programName}
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="text-3xl font-bold text-teal-400">${deal.price}</span>
+            {deal.savingsPercent > 0 && (
+              <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-400">
+                Save {deal.savingsPercent}%
+              </span>
+            )}
+          </>
         )}
       </div>
 
