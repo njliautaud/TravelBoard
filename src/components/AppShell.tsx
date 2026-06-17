@@ -146,9 +146,9 @@ export default function AppShell({ initialLocations }: AppShellProps) {
 
         // Check onboarding
         fetch("/api/onboarding")
-          .then((r) => r.json())
+          .then((r) => r.ok ? r.json() : null)
           .then((ob) => {
-            if (ob.onboarded) {
+            if (ob?.onboarded) {
               setAppEntered(true);
             } else {
               setShowOnboarding(true);
@@ -165,9 +165,9 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           if (data?.user) {
             setCurrentUser(data.user);
             fetch("/api/onboarding")
-              .then((r) => r.json())
+              .then((r) => r.ok ? r.json() : null)
               .then((ob) => {
-                if (ob.onboarded) {
+                if (ob?.onboarded) {
                   setAppEntered(true);
                 } else {
                   setShowOnboarding(true);
@@ -369,7 +369,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
       )}
 
       {/* Desktop sidebar nav — visible only after entering the app */}
-      <nav className={`${appEntered ? "hidden sm:flex" : "hidden"} absolute left-0 top-0 bottom-0 z-40 w-16 flex-col items-center gap-1 border-r border-slate-800/60 bg-slate-950/90 backdrop-blur-lg pt-3 pb-3`}>
+      <nav role="tablist" aria-label="Main navigation" className={`${appEntered ? "hidden sm:flex" : "hidden"} absolute left-0 top-0 bottom-0 z-40 w-16 flex-col items-center gap-1 border-r border-slate-800/60 bg-slate-950/90 backdrop-blur-lg pt-3 pb-3`}>
         <div className="mb-3 flex flex-col items-center">
           <span className="text-base font-bold tracking-wider text-amber-400 glow-text select-none">TB</span>
           <span className="mt-0.5 h-px w-8 bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
@@ -433,6 +433,9 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           return (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={active}
+              aria-label={tab.label}
               onClick={() => handleTabChange(tab.id)}
               title={tab.label}
               data-testid={`nav-${tab.id}`}
@@ -458,12 +461,15 @@ export default function AppShell({ initialLocations }: AppShellProps) {
       </nav>
 
       {/* Mobile bottom tab bar — 5 visible tabs, "More" opens overflow */}
-      <nav className={`${appEntered ? "flex sm:hidden" : "hidden"} absolute bottom-0 left-0 right-0 z-40 items-stretch border-t border-slate-800/60 bg-slate-950/95 backdrop-blur-lg safe-area-bottom`}>
+      <nav role="tablist" aria-label="Main navigation" className={`${appEntered ? "flex sm:hidden" : "hidden"} absolute bottom-0 left-0 right-0 z-40 items-stretch border-t border-slate-800/60 bg-slate-950/95 backdrop-blur-lg safe-area-bottom`}>
         {visibleTabs.filter((t) => ["map", "search", "journal", "tools"].includes(t.id)).map((tab) => {
           const active = activeTab === tab.id;
           return (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={active}
+              aria-label={tab.label}
               onClick={() => { handleTabChange(tab.id); setShowMoreMenu(false); }}
               className={[
                 "relative flex min-w-[3.5rem] flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all duration-200",
