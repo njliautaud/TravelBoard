@@ -14,7 +14,7 @@ export async function GET() {
     // Filter out stale entries older than 7 days
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const fares = await prisma.fareCache.findMany({
-      where: { dealScore: { gte: 0.05 }, lastSeen: { gte: sevenDaysAgo } },
+      where: { lastSeen: { gte: sevenDaysAgo } },
       orderBy: { price: "asc" },
       select: {
         flyToCode: true,
@@ -48,13 +48,15 @@ export async function GET() {
       if (!cc3) continue;
 
       const price = Number(fare.price);
+      // Auto-classify tier when not scored: cheap < $200, fair < $500, splurge >= $500
+      const tier = fare.tier ?? (price < 200 ? "cheap" : price < 500 ? "fair" : "splurge");
       const existing = countryMap.get(cc3);
       if (!existing || price < existing.cheapestPrice) {
         countryMap.set(cc3, {
           countryCode: cc3,
           cheapestPrice: price,
-          tier: fare.tier ?? "fair",
-          bestDealScore: fare.dealScore ?? 0,
+          tier,
+          bestDealScore: fare.dealScore ?? 0.5,
         });
       }
     }

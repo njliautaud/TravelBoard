@@ -45,7 +45,6 @@ export async function GET(req: NextRequest) {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const where: Record<string, unknown> = {
-      dealScore: { gte: 0.15 },
       lastSeen: { gte: sevenDaysAgo },
     };
     if (originFilter) where.origin = originFilter;
@@ -56,7 +55,7 @@ export async function GET(req: NextRequest) {
 
     const fares = await prisma.fareCache.findMany({
       where,
-      orderBy: { dealScore: "desc" },
+      orderBy: { price: "asc" },
       take: Math.min(limit, 100),
       select: {
         origin: true,
@@ -74,13 +73,15 @@ export async function GET(req: NextRequest) {
         const destAirport = findAirport(f.flyToCode);
         if (!originAirport || !destAirport) return null;
 
+        const price = Number(f.price);
+        const tier = f.tier ?? (price < 200 ? "cheap" : price < 500 ? "fair" : "splurge");
         return {
           origin: f.origin,
           destination: f.flyToCode,
           destCity: f.destination,
-          price: Number(f.price),
-          dealScore: f.dealScore,
-          tier: f.tier,
+          price,
+          dealScore: f.dealScore ?? 0.5,
+          tier,
           originLat: originAirport.lat,
           originLon: originAirport.lon,
           destLat: destAirport.lat,

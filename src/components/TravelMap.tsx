@@ -541,6 +541,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
 
     map.on("load", async () => {
       const res = await fetch("/data/countries.geo.json");
+      if (!res.ok) { console.warn("Failed to load countries GeoJSON:", res.status); return; }
       const geo = await res.json();
       countriesRef.current = geo.features as GeoFeature[];
 

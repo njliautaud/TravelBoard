@@ -2,19 +2,16 @@
 # Lightweight auto-deploy to Cloudflare Pages
 # Called by post-commit hook and can be run manually
 # IMPORTANT: Uses a temp build dir so the server .next/ is never corrupted
-# NOTE: Static export strips Clerk (server actions incompatible with static export)
-#       Clerk auth works via the server-rendered version (PM2 travelboard process)
-#       The static site uses the tunnel to reach the server for auth
+# Clerk auth works client-side via @clerk/react (not @clerk/nextjs which needs server actions)
 set -euo pipefail
 cd /home/jupiter/TravelBoard
 
 source .env
 
-# Get tunnel URL
-TUNNEL_URL=$(pm2 logs travelboard-tunnel --lines 30 --nostream 2>&1 | grep -oP 'https://[a-z-]+\.trycloudflare\.com' | tail -1)
-TUNNEL_URL="${TUNNEL_URL:-https://documented-runtime-workflow-friends.trycloudflare.com}"
+# PERMANENT API URL — Cloudflare Worker proxy, never changes
+API_URL="https://travelboard-api.relentlessrobotics.workers.dev"
 
-echo "$(date) — Deploying to Cloudflare Pages (API: $TUNNEL_URL)"
+echo "$(date) — Deploying to Cloudflare Pages (API: $API_URL — permanent, no tunnel URL rotation)"
 
 # Build static in a temp directory to avoid corrupting the server .next/
 TMPDIR=$(mktemp -d)
@@ -26,21 +23,18 @@ rsync -a --exclude='.next' --exclude='node_modules' --exclude='.git' --exclude='
 # Symlink node_modules to avoid reinstalling
 ln -s /home/jupiter/TravelBoard/node_modules "$DEPLOY_DIR/node_modules"
 
-# Remove API routes and middleware for static build
+# Remove API routes, middleware, and admin page for static build
 rm -rf "$DEPLOY_DIR/src/app/api"
 mkdir -p "$DEPLOY_DIR/src/app/api"
 rm -f "$DEPLOY_DIR/src/middleware.ts"
+rm -rf "$DEPLOY_DIR/src/app/admin"
 
-# Remove sign-in/sign-up catch-all routes (they use Clerk dynamic imports)
-rm -rf "$DEPLOY_DIR/src/app/sign-in"
-rm -rf "$DEPLOY_DIR/src/app/sign-up"
-
-# Replace layout with Clerk-free version for static export
+# Replace layout: use dynamic imports to avoid SSR prerender crash with Clerk
 cat > "$DEPLOY_DIR/src/app/layout.tsx" << 'LAYOUT'
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import ApiPatchProvider from "@/components/ApiPatchProvider";
 import "./globals.css";
+import ClientShell from "@/components/ClientShell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -68,21 +62,107 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ApiPatchProvider>{children}</ApiPatchProvider>
+        <ClientShell>{children}</ClientShell>
       </body>
     </html>
   );
 }
 LAYOUT
 
-# Strip Clerk imports from AppShell (replace with no-ops)
-sed -i 's/import.*useClerkSafe.*/const useClerkUser = () => ({ user: null }); const useClerkAuth = () => ({ signOut: () => {} }); const CLERK_ENABLED = false;/' "$DEPLOY_DIR/src/components/AppShell.tsx"
-sed -i 's/import ClerkUserButton.*//' "$DEPLOY_DIR/src/components/AppShell.tsx"
+# Create a ClientShell that dynamically loads Clerk (avoids SSR prerender crash)
+cat > "$DEPLOY_DIR/src/components/ClientShell.tsx" << 'CLIENTSHELL'
+"use client";
 
-# Remove any remaining @clerk imports from components
-find "$DEPLOY_DIR/src" -name "*.tsx" -o -name "*.ts" | xargs sed -i 's/import.*@clerk.*//' 2>/dev/null || true
+import dynamic from "next/dynamic";
+import type { ReactNode } from "react";
+
+const ClerkClientProvider = dynamic(
+  () => import("@/components/ClerkClientProvider"),
+  { ssr: false }
+);
+
+const ApiPatchProvider = dynamic(
+  () => import("@/components/ApiPatchProvider"),
+  { ssr: false }
+);
+
+export default function ClientShell({ children }: { children: ReactNode }) {
+  return (
+    <ClerkClientProvider>
+      <ApiPatchProvider>{children}</ApiPatchProvider>
+    </ClerkClientProvider>
+  );
+}
+CLIENTSHELL
+
+# Replace sign-in page to use @clerk/react (dynamic import to avoid SSR prerender crash)
+cat > "$DEPLOY_DIR/src/app/sign-in/page.tsx" << 'SIGNIN'
+"use client";
+
+import dynamic from "next/dynamic";
+
+const SignIn = dynamic(
+  () => import("@clerk/react").then((mod) => mod.SignIn),
+  { ssr: false, loading: () => <div className="flex min-h-dvh items-center justify-center bg-slate-950"><p className="text-slate-400">Loading...</p></div> }
+);
+
+export default function SignInPage() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-slate-950">
+      <SignIn
+        routing="path"
+        path="/sign-in"
+        signUpUrl="/sign-up"
+        appearance={{
+          elements: {
+            rootBox: "mx-auto",
+            card: "bg-slate-950 border border-slate-700/70 shadow-2xl",
+          },
+        }}
+      />
+    </div>
+  );
+}
+SIGNIN
+
+# Replace sign-up page to use @clerk/react (dynamic import to avoid SSR prerender crash)
+cat > "$DEPLOY_DIR/src/app/sign-up/page.tsx" << 'SIGNUP'
+"use client";
+
+import dynamic from "next/dynamic";
+
+const SignUp = dynamic(
+  () => import("@clerk/react").then((mod) => mod.SignUp),
+  { ssr: false, loading: () => <div className="flex min-h-dvh items-center justify-center bg-slate-950"><p className="text-slate-400">Loading...</p></div> }
+);
+
+export default function SignUpPage() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-slate-950">
+      <SignUp
+        routing="path"
+        path="/sign-up"
+        signInUrl="/sign-in"
+        appearance={{
+          elements: {
+            rootBox: "mx-auto",
+            card: "bg-slate-950 border border-slate-700/70 shadow-2xl",
+          },
+        }}
+      />
+    </div>
+  );
+}
+SIGNUP
+
+# Replace ALL @clerk/nextjs imports with @clerk/react across source
+find "$DEPLOY_DIR/src" -name "*.tsx" -o -name "*.ts" | xargs sed -i 's|@clerk/nextjs|@clerk/react|g' 2>/dev/null || true
 
 # Hardcode static export config
+# IMPORTANT: optimize.minimize = false prevents SWC from mangling Clerk's
+# internal "packageName" variable (Next 15 uses SWC, NOT Terser, so the old
+# TerserPlugin.reserved approach does nothing).  Bundle is ~200KB larger but
+# the site actually works.
 cat > "$DEPLOY_DIR/next.config.ts" << 'NEXTCFG'
 import type { NextConfig } from "next";
 
@@ -92,11 +172,16 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
-  transpilePackages: ["@travelboard/core"],
+  transpilePackages: ["@travelboard/core", "@clerk/react", "@clerk/shared", "@clerk/themes"],
   webpack: (config) => {
     config.resolve.extensionAlias = {
       ".js": [".ts", ".tsx", ".js"],
     };
+    // Disable minification entirely for the static export.
+    // Next 15's SWC minifier mangles Clerk's internal "packageName" destructured
+    // parameter, causing "ReferenceError: packageName is not defined" at runtime.
+    // SWC has no "reserved" option like Terser, so we disable minimize instead.
+    config.optimization.minimize = false;
     return config;
   },
 };
@@ -104,9 +189,15 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 NEXTCFG
 
-# Build static in temp dir
+# Build static in temp dir — export all NEXT_PUBLIC_ vars for the build
 cd "$DEPLOY_DIR"
-NEXT_PUBLIC_API_URL="$TUNNEL_URL" NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="" npx next build 2>&1
+export NEXT_PUBLIC_API_URL="$API_URL"
+export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+export NEXT_PUBLIC_CLERK_SIGN_IN_URL
+export NEXT_PUBLIC_CLERK_SIGN_UP_URL
+export NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL
+export NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL
+npx next build 2>&1
 
 if [ ! -d "out" ]; then
   echo "ERROR: Static export did not produce out/ directory"
@@ -122,5 +213,9 @@ npx wrangler pages deploy "$DEPLOY_DIR/out/" --project-name travelboard --branch
 
 # Cleanup
 rm -rf "$TMPDIR"
+
+# Purge Cloudflare CDN cache so users never get stale HTML/JS
+# Pages doesn't have a zone, so we purge via the pages deployment (wrangler handles this)
+# Adding cache-control headers via _headers file in next deploy
 
 echo "$(date) — Deploy complete: https://travelboard-9q0.pages.dev"

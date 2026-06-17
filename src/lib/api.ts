@@ -9,32 +9,72 @@ export const API_BASE: string =
   process.env.NEXT_PUBLIC_API_URL ?? "";
 
 /**
- * Patch the global fetch so that any request to `/api/...` is rewritten to
- * `${API_BASE}/api/...` when API_BASE is set. This avoids touching every
- * single component that calls fetch.
+ * Patch the global fetch so that:
+ * 1. Any request to `/api/...` is rewritten to `${API_BASE}/api/...`
+ * 2. API responses that aren't OK get converted to proper error Responses
+ *    with JSON bodies, preventing crashes when components call `.json()`
+ *    on HTML error pages from the proxy/backend.
  *
  * Call this once from the root client layout / entry point.
  */
 export function installApiFetchPatch(): void {
-  if (typeof window === "undefined" || !API_BASE) return;
+  if (typeof window === "undefined") return;
 
   const originalFetch = window.fetch.bind(window);
 
-  window.fetch = function patchedFetch(
+  window.fetch = async function patchedFetch(
     input: RequestInfo | URL,
     init?: RequestInit,
   ): Promise<Response> {
+    // Determine if this is an API call
+    let isApiCall = false;
     if (typeof input === "string" && input.startsWith("/api/")) {
-      input = `${API_BASE}${input}`;
+      isApiCall = true;
+      if (API_BASE) input = `${API_BASE}${input}`;
     } else if (input instanceof URL && input.pathname.startsWith("/api/")) {
-      input = new URL(`${API_BASE}${input.pathname}${input.search}${input.hash}`);
+      isApiCall = true;
+      if (API_BASE) input = new URL(`${API_BASE}${input.pathname}${input.search}${input.hash}`);
     } else if (input instanceof Request && new URL(input.url).pathname.startsWith("/api/")) {
-      const url = new URL(input.url);
-      input = new Request(
-        `${API_BASE}${url.pathname}${url.search}${url.hash}`,
-        input,
-      );
+      isApiCall = true;
+      if (API_BASE) {
+        const url = new URL(input.url);
+        input = new Request(
+          `${API_BASE}${url.pathname}${url.search}${url.hash}`,
+          input,
+        );
+      }
     }
-    return originalFetch(input, init);
+
+    let response: Response;
+    try {
+      response = await originalFetch(input, init);
+    } catch (err) {
+      // Network error — return a synthetic JSON error response for API calls
+      if (isApiCall) {
+        return new Response(
+          JSON.stringify({ error: "Network error", detail: String(err) }),
+          { status: 0, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      throw err;
+    }
+
+    // For API calls, ensure error responses are JSON (not HTML error pages)
+    if (isApiCall && !response.ok) {
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        // Backend or proxy returned an HTML error page — convert to JSON
+        return new Response(
+          JSON.stringify({ error: `API error ${response.status}`, status: response.status }),
+          {
+            status: response.status,
+            statusText: response.statusText,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+    }
+
+    return response;
   } as typeof window.fetch;
 }
