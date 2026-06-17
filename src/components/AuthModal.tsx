@@ -8,9 +8,11 @@ interface AuthModalProps {
   onClose: () => void;
   onSuccess: (user: SessionUser) => void;
   initialMode?: "login" | "register";
+  /** If true, user cannot dismiss — login is required (HC #631) */
+  required?: boolean;
 }
 
-export default function AuthModal({ open, onClose, onSuccess, initialMode = "login" }: AuthModalProps) {
+export default function AuthModal({ open, onClose, onSuccess, initialMode = "login", required = false }: AuthModalProps) {
   const [mode, setMode] = useState<"login" | "register">(initialMode);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -58,7 +60,7 @@ export default function AuthModal({ open, onClose, onSuccess, initialMode = "log
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !required) onClose();
       }}
     >
       <form
@@ -114,13 +116,15 @@ export default function AuthModal({ open, onClose, onSuccess, initialMode = "log
           >
             {mode === "login" ? "Need an account? Sign up" : "Already have an account? Log in"}
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-xs text-slate-500 transition hover:text-slate-300"
-          >
-            Cancel
-          </button>
+          {!required && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-xs text-slate-500 transition hover:text-slate-300"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </form>
     </div>

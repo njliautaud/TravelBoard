@@ -139,17 +139,12 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             })
             .catch(() => setAppEntered(true));
         } else {
-          // Not logged in — check localStorage for entered state
-          const entered = localStorage.getItem("tb_entered") === "1";
-          if (entered) {
-            setAppEntered(true);
-          }
+          // Not logged in — stay on landing page (HC #631: login required)
+          // Do NOT auto-enter from localStorage
         }
       })
       .catch(() => {
-        // API unavailable — allow entry with localStorage check
-        const entered = typeof window !== "undefined" && localStorage.getItem("tb_entered") === "1";
-        if (entered) setAppEntered(true);
+        // API unavailable — stay on landing, require login
       });
   }, []);
 
@@ -237,24 +232,17 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             >
               Log in
             </button>
-            <button
-              onClick={() => {
-                setAppEntered(true);
-                if (typeof window !== "undefined") localStorage.setItem("tb_entered", "1");
-              }}
-              className="text-xs text-slate-500 hover:text-slate-400 transition underline underline-offset-2"
-            >
-              Explore as guest
-            </button>
+            {/* Login required — no guest access (HC #631) */}
           </div>
         </div>
       )}
 
-      {/* Auth modal */}
+      {/* Auth modal — non-dismissable when not logged in (HC #631: login required) */}
       {showAuth && (
         <AuthModal
           open={showAuth}
-          onClose={() => setShowAuth(false)}
+          onClose={() => { if (currentUser) setShowAuth(false); }}
+          required={!currentUser}
           onSuccess={(user: SessionUser) => {
             setCurrentUser(user);
             setShowAuth(false);
