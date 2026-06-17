@@ -15,7 +15,7 @@ type ClerkAuth = ReturnType<typeof _useAuth>;
 const FALLBACK_USER: ClerkUser = {
   isLoaded: true,
   isSignedIn: false,
-  user: undefined,
+  user: null,
 } as ClerkUser;
 
 const FALLBACK_AUTH: ClerkAuth = {

@@ -16,7 +16,7 @@ export default function SharedJournalPage() {
         </p>
         <Link
           href="/"
-          className="mt-6 inline-block px-6 py-3 bg-blue-600 rounded-lg hover:bg-blue-500 transition"
+          className="mt-6 inline-block px-6 py-3 bg-amber-500 text-slate-950 font-semibold rounded-lg hover:bg-amber-400 transition"
         >
           &larr; Back to TravelBoard
         </Link>

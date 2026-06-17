@@ -46,7 +46,6 @@ export default function RootLayout({
               variables: {
                 colorPrimary: "#f59e0b",        // amber-500
                 colorBackground: "#020617",      // slate-950
-                colorInputBackground: "#0f172a", // slate-900
                 colorText: "#e2e8f0",            // slate-200
               },
             }}
