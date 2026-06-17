@@ -267,7 +267,7 @@ export default function DealsMapPanel({
   const [selectedDeal, setSelectedDeal] = useState<DealItem | null>(null);
   const [collapsed, setCollapsed] = useState(false);
 
-  // Load default origin
+  // Load default origin — try settings first, fall back to localStorage prefs
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
@@ -275,10 +275,36 @@ export default function DealsMapPanel({
         const airports: string[] = data?.settings?.homeAirports ?? [];
         if (airports.length > 0 && !origin) {
           setOrigin(airports[0]!);
+        } else if (!origin) {
+          // Fall back to onboarding prefs in localStorage
+          try {
+            const raw = localStorage.getItem("tb_prefs");
+            if (raw) {
+              const prefs = JSON.parse(raw);
+              if (prefs.homeAirport) setOrigin(prefs.homeAirport.toUpperCase());
+              else setOrigin("MCO"); // Ultimate default
+            } else {
+              setOrigin("MCO");
+            }
+          } catch {
+            setOrigin("MCO");
+          }
         }
       })
       .catch(() => {
-        // API unavailable — no default origin
+        // API unavailable — use localStorage or default
+        try {
+          const raw = localStorage.getItem("tb_prefs");
+          if (raw) {
+            const prefs = JSON.parse(raw);
+            if (prefs.homeAirport) setOrigin(prefs.homeAirport.toUpperCase());
+            else setOrigin("MCO");
+          } else {
+            setOrigin("MCO");
+          }
+        } catch {
+          setOrigin("MCO");
+        }
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

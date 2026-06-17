@@ -44,6 +44,10 @@ model User {
   cabin           String     @default("any")
   nonstopOnly     Boolean    @default(false)
   tripStyles      String     @default("[]")
+  flightPref      String     @default("both")   /// "international", "domestic", "both"
+  loyaltyPrograms String     @default("[]")      /// JSON array of program IDs
+  heldCards       String     @default("[]")      /// JSON array of card IDs
+  onboarded       Boolean    @default(false)
   locations    Location[]
   drafts       Draft[]
   createdAt    DateTime   @default(now())

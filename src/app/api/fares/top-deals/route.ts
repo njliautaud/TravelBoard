@@ -91,6 +91,21 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Assign basic deal scores to unscored cash deals based on price ranking
+    // Lower price within the cash set = higher score
+    if (cashDeals.length > 0) {
+      const prices = cashDeals.map((d) => d.price).sort((a, b) => a - b);
+      const maxPrice = prices[prices.length - 1] ?? 1;
+      const minPrice = prices[0] ?? 0;
+      const range = maxPrice - minPrice || 1;
+      for (const deal of cashDeals) {
+        if (deal.dealScore == null) {
+          // Score 0.3–0.8 based on relative cheapness (lower price = higher score)
+          deal.dealScore = 0.3 + 0.5 * (1 - (deal.price - minPrice) / range);
+        }
+      }
+    }
+
     // Intermix: sort by dealScore descending, awards and cash together
     const allDeals = [...cashDeals, ...awardItems]
       .sort((a, b) => (b.dealScore ?? 0) - (a.dealScore ?? 0))

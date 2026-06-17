@@ -1,6 +1,8 @@
 // Client-safe helper (no sharp import) for routing social thumbnails through
 // the play-button removal proxy.
 
+import { API_BASE } from "./api";
+
 const SOCIAL_CDN_RE =
   /(cdninstagram\.com|fbcdn\.net|tiktokcdn|ytimg\.com|sndcdn\.com|akamaihd\.net)/i;
 
@@ -12,7 +14,7 @@ export function cleanThumb(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
   try {
     if (SOCIAL_CDN_RE.test(new URL(url).hostname)) {
-      return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+      return `${API_BASE}/api/image-proxy?url=${encodeURIComponent(url)}`;
     }
   } catch {
     /* not a valid URL */

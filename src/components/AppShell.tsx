@@ -10,10 +10,11 @@ import CommunityView from "./CommunityView";
 import AlertsPanel, { AlertBellBadge } from "./AlertsPanel";
 import { ErrorBoundary, CalendarSkeleton } from "./ErrorBoundary";
 import { Changelog, useUnseenChangelog } from "./Changelog";
-import { loadLocalPrefs, DEFAULT_PREFS, type TravelPrefsDto } from "./Onboarding";
+import { loadLocalPrefs, DEFAULT_PREFS, type TravelPrefsDto, OnboardingWizard, type OnboardingData } from "./Onboarding";
+import AuthModal from "./AuthModal";
 import UserProfile from "./UserProfile";
 import ActivityFeed from "./ActivityFeed";
-import type { LocationItem } from "@/lib/types";
+import type { LocationItem, SessionUser } from "@/lib/types";
 import { getDemoMode } from "@/lib/demoData";
 
 type Tab = "map" | "search" | "alerts" | "journal" | "tools" | "community" | "settings";
@@ -108,20 +109,48 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [prefs, setPrefs] = useState<TravelPrefsDto>(DEFAULT_PREFS);
   const [appEntered, setAppEntered] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
 
   // Map always shows deals — unified experience, no separate deals tab
   const dealsMode = activeTab === "map";
 
-  // Check if first visit for onboarding, or if user has already "entered" the app
+  // Check auth + onboarding status on mount
   useEffect(() => {
-    const { prefs: loadedPrefs, onboarded } = loadLocalPrefs();
+    const { prefs: loadedPrefs } = loadLocalPrefs();
     setPrefs(loadedPrefs);
-    const entered = typeof window !== "undefined" && localStorage.getItem("tb_entered") === "1";
-    if (entered) {
-      setAppEntered(true);
-    }
-    // Skip onboarding wizard on first visit — the landing splash is cleaner.
-    // Users can always access preferences from Settings.
+
+    // Check if user is logged in
+    fetch("/api/auth/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.user) {
+          setCurrentUser(data.user);
+          // Check onboarding status
+          fetch("/api/onboarding")
+            .then((r) => r.json())
+            .then((ob) => {
+              if (ob.onboarded) {
+                setAppEntered(true);
+              } else {
+                setShowOnboarding(true);
+              }
+            })
+            .catch(() => setAppEntered(true));
+        } else {
+          // Not logged in — check localStorage for entered state
+          const entered = localStorage.getItem("tb_entered") === "1";
+          if (entered) {
+            setAppEntered(true);
+          }
+        }
+      })
+      .catch(() => {
+        // API unavailable — allow entry with localStorage check
+        const entered = typeof window !== "undefined" && localStorage.getItem("tb_entered") === "1";
+        if (entered) setAppEntered(true);
+      });
   }, []);
 
   // Poll unread alert count periodically (skip in demo mode)
@@ -150,11 +179,9 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   // Map is the primary view — everything else overlays on top
   const isOverlay = activeTab !== "map";
 
-  // In demo mode, hide tabs that require a backend
-  const isDemo = getDemoMode();
-  const visibleTabs = isDemo
-    ? TABS.filter((t) => !["alerts", "community"].includes(t.id))
-    : TABS;
+  // Always show all tabs — hiding them based on demo mode caused flickering
+  // when auth state changed asynchronously. Features degrade gracefully instead.
+  const visibleTabs = TABS;
 
   return (
     <div className="relative flex h-dvh w-full overflow-hidden">
@@ -195,15 +222,70 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             </div>
             <button
               onClick={() => {
-                setAppEntered(true);
-                if (typeof window !== "undefined") localStorage.setItem("tb_entered", "1");
+                // Show auth/onboarding flow
+                setShowAuth(true);
               }}
               className="mt-1 w-full rounded-2xl bg-amber-500 px-8 py-3.5 text-base font-bold text-slate-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-400 hover:shadow-amber-400/30 active:scale-95"
             >
-              Explore Deals
+              Get Started
+            </button>
+            <button
+              onClick={() => {
+                setShowAuth(true);
+              }}
+              className="w-full rounded-2xl border border-slate-700 px-8 py-3 text-sm font-medium text-slate-300 transition hover:border-slate-600 hover:text-slate-100"
+            >
+              Log in
+            </button>
+            <button
+              onClick={() => {
+                setAppEntered(true);
+                if (typeof window !== "undefined") localStorage.setItem("tb_entered", "1");
+              }}
+              className="text-xs text-slate-500 hover:text-slate-400 transition underline underline-offset-2"
+            >
+              Explore as guest
             </button>
           </div>
         </div>
+      )}
+
+      {/* Auth modal */}
+      {showAuth && (
+        <AuthModal
+          open={showAuth}
+          onClose={() => setShowAuth(false)}
+          onSuccess={(user: SessionUser) => {
+            setCurrentUser(user);
+            setShowAuth(false);
+            // Check if they need onboarding
+            fetch("/api/onboarding")
+              .then((r) => r.json())
+              .then((ob) => {
+                if (ob.onboarded) {
+                  setAppEntered(true);
+                  localStorage.setItem("tb_entered", "1");
+                } else {
+                  setShowOnboarding(true);
+                }
+              })
+              .catch(() => {
+                setShowOnboarding(true);
+              });
+          }}
+          initialMode="register"
+        />
+      )}
+
+      {/* Onboarding wizard */}
+      {showOnboarding && (
+        <OnboardingWizard
+          onComplete={(_data: OnboardingData) => {
+            setShowOnboarding(false);
+            setAppEntered(true);
+            if (typeof window !== "undefined") localStorage.setItem("tb_entered", "1");
+          }}
+        />
       )}
 
       {/* Overlay panel for non-map tabs — slides over the map with backdrop blur */}
@@ -263,8 +345,8 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           <span className="text-base font-bold tracking-wider text-amber-400 glow-text select-none">TB</span>
           <span className="mt-0.5 h-px w-8 bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
         </div>
-        {/* Profile / Activity / Changelog — hidden in demo mode */}
-        {!isDemo && (
+        {/* Profile / Activity / Changelog */}
+        {(
           <>
             <button
               onClick={() => setShowProfile(true)}

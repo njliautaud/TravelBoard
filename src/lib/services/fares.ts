@@ -143,12 +143,13 @@ export async function getCachedFares(
 export async function findTopDeals(
   origin?: string,
   limit = 25,
-  minDealScore = 0.10,
+  _minDealScore = 0.10,
 ): Promise<TopDeal[]> {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const where: Record<string, unknown> = {};
   if (origin) where.origin = origin;
-  where.dealScore = { gte: minDealScore };
+  // Include deals with null dealScore (Kiwi fares don't always have scores yet)
+  // Filter by score client-side after fetching, so we don't exclude unscored deals
   where.lastSeen = { gte: sevenDaysAgo };
 
   const rows = await prisma.fareCache.findMany({
