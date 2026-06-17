@@ -87,6 +87,12 @@ const FLIGHT_PREF_OPTIONS = [
   { id: "both", label: "Both", desc: "Show me everything" },
 ] as const;
 
+const DISTANCE_PREF_OPTIONS = [
+  { id: "farther", label: "Farther is better", desc: "I love long-haul flights and far-flung destinations" },
+  { id: "nearby", label: "Keep it close", desc: "Shorter flights, quicker getaways" },
+  { id: "no_preference", label: "No preference", desc: "Distance doesn't matter to me" },
+] as const;
+
 // Credit card programs (transferable currencies + popular co-brands)
 const CARD_PROGRAMS = [
   // Transferable currencies
@@ -135,6 +141,7 @@ const HOTEL_PROGRAMS = [
 export interface OnboardingData {
   airports: string[];
   flightPref: "international" | "domestic" | "both";
+  distancePref: "farther" | "nearby" | "no_preference";
   loyaltyPrograms: string[];
 }
 
@@ -153,6 +160,7 @@ export function OnboardingWizard({
   const [step, setStep] = useState(0);
   const [airports, setAirports] = useState<string[]>([]);
   const [flightPref, setFlightPref] = useState<"international" | "domestic" | "both">("both");
+  const [distancePref, setDistancePref] = useState<"farther" | "nearby" | "no_preference">("no_preference");
   const [loyaltyPrograms, setLoyaltyPrograms] = useState<string[]>([]);
   const [airportSearch, setAirportSearch] = useState("");
 
@@ -180,7 +188,7 @@ export function OnboardingWizard({
   }, [airportSearch]);
 
   const finish = () => {
-    const data: OnboardingData = { airports, flightPref, loyaltyPrograms };
+    const data: OnboardingData = { airports, flightPref, distancePref, loyaltyPrograms };
     // Save to localStorage for immediate use
     try {
       localStorage.setItem(ONBOARDED_LS_KEY, "1");
@@ -189,7 +197,7 @@ export function OnboardingWizard({
         JSON.stringify({
           ...DEFAULT_PREFS,
           homeAirport: airports[0] ?? "MCO",
-          preferFarther: flightPref === "international",
+          preferFarther: distancePref === "farther" || flightPref === "international",
         }),
       );
     } catch {}
@@ -347,22 +355,27 @@ export function OnboardingWizard({
             </div>
           )}
 
-          {/* STEP 2: International vs Domestic */}
+          {/* STEP 2: International vs Domestic + Distance Preference */}
           {step === 1 && (
             <div>
               <h3 className="text-base font-bold text-slate-100 mb-1">
-                Do you prefer international or domestic flights?
+                What kind of flights do you prefer?
               </h3>
-              <p className="text-xs text-slate-400 mb-5">
+              <p className="text-xs text-slate-400 mb-4">
                 This helps us prioritize the right deals for you.
               </p>
-              <div className="space-y-3">
+
+              {/* International / Domestic */}
+              <div className="space-y-2.5 mb-5">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Destination type
+                </span>
                 {FLIGHT_PREF_OPTIONS.map((opt) => (
                   <button
                     key={opt.id}
                     type="button"
                     onClick={() => setFlightPref(opt.id)}
-                    className={`w-full flex items-center gap-4 rounded-xl border px-5 py-4 text-left transition ${
+                    className={`w-full flex items-center gap-4 rounded-xl border px-5 py-3.5 text-left transition ${
                       flightPref === opt.id
                         ? "border-amber-500/50 bg-amber-500/10 shadow-[0_0_10px_rgba(245,158,11,0.1)]"
                         : "border-slate-700/60 bg-slate-900/60 hover:border-slate-600 hover:bg-slate-800/60"
@@ -383,6 +396,45 @@ export function OnboardingWizard({
                     </div>
                     <div>
                       <div className={`text-sm font-semibold ${flightPref === opt.id ? "text-amber-200" : "text-slate-200"}`}>
+                        {opt.label}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">{opt.desc}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Distance preference */}
+              <div className="space-y-2.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  How far do you want to go?
+                </span>
+                {DISTANCE_PREF_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setDistancePref(opt.id)}
+                    className={`w-full flex items-center gap-4 rounded-xl border px-5 py-3.5 text-left transition ${
+                      distancePref === opt.id
+                        ? "border-teal-500/50 bg-teal-500/10 shadow-[0_0_10px_rgba(20,184,166,0.1)]"
+                        : "border-slate-700/60 bg-slate-900/60 hover:border-slate-600 hover:bg-slate-800/60"
+                    }`}
+                  >
+                    <div
+                      className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition ${
+                        distancePref === opt.id
+                          ? "border-teal-400 bg-teal-400"
+                          : "border-slate-600"
+                      }`}
+                    >
+                      {distancePref === opt.id && (
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="text-slate-950">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <div className={`text-sm font-semibold ${distancePref === opt.id ? "text-teal-200" : "text-slate-200"}`}>
                         {opt.label}
                       </div>
                       <div className="text-xs text-slate-400 mt-0.5">{opt.desc}</div>

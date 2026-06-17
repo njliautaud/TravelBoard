@@ -17,8 +17,12 @@ export const API_BASE: string =
  *
  * Call this once from the root client layout / entry point.
  */
+let _patchInstalled = false;
+
 export function installApiFetchPatch(): void {
   if (typeof window === "undefined") return;
+  if (_patchInstalled) return;
+  _patchInstalled = true;
 
   const originalFetch = window.fetch.bind(window);
 
@@ -78,3 +82,8 @@ export function installApiFetchPatch(): void {
     return response;
   } as typeof window.fetch;
 }
+
+// Auto-install the patch as soon as this module is imported on the client.
+// This eliminates the race condition where child component useEffect hooks
+// fire fetch calls before the ApiPatchProvider useEffect installs the patch.
+installApiFetchPatch();

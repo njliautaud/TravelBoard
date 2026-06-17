@@ -309,3 +309,276 @@ Uploading... (46/46)
 🌎 Deploying...
 ✨ Deployment complete! Take a peek over at https://381e4bbc.travelboard-9q0.pages.dev
 Tue Jun 16 09:58:19 PM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev
+Tue Jun 16 10:03:15 PM EDT 2026 — Deploying to Cloudflare Pages (API: https://absorption-slideshow-labeled-decade.trycloudflare.com)
+   ▲ Next.js 15.3.3
+   - Environments: .env
+
+   Creating an optimized production build ...
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (218kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled successfully in 11.0s
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/6) ...
+   Generating static pages (1/6) 
+   Generating static pages (2/6) 
+   Generating static pages (4/6) 
+ ✓ Generating static pages (6/6)
+   Finalizing page optimization ...
+   Collecting build traces ...
+ ⚠ Statically exporting a Next.js application via `next export` disables API routes and middleware.
+This command is meant for static-only hosts, and is not necessary to make your application static.
+Pages in your application without server-side data dependencies will be automatically statically exported by `next build`, including pages powered by `getStaticProps`.
+Learn more: https://nextjs.org/docs/messages/api-routes-static-export
+   Exporting (0/4) ...
+   Exporting (1/4) 
+   Exporting (2/4) 
+   Exporting (3/4) 
+ ✓ Exporting (4/4)
+
+Route (app)                                  Size  First Load JS
+┌ ○ /                                      343 kB         445 kB
+├ ○ /_not-found                             140 B         101 kB
+├ ○ /admin                                1.79 kB         106 kB
+└ ● /journal/[id]                           172 B         105 kB
++ First Load JS shared by all              101 kB
+  ├ chunks/495-f82de8452af722ea.js        46.1 kB
+  ├ chunks/6ad05b90-ec5fd046e00294ca.js   53.2 kB
+  └ other shared chunks (total)           1.87 kB
+
+Route (pages)                                Size  First Load JS
+─   /_app                                     0 B        93.4 kB
++ First Load JS shared by all             93.4 kB
+  ├ chunks/framework-43eecf830e17037a.js  57.7 kB
+  ├ chunks/main-ec6e3e3ea73385ac.js       33.8 kB
+  └ other shared chunks (total)           1.94 kB
+
+ƒ Middleware                              90.2 kB
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+ ⛅️ wrangler 4.101.0
+────────────────────
+Uploading... (37/46)
+Uploading... (40/46)
+Uploading... (43/46)
+Uploading... (46/46)
+✨ Success! Uploaded 9 files (37 already uploaded) (1.24 sec)
+
+🌎 Deploying...
+✨ Deployment complete! Take a peek over at https://629f5e7a.travelboard-9q0.pages.dev
+Tue Jun 16 10:03:41 PM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev
+Wed Jun 17 10:22:37 AM EDT 2026 — Deploying to Cloudflare Pages (API: https://travelboard-api.relentlessrobotics.workers.dev — permanent, no tunnel URL rotation)
+   ▲ Next.js 15.3.3
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ⚠ Production code optimization has been disabled in your project. Read more: https://nextjs.org/docs/messages/minification-disabled
+ ✓ Compiled successfully in 8.0s
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/8) ...
+   Generating static pages (2/8) 
+   Generating static pages (4/8) 
+   Generating static pages (6/8) 
+ ✓ Generating static pages (8/8)
+   Finalizing page optimization ...
+   Collecting build traces ...
+   Exporting (0/4) ...
+   Exporting (1/4) 
+   Exporting (2/4) 
+   Exporting (3/4) 
+ ✓ Exporting (4/4)
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                     502 kB         716 kB
+├ ○ /_not-found                            241 B         214 kB
+├ ○ /journal                               310 B         221 kB
+├ ● /journal/[id]                          310 B         221 kB
+├ ○ /sign-in                             3.54 kB         217 kB
+└ ○ /sign-up                             3.54 kB         217 kB
++ First Load JS shared by all             214 kB
+  ├ chunks/495-3fd3f58b7f639659.js        118 kB
+  ├ chunks/6ad05b90-ee512a2c4f71b4c1.js  92.2 kB
+  └ other shared chunks (total)          4.03 kB
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+ ⛅️ wrangler 4.101.0
+────────────────────
+Uploading... (32/56)
+Uploading... (40/56)
+Uploading... (48/56)
+Uploading... (56/56)
+✨ Success! Uploaded 24 files (32 already uploaded) (2.35 sec)
+
+✨ Uploading _headers
+✨ Uploading _redirects
+🌎 Deploying...
+✨ Deployment complete! Take a peek over at https://3e49a5f6.travelboard-9q0.pages.dev
+Wed Jun 17 10:23:08 AM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev
+Wed Jun 17 10:25:57 AM EDT 2026 — Deploying to Cloudflare Pages (API: https://travelboard-api.relentlessrobotics.workers.dev — permanent, no tunnel URL rotation)
+   ▲ Next.js 15.3.3
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ⚠ Production code optimization has been disabled in your project. Read more: https://nextjs.org/docs/messages/minification-disabled
+ ✓ Compiled successfully in 8.0s
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/8) ...
+   Generating static pages (2/8) 
+   Generating static pages (4/8) 
+   Generating static pages (6/8) 
+ ✓ Generating static pages (8/8)
+   Finalizing page optimization ...
+   Collecting build traces ...
+   Exporting (0/4) ...
+   Exporting (1/4) 
+   Exporting (2/4) 
+   Exporting (3/4) 
+ ✓ Exporting (4/4)
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                     503 kB         716 kB
+├ ○ /_not-found                            241 B         214 kB
+├ ○ /journal                               310 B         221 kB
+├ ● /journal/[id]                          310 B         221 kB
+├ ○ /sign-in                             3.54 kB         217 kB
+└ ○ /sign-up                             3.53 kB         217 kB
++ First Load JS shared by all             214 kB
+  ├ chunks/495-3fd3f58b7f639659.js        118 kB
+  ├ chunks/6ad05b90-ee512a2c4f71b4c1.js  92.2 kB
+  └ other shared chunks (total)          4.03 kB
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+ ⛅️ wrangler 4.101.0
+────────────────────
+Uploading... (41/56)
+Uploading... (46/56)
+Uploading... (51/56)
+Uploading... (56/56)
+✨ Success! Uploaded 15 files (41 already uploaded) (2.36 sec)
+
+✨ Uploading _headers
+✨ Uploading _redirects
+🌎 Deploying...
+✨ Deployment complete! Take a peek over at https://08bc1c97.travelboard-9q0.pages.dev
+Wed Jun 17 10:26:23 AM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev
+Wed Jun 17 10:27:55 AM EDT 2026 — Deploying to Cloudflare Pages (API: https://travelboard-api.relentlessrobotics.workers.dev — permanent, no tunnel URL rotation)
+   ▲ Next.js 15.3.3
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ⚠ Production code optimization has been disabled in your project. Read more: https://nextjs.org/docs/messages/minification-disabled
+ ✓ Compiled successfully in 8.0s
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/8) ...
+   Generating static pages (2/8) 
+   Generating static pages (4/8) 
+   Generating static pages (6/8) 
+ ✓ Generating static pages (8/8)
+   Finalizing page optimization ...
+   Collecting build traces ...
+   Exporting (0/4) ...
+   Exporting (1/4) 
+   Exporting (2/4) 
+   Exporting (3/4) 
+ ✓ Exporting (4/4)
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                     503 kB         716 kB
+├ ○ /_not-found                            241 B         214 kB
+├ ○ /journal                               310 B         221 kB
+├ ● /journal/[id]                          310 B         221 kB
+├ ○ /sign-in                             3.54 kB         217 kB
+└ ○ /sign-up                             3.54 kB         217 kB
++ First Load JS shared by all             214 kB
+  ├ chunks/495-3fd3f58b7f639659.js        118 kB
+  ├ chunks/6ad05b90-ee512a2c4f71b4c1.js  92.2 kB
+  └ other shared chunks (total)          4.03 kB
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+ ⛅️ wrangler 4.101.0
+────────────────────
+Uploading... (40/56)
+Uploading... (45/56)
+Uploading... (51/56)
+Uploading... (56/56)
+✨ Success! Uploaded 16 files (40 already uploaded) (2.05 sec)
+
+✨ Uploading _headers
+✨ Uploading _redirects
+🌎 Deploying...
+✨ Deployment complete! Take a peek over at https://52a5ea4c.travelboard-9q0.pages.dev
+Wed Jun 17 10:28:20 AM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev
+Wed Jun 17 10:40:59 AM EDT 2026 — Deploying to Cloudflare Pages (API: https://travelboard-api.relentlessrobotics.workers.dev — permanent, no tunnel URL rotation)
+   ▲ Next.js 15.3.3
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ⚠ Production code optimization has been disabled in your project. Read more: https://nextjs.org/docs/messages/minification-disabled
+ ✓ Compiled successfully in 8.0s
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/8) ...
+   Generating static pages (2/8) 
+   Generating static pages (4/8) 
+   Generating static pages (6/8) 
+ ✓ Generating static pages (8/8)
+   Finalizing page optimization ...
+   Collecting build traces ...
+   Exporting (0/4) ...
+   Exporting (1/4) 
+   Exporting (2/4) 
+   Exporting (3/4) 
+ ✓ Exporting (4/4)
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                     503 kB         716 kB
+├ ○ /_not-found                            241 B         214 kB
+├ ○ /journal                               310 B         221 kB
+├ ● /journal/[id]                          310 B         221 kB
+├ ○ /sign-in                             3.54 kB         217 kB
+└ ○ /sign-up                             3.53 kB         217 kB
++ First Load JS shared by all             214 kB
+  ├ chunks/495-3fd3f58b7f639659.js        118 kB
+  ├ chunks/6ad05b90-ee512a2c4f71b4c1.js  92.2 kB
+  └ other shared chunks (total)          4.03 kB
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+ ⛅️ wrangler 4.101.0
+────────────────────
+Uploading... (41/56)
+Uploading... (46/56)
+Uploading... (51/56)
+Uploading... (56/56)
+✨ Success! Uploaded 15 files (41 already uploaded) (1.57 sec)
+
+✨ Uploading _headers
+✨ Uploading _redirects
+🌎 Deploying...
+✨ Deployment complete! Take a peek over at https://1874b92c.travelboard-9q0.pages.dev
+Wed Jun 17 10:41:24 AM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev

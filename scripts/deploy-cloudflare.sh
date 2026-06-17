@@ -205,11 +205,16 @@ if [ ! -d "out" ]; then
   exit 1
 fi
 
-# Deploy from temp dir
-cd /home/jupiter/TravelBoard
+# Copy Pages Functions alongside the output directory for wrangler to compile
+if [ -d "/home/jupiter/TravelBoard/functions" ]; then
+  cp -r /home/jupiter/TravelBoard/functions "$DEPLOY_DIR/functions"
+fi
+
+# Deploy from the parent of out/ so wrangler finds both out/ and functions/
+cd "$DEPLOY_DIR"
 export CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_KEY"
 export CLOUDFLARE_ACCOUNT_ID
-npx wrangler pages deploy "$DEPLOY_DIR/out/" --project-name travelboard --branch main --commit-dirty=true 2>&1
+npx wrangler pages deploy out/ --project-name travelboard --branch main --commit-dirty=true 2>&1
 
 # Cleanup
 rm -rf "$TMPDIR"

@@ -12,6 +12,7 @@ export async function POST(req: NextRequest) {
   let body: {
     airports?: string[];
     flightPref?: string;
+    distancePref?: string;
     loyaltyPrograms?: string[];
   };
   try {
@@ -26,9 +27,14 @@ export async function POST(req: NextRequest) {
   const flightPref = ["international", "domestic", "both"].includes(body.flightPref ?? "")
     ? body.flightPref!
     : "both";
+  const distancePref = ["farther", "nearby", "no_preference"].includes(body.distancePref ?? "")
+    ? body.distancePref!
+    : "no_preference";
   const loyaltyPrograms = Array.isArray(body.loyaltyPrograms)
     ? body.loyaltyPrograms.filter((p): p is string => typeof p === "string")
     : [];
+  // Derive preferFarther from distance preference for backward compatibility
+  const preferFarther = distancePref === "farther";
 
   // Try to find existing user, or create one
   let session = await getSessionUser();

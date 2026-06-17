@@ -306,45 +306,60 @@ function greatCircleArc(
   return pts;
 }
 
-/** Build GeoJSON for deal flight arcs. */
+/** Build GeoJSON for deal flight arcs. Top 5 routes are marked as "hero" for emphasis. */
 function dealArcsGeoJson(routes: DealRoute[]) {
+  // Sort by dealScore desc to determine top 5
+  const ranked = [...routes].sort((a, b) => (b.dealScore ?? 0) - (a.dealScore ?? 0));
+  const heroIds = new Set(ranked.slice(0, 5).map((r) => `${r.origin}-${r.destination}`));
+
   return {
     type: "FeatureCollection" as const,
-    features: routes.map((r, i) => ({
-      type: "Feature" as const,
-      properties: {
-        id: `${r.origin}-${r.destination}`,
-        price: r.price,
-        tier: r.tier ?? "fair",
-        destCity: r.destCity,
-        dealScore: r.dealScore ?? 0,
-      },
-      geometry: {
-        type: "LineString" as const,
-        coordinates: greatCircleArc(r.originLon, r.originLat, r.destLon, r.destLat),
-      },
-    })),
+    features: routes.map((r) => {
+      const id = `${r.origin}-${r.destination}`;
+      return {
+        type: "Feature" as const,
+        properties: {
+          id,
+          price: r.price,
+          tier: r.tier ?? "fair",
+          destCity: r.destCity,
+          dealScore: r.dealScore ?? 0,
+          isHero: heroIds.has(id) ? 1 : 0,
+        },
+        geometry: {
+          type: "LineString" as const,
+          coordinates: greatCircleArc(r.originLon, r.originLat, r.destLon, r.destLat),
+        },
+      };
+    }),
   };
 }
 
-/** Build GeoJSON for deal destination endpoint dots (for price labels). */
+/** Build GeoJSON for deal destination endpoint dots (for price labels). Top 5 get hero treatment. */
 function dealEndpointsGeoJson(routes: DealRoute[]) {
+  const ranked = [...routes].sort((a, b) => (b.dealScore ?? 0) - (a.dealScore ?? 0));
+  const heroIds = new Set(ranked.slice(0, 5).map((r) => `${r.origin}-${r.destination}`));
+
   return {
     type: "FeatureCollection" as const,
-    features: routes.map((r) => ({
-      type: "Feature" as const,
-      properties: {
-        id: `${r.origin}-${r.destination}`,
-        price: r.price,
-        tier: r.tier ?? "fair",
-        destCity: r.destCity,
-        label: `$${r.price}`,
-      },
-      geometry: {
-        type: "Point" as const,
-        coordinates: [r.destLon, r.destLat],
-      },
-    })),
+    features: routes.map((r) => {
+      const id = `${r.origin}-${r.destination}`;
+      return {
+        type: "Feature" as const,
+        properties: {
+          id,
+          price: r.price,
+          tier: r.tier ?? "fair",
+          destCity: r.destCity,
+          label: `$${r.price}`,
+          isHero: heroIds.has(id) ? 1 : 0,
+        },
+        geometry: {
+          type: "Point" as const,
+          coordinates: [r.destLon, r.destLat],
+        },
+      };
+    }),
   };
 }
 
@@ -729,7 +744,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         data: { type: "FeatureCollection", features: [] },
       });
 
-      // Glow under the arc
+      // Glow under the arc — hero arcs get a wider, brighter glow
       map.addLayer({
         id: DEAL_ARC_GLOW_LAYER,
         type: "line",
@@ -742,18 +757,22 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
             "#fb7185",
           ] as unknown as string,
           "line-width": [
-            "interpolate", ["linear"], ["zoom"],
-            1, 3,
-            6, 6,
-            14, 10,
+            "case",
+            ["==", ["get", "isHero"], 1],
+            ["interpolate", ["linear"], ["zoom"], 1, 6, 6, 12, 14, 18],
+            ["interpolate", ["linear"], ["zoom"], 1, 3, 6, 6, 14, 10],
           ] as unknown as number,
           "line-blur": [
-            "interpolate", ["linear"], ["zoom"],
-            1, 4,
-            6, 8,
-            14, 12,
+            "case",
+            ["==", ["get", "isHero"], 1],
+            ["interpolate", ["linear"], ["zoom"], 1, 6, 6, 12, 14, 16],
+            ["interpolate", ["linear"], ["zoom"], 1, 4, 6, 8, 14, 12],
           ] as unknown as number,
-          "line-opacity": 0.3,
+          "line-opacity": [
+            "case",
+            ["==", ["get", "isHero"], 1], 0.5,
+            0.2,
+          ] as unknown as number,
         },
         layout: {
           "line-cap": "round",
@@ -762,7 +781,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         },
       });
 
-      // Main arc line
+      // Main arc line — hero arcs are thicker, solid, and more vivid
       map.addLayer({
         id: DEAL_ARC_LAYER,
         type: "line",
@@ -775,12 +794,16 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
             "#fb7185",
           ] as unknown as string,
           "line-width": [
-            "interpolate", ["linear"], ["zoom"],
-            1, 1.2,
-            6, 2,
-            14, 3,
+            "case",
+            ["==", ["get", "isHero"], 1],
+            ["interpolate", ["linear"], ["zoom"], 1, 2.5, 6, 3.5, 14, 5],
+            ["interpolate", ["linear"], ["zoom"], 1, 1, 6, 1.5, 14, 2],
           ] as unknown as number,
-          "line-opacity": 0.75,
+          "line-opacity": [
+            "case",
+            ["==", ["get", "isHero"], 1], 0.9,
+            0.5,
+          ] as unknown as number,
           "line-dasharray": [2, 3],
         },
         layout: {
@@ -790,7 +813,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         },
       });
 
-      // Price label dots at destinations
+      // Price label dots at destinations — hero dots are larger and bolder
       map.addLayer({
         id: DEAL_ARC_ARROW_LAYER,
         type: "circle",
@@ -800,10 +823,10 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         },
         paint: {
           "circle-radius": [
-            "interpolate", ["linear"], ["zoom"],
-            1, 4,
-            6, 7,
-            14, 10,
+            "case",
+            ["==", ["get", "isHero"], 1],
+            ["interpolate", ["linear"], ["zoom"], 1, 6, 6, 10, 14, 14],
+            ["interpolate", ["linear"], ["zoom"], 1, 3, 6, 5, 14, 8],
           ] as unknown as number,
           "circle-color": [
             "case",
@@ -811,13 +834,21 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
             ["==", ["get", "tier"], "fair"], "#f59e0b",
             "#fb7185",
           ] as unknown as string,
-          "circle-stroke-color": "#0f172a",
-          "circle-stroke-width": 1.5,
+          "circle-stroke-color": [
+            "case",
+            ["==", ["get", "isHero"], 1], "#ffffff",
+            "#0f172a",
+          ] as unknown as string,
+          "circle-stroke-width": [
+            "case",
+            ["==", ["get", "isHero"], 1], 2,
+            1.5,
+          ] as unknown as number,
           "circle-opacity": 0.9,
         },
       });
 
-      // Glow under airport deal dots
+      // Glow under airport deal dots — hero dots get a stronger glow
       map.addLayer({
         id: DEAL_DOT_GLOW_LAYER,
         type: "circle",
@@ -827,10 +858,10 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         },
         paint: {
           "circle-radius": [
-            "interpolate", ["linear"], ["zoom"],
-            1, 10,
-            6, 16,
-            14, 22,
+            "case",
+            ["==", ["get", "isHero"], 1],
+            ["interpolate", ["linear"], ["zoom"], 1, 16, 6, 24, 14, 32],
+            ["interpolate", ["linear"], ["zoom"], 1, 8, 6, 14, 14, 20],
           ] as unknown as number,
           "circle-color": [
             "case",
@@ -839,33 +870,58 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
             "#fb7185",
           ] as unknown as string,
           "circle-blur": 1,
-          "circle-opacity": 0.4,
+          "circle-opacity": [
+            "case",
+            ["==", ["get", "isHero"], 1], 0.55,
+            0.3,
+          ] as unknown as number,
         },
       });
 
-      // Price labels at deal airport dots
+      // Price labels at deal airport dots — hero deals always visible, others show on zoom
       map.addLayer({
         id: DEAL_PRICE_LABEL,
         type: "symbol",
         source: "deal-endpoints",
         layout: {
-          "text-field": ["get", "label"],
-          "text-size": ["interpolate", ["linear"], ["zoom"], 3, 9, 6, 11, 10, 13] as unknown as number,
-          "text-offset": [0, 1.5],
+          "text-field": [
+            "case",
+            ["==", ["get", "isHero"], 1],
+            ["concat", ["get", "label"], "\n", ["get", "destCity"]],
+            ["get", "label"],
+          ] as unknown as string,
+          "text-size": [
+            "case",
+            ["==", ["get", "isHero"], 1],
+            ["interpolate", ["linear"], ["zoom"], 1, 11, 6, 14, 10, 16],
+            ["interpolate", ["linear"], ["zoom"], 3, 9, 6, 11, 10, 13],
+          ] as unknown as number,
+          "text-offset": [0, 1.8],
           "text-anchor": "top",
-          "text-allow-overlap": false,
+          // Hero labels always visible; others avoid overlap
+          "text-allow-overlap": ["==", ["get", "isHero"], 1] as unknown as boolean,
           "text-ignore-placement": false,
+          "symbol-sort-key": ["-", ["get", "isHero"]] as unknown as number,
+          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
           visibility: "none",
         },
         paint: {
-          "text-color": "#e2e8f0",
+          "text-color": [
+            "case",
+            ["==", ["get", "isHero"], 1], "#ffffff",
+            "#e2e8f0",
+          ] as unknown as string,
           "text-halo-color": "#0f172a",
-          "text-halo-width": 1.5,
+          "text-halo-width": [
+            "case",
+            ["==", ["get", "isHero"], 1], 2,
+            1.5,
+          ] as unknown as number,
         },
-        minzoom: 3,
+        minzoom: 1.5,
       });
 
-      // Pulse animation for flight-deal rings + combo country glow
+      // Pulse animation for flight-deal rings + combo country glow + deal arc glow
       const start = performance.now();
       const pulse = (now: number) => {
         const t = ((now - start) % 1600) / 1600;
@@ -878,6 +934,16 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         const comboOpacity = 0.3 + 0.5 * Math.sin(comboT * Math.PI * 2);
         if (map.getLayer(COMBO_PULSE_LAYER)) {
           map.setPaintProperty(COMBO_PULSE_LAYER, "line-opacity", comboOpacity);
+        }
+        // Deal arc glow breathing for hero routes — gentle pulsing to draw attention
+        const arcT = ((now - start) % 2500) / 2500;
+        const arcGlowOpacity = 0.35 + 0.2 * Math.sin(arcT * Math.PI * 2);
+        if (map.getLayer(DEAL_ARC_GLOW_LAYER)) {
+          map.setPaintProperty(DEAL_ARC_GLOW_LAYER, "line-opacity", [
+            "case",
+            ["==", ["get", "isHero"], 1], arcGlowOpacity + 0.15,
+            arcGlowOpacity * 0.6,
+          ] as unknown as number);
         }
         pulseRafRef.current = requestAnimationFrame(pulse);
       };

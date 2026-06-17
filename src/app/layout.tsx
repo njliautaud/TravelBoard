@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
@@ -19,6 +19,16 @@ export const metadata: Metadata = {
   title: "TravelBoard",
   description: "Your personal travel map — wishlist, journal, deals & more",
   icons: { icon: "/favicon.ico" },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "TravelBoard",
+    statusBarStyle: "black-translucent",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#f59e0b",
 };
 
 /**

@@ -1,0 +1,28 @@
+{
+  "name": "TravelBoard",
+  "short_name": "TravelBoard",
+  "description": "Discover cheap flights, track award deals, and build your travel bucket list on an interactive map.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#f59e0b",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": {
+      "url": "url",
+      "text": "text",
+      "title": "title"
+    }
+  },
+  "categories": ["travel", "lifestyle"],
+  "lang": "en",
+  "orientation": "any"
+}

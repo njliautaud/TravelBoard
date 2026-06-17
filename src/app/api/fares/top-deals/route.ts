@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
   let userAirports: string[] = [];
   let flightPref: string = "both";
   let loyaltyPrograms: string[] = [];
+  let preferFarther: boolean = false;
 
   try {
     const session = await getSessionUser();
@@ -69,6 +70,8 @@ export async function GET(req: NextRequest) {
         try { userAirports = JSON.parse(user.homeAirports || "[]"); } catch {}
         flightPref = user.flightPref || "both";
         try { loyaltyPrograms = JSON.parse(user.loyaltyPrograms || "[]"); } catch {}
+        // International preference implies preferring farther destinations
+        preferFarther = flightPref === "international";
       }
     }
   } catch {
@@ -215,6 +218,16 @@ export async function GET(req: NextRequest) {
       for (const deal of awardItems) {
         if (deal.program && mappedPrograms.includes(deal.program)) {
           deal.dealScore = Math.min(1, (deal.dealScore ?? 0) + 0.15);
+        }
+      }
+    }
+
+    // Boost international/far deals for users who prefer them
+    if (preferFarther) {
+      for (const deal of [...cashDeals, ...awardItems]) {
+        const isIntl = !US_PREFIXES.has(deal.flyToCode);
+        if (isIntl) {
+          deal.dealScore = Math.min(1, (deal.dealScore ?? 0) + 0.1);
         }
       }
     }
