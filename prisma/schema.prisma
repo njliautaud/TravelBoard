@@ -399,6 +399,41 @@ model NotificationPref {
   weeklyReport Boolean @default(true)
 }
 
+/// Cached award deals from seats.aero (persisted to DB, refreshed periodically)
+model AwardCache {
+  id             String   @id @default(cuid())
+  origin         String   // IATA airport code
+  destination    String   // IATA airport code
+  program        String   // e.g. "aeroplan"
+  programName    String?  // e.g. "Air Canada Aeroplan"
+  cabin          String   // economy, premiumEconomy, business, first
+  miles          Int      // mileage cost
+  taxesUsd       Float?
+  airlines       String?
+  date           String?  // departure date (yyyy-mm-dd)
+  returnDate     String?  // return date for round-trips
+  remainingSeats Int?
+  score          Float?   // deal score from generateAwardDeals
+  destCity       String?
+  destCountry    String?
+  destLat        Float?
+  destLon        Float?
+  cabinLabel     String?
+  programSource  String?  // raw program key
+  tripType       String?  // "one-way" or "round-trip"
+  nights         Int?
+  homeAnchored   Boolean  @default(true)
+  isIntl         Boolean  @default(false)
+  fetchedAt      DateTime @default(now())
+  expiresAt      DateTime // when this deal should be considered stale
+
+  @@unique([origin, destination, program, cabin, date])
+  @@index([origin])
+  @@index([destination])
+  @@index([expiresAt])
+  @@index([score])
+}
+
 /// Key-value application settings
 model AppSetting {
   key       String   @id

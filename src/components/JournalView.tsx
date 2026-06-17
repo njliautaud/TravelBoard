@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ShareJournalButton } from "./ShareJournal";
-import { getDemoMode, DEMO_JOURNAL_ENTRIES } from "@/lib/demoData";
+// demoData import removed — all data comes from APIs
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,20 +88,6 @@ export default function JournalView() {
   const fetchEntries = useCallback(async () => {
     setLoading(true);
 
-    // Demo mode: use sample entries
-    if (getDemoMode()) {
-      let items = DEMO_JOURNAL_ENTRIES as unknown as JournalEntry[];
-      if (filterCountry) {
-        items = items.filter((e) => e.country?.toLowerCase().includes(filterCountry.toLowerCase()));
-      }
-      if (filterTag) {
-        items = items.filter((e) => e.tags.some((t) => t.toLowerCase().includes(filterTag.toLowerCase())));
-      }
-      setEntries(items);
-      setLoading(false);
-      return;
-    }
-
     try {
       const params = new URLSearchParams();
       if (filterCountry) params.set("country", filterCountry);
@@ -110,29 +96,12 @@ export default function JournalView() {
       const data = await res.json();
       if (data.entries) setEntries(data.entries);
     } catch {
-      // Fall back to demo entries
-      setEntries(DEMO_JOURNAL_ENTRIES as unknown as JournalEntry[]);
+      setEntries([]);
     }
     setLoading(false);
   }, [filterCountry, filterTag]);
 
   const fetchStats = useCallback(async () => {
-    // Demo mode: build stats from demo entries
-    if (getDemoMode()) {
-      const countries = [...new Set(DEMO_JOURNAL_ENTRIES.map((e) => e.country).filter(Boolean))] as string[];
-      const allTags = DEMO_JOURNAL_ENTRIES.flatMap((e) => e.tags);
-      const tagCounts: Record<string, number> = {};
-      for (const t of allTags) tagCounts[t] = (tagCounts[t] ?? 0) + 1;
-      setStats({
-        totalEntries: DEMO_JOURNAL_ENTRIES.length,
-        countriesVisited: countries,
-        totalCountries: countries.length,
-        topTags: Object.entries(tagCounts).map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count),
-        moodBreakdown: {},
-        timeline: [],
-      });
-      return;
-    }
     try {
       const res = await fetch("/api/journal/stats");
       const data = await res.json();
@@ -194,26 +163,6 @@ export default function JournalView() {
       isPublic: formIsPublic,
     };
 
-    // Demo mode: just update local state
-    if (getDemoMode()) {
-      const entry: JournalEntry = {
-        id: view === "edit" && selected ? selected.id : `local-${Date.now()}`,
-        ...payload,
-        photos: [],
-        tripId: null,
-        createdAt: view === "edit" && selected ? selected.createdAt : new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      if (view === "edit" && selected) {
-        setEntries((prev) => prev.map((e) => (e.id === selected.id ? entry : e)));
-      } else {
-        setEntries((prev) => [entry, ...prev]);
-      }
-      setView("list");
-      setSaving(false);
-      return;
-    }
-
     try {
       if (view === "edit" && selected) {
         await fetch(`/api/journal/${selected.id}`, {
@@ -236,11 +185,6 @@ export default function JournalView() {
   }
 
   async function handleDelete(id: string) {
-    if (getDemoMode()) {
-      setEntries((prev) => prev.filter((e) => e.id !== id));
-      setView("list");
-      return;
-    }
     await fetch(`/api/journal/${id}`, { method: "DELETE" });
     setView("list");
     fetchEntries();

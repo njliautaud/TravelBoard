@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findTopDeals } from "@/lib/services/fares";
-import {
-  SeatsAeroBulkAdapter,
-  generateAwardDeals,
-  findAirport,
-  VACATION_CODES,
-  type AwardDeal,
-} from "@travelboard/core";
-
+import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/fares/top-deals?origin=MCO&limit=25
  * Returns the top deals ranked by deal score, intermixing cash and award deals.
+ *
+ * Award deals now come from AwardCache (DB) instead of live seats.aero calls.
+ * Cash deals come from FareCache (with 7-day staleness filter).
  */
 export async function GET(req: NextRequest) {
   const origin = req.nextUrl.searchParams.get("origin") ?? undefined;
@@ -20,13 +16,13 @@ export async function GET(req: NextRequest) {
   const effectiveLimit = isNaN(limit) ? 25 : Math.min(limit, 100);
 
   try {
-    // Fetch cash deals from DB cache
+    // Fetch cash deals from DB cache (staleness-filtered via findTopDeals)
     const cashDeals = await findTopDeals(
       origin?.toUpperCase(),
       effectiveLimit,
     );
 
-    // Fetch award deals from seats.aero (server-side only, graceful fallback)
+    // Fetch award deals from AwardCache (DB) instead of live API
     let awardItems: Array<{
       id: string;
       origin: string;
@@ -44,7 +40,6 @@ export async function GET(req: NextRequest) {
       outboundDate: string | null;
       returnDate: string | null;
       countryTo?: string;
-      // Award-specific fields
       isAward?: boolean;
       miles?: number;
       program?: string;
@@ -54,47 +49,45 @@ export async function GET(req: NextRequest) {
       tripType?: string;
     }> = [];
 
-    const apiKey = process.env.SEATSAERO_API_KEY;
-    if (apiKey && origin) {
+    if (origin) {
       try {
-        const adapter = new SeatsAeroBulkAdapter({ apiKey });
-        const records = await adapter.fetch();
-        const vacationSet = new Set(VACATION_CODES);
-
-        const awards = generateAwardDeals(records, {
-          resolveAirport: (code: string) => findAirport(code),
-          vacationCodes: vacationSet,
-          homeAirport: origin.toUpperCase(),
-          limit: 20,
+        const now = new Date();
+        const cached = await prisma.awardCache.findMany({
+          where: {
+            origin: origin.toUpperCase(),
+            expiresAt: { gt: now },
+          },
+          orderBy: { score: "desc" },
+          take: 20,
         });
 
-        awardItems = awards.map((a: AwardDeal) => ({
-          id: `award-${a.id}`,
-          origin: a.flyFrom,
-          destination: a.cityTo,
-          flyToCode: a.flyTo,
-          month: a.date ? new Date(a.date).getMonth() : new Date().getMonth(),
-          price: a.miles, // Display miles as the "price" — UI will format based on isAward
+        awardItems = cached.map((row) => ({
+          id: `award-${row.origin}-${row.destination}-${row.cabin}`,
+          origin: row.origin,
+          destination: row.destCity ?? row.destination,
+          flyToCode: row.destination,
+          month: row.date ? new Date(row.date).getMonth() : new Date().getMonth(),
+          price: row.miles,
           currency: "miles",
-          airline: a.airlines || null,
+          airline: row.airlines ?? null,
           source: "seats.aero",
-          dealScore: Math.min(a.score / 2, 1), // Normalize score to 0-1 range
-          tier: a.score >= 1.5 ? "cheap" : a.score >= 1.2 ? "fair" : "splurge",
-          lastSeen: a.fetchedAt,
-          savingsPercent: Math.round(Math.max(0, (a.score - 1) * 100)),
-          outboundDate: a.date,
-          returnDate: a.returnDate,
-          countryTo: a.countryTo,
+          dealScore: row.score != null ? Math.min(row.score / 2, 1) : null,
+          tier: (row.score ?? 0) >= 1.5 ? "cheap" : (row.score ?? 0) >= 1.2 ? "fair" : "splurge",
+          lastSeen: row.fetchedAt.toISOString(),
+          savingsPercent: Math.round(Math.max(0, ((row.score ?? 1) - 1) * 100)),
+          outboundDate: row.date ?? null,
+          returnDate: row.returnDate ?? null,
+          countryTo: row.destCountry ?? undefined,
           isAward: true,
-          miles: a.miles,
-          program: a.program,
-          programName: a.programName,
-          cabin: a.cabin,
-          cabinLabel: a.cabinLabel,
-          tripType: a.tripType,
+          miles: row.miles,
+          program: row.program,
+          programName: row.programName ?? row.program,
+          cabin: row.cabin,
+          cabinLabel: row.cabinLabel ?? row.cabin,
+          tripType: row.tripType ?? "one-way",
         }));
       } catch {
-        // Award fetch failed — serve cash deals only
+        // Award cache read failed — serve cash deals only
       }
     }
 

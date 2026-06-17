@@ -99,6 +99,8 @@ export {
 
 // Points-transfer game (HC #602)
 export type {
+  TransferableProgramId,
+  CobrandProgramId,
   ProgramId,
   PointsProgram,
   TransferPartner,

@@ -2,14 +2,13 @@
 
 import { useEffect, useState, useCallback } from "react";
 import MapApp from "./MapApp";
-import DealsView from "./DealsView";
 import JournalView from "./JournalView";
 import SettingsView from "./SettingsView";
 import SearchView from "./SearchView";
 import ToolsView from "./ToolsView";
 import CommunityView from "./CommunityView";
 import AlertsPanel, { AlertBellBadge } from "./AlertsPanel";
-import { ErrorBoundary, DealListSkeleton, CalendarSkeleton } from "./ErrorBoundary";
+import { ErrorBoundary, CalendarSkeleton } from "./ErrorBoundary";
 import { Changelog, useUnseenChangelog } from "./Changelog";
 import { loadLocalPrefs, DEFAULT_PREFS, type TravelPrefsDto } from "./Onboarding";
 import UserProfile from "./UserProfile";
@@ -17,7 +16,7 @@ import ActivityFeed from "./ActivityFeed";
 import type { LocationItem } from "@/lib/types";
 import { getDemoMode } from "@/lib/demoData";
 
-type Tab = "map" | "deals" | "search" | "alerts" | "journal" | "tools" | "community" | "settings";
+type Tab = "map" | "search" | "alerts" | "journal" | "tools" | "community" | "settings";
 
 interface AppShellProps {
   initialLocations: LocationItem[];
@@ -26,7 +25,7 @@ interface AppShellProps {
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   {
     id: "map",
-    label: "Map",
+    label: "Explore",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <circle cx="12" cy="12" r="10" />
@@ -41,16 +40,6 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <circle cx="11" cy="11" r="8" />
         <line x1="21" y1="21" x2="16.65" y2="16.65" />
-      </svg>
-    ),
-  },
-  {
-    id: "deals",
-    label: "Deals",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-        <line x1="7" y1="7" x2="7.01" y2="7" />
       </svg>
     ),
   },
@@ -120,6 +109,9 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   const [prefs, setPrefs] = useState<TravelPrefsDto>(DEFAULT_PREFS);
   const [appEntered, setAppEntered] = useState(false);
 
+  // Map always shows deals — unified experience, no separate deals tab
+  const dealsMode = activeTab === "map";
+
   // Check if first visit for onboarding, or if user has already "entered" the app
   useEffect(() => {
     const { prefs: loadedPrefs, onboarded } = loadLocalPrefs();
@@ -155,6 +147,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
     setActiveTab(tab);
   }, []);
 
+  // Map is the primary view — everything else overlays on top
   const isOverlay = activeTab !== "map";
 
   // In demo mode, hide tabs that require a backend
@@ -167,7 +160,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
     <div className="relative flex h-dvh w-full overflow-hidden">
       {/* Map is ALWAYS rendered — it IS the app */}
       <div className="absolute inset-0 z-0">
-        <MapApp initialLocations={initialLocations} />
+        <MapApp initialLocations={initialLocations} dealsMode={dealsMode} />
       </div>
 
       {/* Landing state — map visible behind, compelling hero card */}
@@ -243,9 +236,6 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             <div className="flex-1 overflow-y-auto">
               {activeTab === "search" && (
                 <ErrorBoundary name="Search"><SearchView /></ErrorBoundary>
-              )}
-              {activeTab === "deals" && (
-                <ErrorBoundary name="Deals" fallback={<DealListSkeleton />}><DealsView /></ErrorBoundary>
               )}
               {activeTab === "alerts" && (
                 <ErrorBoundary name="Alerts"><AlertsPanel /></ErrorBoundary>
@@ -345,7 +335,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
 
       {/* Mobile bottom tab bar — 5 visible tabs, "More" opens overflow */}
       <nav className={`${appEntered ? "flex sm:hidden" : "hidden"} absolute bottom-0 left-0 right-0 z-40 items-stretch border-t border-slate-800/60 bg-slate-950/95 backdrop-blur-lg safe-area-bottom`}>
-        {visibleTabs.filter((t) => ["map", "search", "deals", "journal"].includes(t.id)).map((tab) => {
+        {visibleTabs.filter((t) => ["map", "search", "journal", "tools"].includes(t.id)).map((tab) => {
           const active = activeTab === tab.id;
           return (
             <button
@@ -367,12 +357,12 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           );
         })}
         {/* More button — only shown if there are overflow tabs */}
-        {visibleTabs.some((t) => ["alerts", "tools", "community", "settings"].includes(t.id)) && (
+        {visibleTabs.some((t) => ["alerts", "community", "settings"].includes(t.id)) && (
           <button
             onClick={() => setShowMoreMenu((v) => !v)}
             className={[
               "relative flex min-w-[3.5rem] flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all duration-200",
-              showMoreMenu || ["alerts", "tools", "community", "settings"].includes(activeTab)
+              showMoreMenu || ["alerts", "community", "settings"].includes(activeTab)
                 ? "text-amber-300"
                 : "text-slate-500 active:text-slate-300",
             ].join(" ")}
@@ -383,7 +373,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
               <circle cx="12" cy="19" r="1.5" fill="currentColor" />
             </svg>
             <span>More</span>
-            {(showMoreMenu || ["alerts", "tools", "community", "settings"].includes(activeTab)) && (
+            {(showMoreMenu || ["alerts", "community", "settings"].includes(activeTab)) && (
               <span className="absolute top-0 h-0.5 w-8 rounded-b bg-amber-400" />
             )}
           </button>
@@ -398,7 +388,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             onClick={() => setShowMoreMenu(false)}
           />
           <div className="sm:hidden fixed bottom-[3.25rem] left-2 right-2 z-50 rounded-xl border border-slate-700/60 bg-slate-900/95 backdrop-blur-xl shadow-2xl safe-area-bottom animate-slide-in">
-            {visibleTabs.filter((t) => ["alerts", "tools", "community", "settings"].includes(t.id)).map((tab) => {
+            {visibleTabs.filter((t) => ["alerts", "community", "settings"].includes(t.id)).map((tab) => {
               const active = activeTab === tab.id;
               return (
                 <button

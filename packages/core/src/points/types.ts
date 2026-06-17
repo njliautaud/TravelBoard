@@ -13,13 +13,30 @@
  */
 
 /** A transferable-points ecosystem (the currency the credit card earns). */
-export type ProgramId =
+export type TransferableProgramId =
   | 'chase_ur'
   | 'amex_mr'
   | 'cap1_miles'
   | 'citi_typ'
   | 'bilt'
   | 'wf_rewards';
+
+/**
+ * Co-brand program IDs: cards that earn directly into an airline/hotel program
+ * (no transfer partners — the card IS the program). These programs exist in
+ * PROGRAMS for card-catalog lookups but have no transfer edges.
+ */
+export type CobrandProgramId =
+  | 'delta_cobrand'
+  | 'united_cobrand'
+  | 'southwest_cobrand'
+  | 'aa_cobrand'
+  | 'hilton_cobrand'
+  | 'marriott_cobrand'
+  | 'ihg_cobrand'
+  | 'hyatt_cobrand';
+
+export type ProgramId = TransferableProgramId | CobrandProgramId;
 
 export interface PointsProgram {
   id: ProgramId;

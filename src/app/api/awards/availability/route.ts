@@ -1,42 +1,59 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  SeatsAeroBulkAdapter,
-  generateAwardDeals,
-  findAirport,
-  VACATION_CODES,
-} from "@travelboard/core";
+import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/awards/availability?origin=MCO&limit=50
  *
- * Returns award deals from seats.aero bulk availability, anchored to the
- * user's home airport. The API key is server-side only (never exposed to client).
+ * Returns award deals from the AwardCache (DB-persisted, refreshed via
+ * POST /api/awards/refresh). Only returns non-expired entries.
+ *
+ * Previously this hit seats.aero live on every request — now it reads
+ * from the cached DB layer instead.
  */
 export async function GET(req: NextRequest) {
-  const apiKey = process.env.SEATSAERO_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Award availability not configured" },
-      { status: 503 },
-    );
-  }
-
   const origin = req.nextUrl.searchParams.get("origin")?.toUpperCase() ?? "MCO";
   const limitStr = req.nextUrl.searchParams.get("limit");
   const limit = limitStr ? parseInt(limitStr, 10) : 50;
+  const effectiveLimit = Math.min(isNaN(limit) ? 50 : limit, 200);
 
   try {
-    const adapter = new SeatsAeroBulkAdapter({ apiKey });
-    const records = await adapter.fetch();
+    const now = new Date();
 
-    const vacationSet = new Set(VACATION_CODES);
-
-    const deals = generateAwardDeals(records, {
-      resolveAirport: (code: string) => findAirport(code),
-      vacationCodes: vacationSet,
-      homeAirport: origin,
-      limit: Math.min(limit, 200),
+    const cached = await prisma.awardCache.findMany({
+      where: {
+        origin,
+        expiresAt: { gt: now },
+      },
+      orderBy: { score: "desc" },
+      take: effectiveLimit,
     });
+
+    // Transform DB rows to the AwardDeal-like shape the frontend expects
+    const deals = cached.map((row) => ({
+      id: `${row.origin}-${row.destination}-${row.cabin}`,
+      flyFrom: row.origin,
+      flyTo: row.destination,
+      cityTo: row.destCity ?? row.destination,
+      countryTo: row.destCountry ?? "",
+      lat: row.destLat ?? 0,
+      lon: row.destLon ?? 0,
+      cabin: row.cabin,
+      cabinLabel: row.cabinLabel ?? row.cabin,
+      miles: row.miles,
+      taxesUsd: row.taxesUsd,
+      program: row.program,
+      programName: row.programName ?? row.program,
+      airlines: row.airlines ?? "",
+      date: row.date ?? "",
+      seatsLeft: row.remainingSeats,
+      score: row.score ?? 0,
+      homeAnchored: row.homeAnchored,
+      tripType: row.tripType ?? "one-way",
+      returnDate: row.returnDate,
+      nights: row.nights,
+      intl: row.isIntl,
+      fetchedAt: row.fetchedAt.toISOString(),
+    }));
 
     return NextResponse.json({
       origin,

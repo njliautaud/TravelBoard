@@ -23,8 +23,8 @@ import type {
   TransferPartner,
 } from '../types.js';
 
-export const DATASET_VERSION = '2026.06.1';
-export const DATASET_UPDATED = '2026-06-11';
+export const DATASET_VERSION = '2026.06.2';
+export const DATASET_UPDATED = '2026-06-16';
 
 // ---------------------------------------------------------------------------
 // Programs (the six major transferable ecosystems)
@@ -37,6 +37,15 @@ export const PROGRAMS: PointsProgram[] = [
   { id: 'citi_typ', name: 'Citi ThankYou Points', baselineCpp: 1.0 },
   { id: 'bilt', name: 'Bilt Rewards', baselineCpp: 1.25 },
   { id: 'wf_rewards', name: 'Wells Fargo Rewards', baselineCpp: 1.0 },
+  // Co-brand programs: earn directly into airline/hotel programs (no transfer partners)
+  { id: 'delta_cobrand', name: 'Delta SkyMiles (Direct Earn)', baselineCpp: 1.2 },
+  { id: 'united_cobrand', name: 'United MileagePlus (Direct Earn)', baselineCpp: 1.3 },
+  { id: 'southwest_cobrand', name: 'Southwest Rapid Rewards (Direct Earn)', baselineCpp: 1.4 },
+  { id: 'aa_cobrand', name: 'AAdvantage (Direct Earn)', baselineCpp: 1.5 },
+  { id: 'hilton_cobrand', name: 'Hilton Honors (Direct Earn)', baselineCpp: 0.5 },
+  { id: 'marriott_cobrand', name: 'Marriott Bonvoy (Direct Earn)', baselineCpp: 0.7 },
+  { id: 'ihg_cobrand', name: 'IHG One Rewards (Direct Earn)', baselineCpp: 0.5 },
+  { id: 'hyatt_cobrand', name: 'World of Hyatt (Direct Earn)', baselineCpp: 1.7 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -71,6 +80,21 @@ export const PARTNERS: TransferPartner[] = [
   { id: 'thai', name: 'Thai Royal Orchid Plus', kind: 'airline', family: 'Star Alliance' },
   { id: 'alaska', name: 'Alaska Atmos Rewards', kind: 'airline', family: 'oneworld' },
   { id: 'american', name: 'American Airlines AAdvantage', kind: 'airline', family: 'oneworld' },
+  { id: 'hawaiian', name: 'Hawaiian Airlines HawaiianMiles', kind: 'airline' },
+  { id: 'spirit', name: 'Spirit Free Spirit', kind: 'airline' },
+  { id: 'frontier', name: 'Frontier FRONTIER Miles', kind: 'airline' },
+  { id: 'allegiant', name: 'Allegiant allways rewards', kind: 'airline' },
+  { id: 'sun_country', name: 'Sun Country Rewards', kind: 'airline' },
+  { id: 'copa', name: 'Copa ConnectMiles', kind: 'airline', family: 'Star Alliance' },
+  { id: 'latam', name: 'LATAM Pass', kind: 'airline' },
+  { id: 'korean', name: 'Korean Air SKYPASS', kind: 'airline', family: 'SkyTeam' },
+  { id: 'jal', name: 'Japan Airlines (JAL) Mileage Bank', kind: 'airline', family: 'oneworld' },
+  { id: 'asiana', name: 'Asiana Club', kind: 'airline', family: 'Star Alliance' },
+  { id: 'sas', name: 'SAS EuroBonus', kind: 'airline', family: 'Star Alliance' },
+  { id: 'lufthansa', name: 'Lufthansa Miles & More', kind: 'airline', family: 'Star Alliance' },
+  { id: 'air_india', name: 'Air India Flying Returns', kind: 'airline', family: 'Star Alliance' },
+  { id: 'china_airlines', name: 'China Airlines Dynasty Flyer', kind: 'airline', family: 'SkyTeam' },
+  { id: 'garuda', name: 'Garuda Indonesia GarudaMiles', kind: 'airline', family: 'SkyTeam' },
   // Hotels
   { id: 'hyatt', name: 'World of Hyatt', kind: 'hotel' },
   { id: 'marriott', name: 'Marriott Bonvoy', kind: 'hotel' },
@@ -79,6 +103,13 @@ export const PARTNERS: TransferPartner[] = [
   { id: 'choice', name: 'Choice Privileges', kind: 'hotel' },
   { id: 'wyndham', name: 'Wyndham Rewards', kind: 'hotel' },
   { id: 'accor', name: 'Accor Live Limitless', kind: 'hotel' },
+  { id: 'best_western', name: 'Best Western Rewards', kind: 'hotel' },
+  { id: 'radisson', name: 'Radisson Rewards', kind: 'hotel' },
+  { id: 'sonesta', name: 'Sonesta Travel Pass', kind: 'hotel' },
+  { id: 'omni', name: 'Omni Select Guest', kind: 'hotel' },
+  { id: 'mgm', name: 'MGM Rewards', kind: 'hotel' },
+  { id: 'caesars', name: 'Caesars Rewards', kind: 'hotel' },
+  { id: 'four_seasons', name: 'Four Seasons Preferred Partner', kind: 'hotel' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -228,6 +259,34 @@ export const CARD_CATALOG: CardDefinition[] = [
   // Wells Fargo
   { id: 'wf_autograph_journey', name: 'Wells Fargo Autograph Journey', issuer: 'Wells Fargo', program: 'wf_rewards', transferEnabled: true },
   { id: 'wf_autograph', name: 'Wells Fargo Autograph', issuer: 'Wells Fargo', program: 'wf_rewards', transferEnabled: false },
+  // Co-brand: Delta SkyMiles (Amex-issued)
+  { id: 'amex_delta_gold', name: 'Delta SkyMiles Gold', issuer: 'Amex', program: 'delta_cobrand', transferEnabled: false },
+  { id: 'amex_delta_platinum', name: 'Delta SkyMiles Platinum', issuer: 'Amex', program: 'delta_cobrand', transferEnabled: false },
+  { id: 'amex_delta_reserve', name: 'Delta SkyMiles Reserve', issuer: 'Amex', program: 'delta_cobrand', transferEnabled: false },
+  // Co-brand: Hilton Honors (Amex-issued)
+  { id: 'amex_hilton_honors', name: 'Hilton Honors Amex', issuer: 'Amex', program: 'hilton_cobrand', transferEnabled: false },
+  { id: 'amex_hilton_surpass', name: 'Hilton Honors Surpass', issuer: 'Amex', program: 'hilton_cobrand', transferEnabled: false },
+  { id: 'amex_hilton_aspire', name: 'Hilton Honors Aspire', issuer: 'Amex', program: 'hilton_cobrand', transferEnabled: false },
+  // Co-brand: Marriott Bonvoy (Amex-issued)
+  { id: 'amex_marriott_bonvoy', name: 'Marriott Bonvoy Amex', issuer: 'Amex', program: 'marriott_cobrand', transferEnabled: false },
+  { id: 'amex_marriott_brilliant', name: 'Marriott Bonvoy Brilliant', issuer: 'Amex', program: 'marriott_cobrand', transferEnabled: false },
+  { id: 'amex_marriott_biz', name: 'Marriott Bonvoy Business', issuer: 'Amex', program: 'marriott_cobrand', transferEnabled: false },
+  // Co-brand: United MileagePlus (Chase-issued)
+  { id: 'chase_united_explorer', name: 'United Explorer Card', issuer: 'Chase', program: 'united_cobrand', transferEnabled: false },
+  { id: 'chase_united_quest', name: 'United Quest Card', issuer: 'Chase', program: 'united_cobrand', transferEnabled: false },
+  { id: 'chase_united_club_infinite', name: 'United Club Infinite Card', issuer: 'Chase', program: 'united_cobrand', transferEnabled: false },
+  // Co-brand: Southwest Rapid Rewards (Chase-issued)
+  { id: 'chase_southwest_plus', name: 'Southwest Rapid Rewards Plus', issuer: 'Chase', program: 'southwest_cobrand', transferEnabled: false },
+  { id: 'chase_southwest_priority', name: 'Southwest Rapid Rewards Priority', issuer: 'Chase', program: 'southwest_cobrand', transferEnabled: false },
+  { id: 'chase_southwest_premier', name: 'Southwest Rapid Rewards Premier', issuer: 'Chase', program: 'southwest_cobrand', transferEnabled: false },
+  // Co-brand: IHG One Rewards (Chase-issued)
+  { id: 'chase_ihg_premier', name: 'IHG One Rewards Premier', issuer: 'Chase', program: 'ihg_cobrand', transferEnabled: false },
+  { id: 'chase_ihg_traveler', name: 'IHG One Rewards Traveler', issuer: 'Chase', program: 'ihg_cobrand', transferEnabled: false },
+  // Co-brand: World of Hyatt (Chase-issued)
+  { id: 'chase_hyatt', name: 'World of Hyatt Credit Card', issuer: 'Chase', program: 'hyatt_cobrand', transferEnabled: false },
+  // Co-brand: AAdvantage (Citi-issued)
+  { id: 'citi_aadvantage_platinum', name: 'Citi AAdvantage Platinum Select', issuer: 'Citi', program: 'aa_cobrand', transferEnabled: false },
+  { id: 'citi_aadvantage_executive', name: 'Citi AAdvantage Executive', issuer: 'Citi', program: 'aa_cobrand', transferEnabled: false },
 ];
 
 // ---------------------------------------------------------------------------

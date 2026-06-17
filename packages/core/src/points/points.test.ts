@@ -23,9 +23,18 @@ import type { PointsSourceAdapter, TransferBonus } from './types.js';
 
 // ---------------------------------------------------------------------------
 describe('transfer-partner knowledge graph integrity', () => {
-  it('has all six major ecosystems', () => {
-    const ids = PROGRAMS.map((p) => p.id).sort();
-    expect(ids).toEqual(['amex_mr', 'bilt', 'cap1_miles', 'chase_ur', 'citi_typ', 'wf_rewards']);
+  it('has all six major transferable ecosystems plus co-brand programs', () => {
+    const ids = PROGRAMS.map((p) => p.id);
+    const transferable = ['amex_mr', 'bilt', 'cap1_miles', 'chase_ur', 'citi_typ', 'wf_rewards'];
+    for (const t of transferable) {
+      expect(ids).toContain(t);
+    }
+    // co-brand programs exist for direct-earn cards
+    const cobrand = ['delta_cobrand', 'united_cobrand', 'southwest_cobrand', 'aa_cobrand',
+      'hilton_cobrand', 'marriott_cobrand', 'ihg_cobrand', 'hyatt_cobrand'];
+    for (const c of cobrand) {
+      expect(ids).toContain(c);
+    }
   });
 
   it('every edge references an existing program and partner with a sane ratio', () => {
@@ -37,12 +46,13 @@ describe('transfer-partner knowledge graph integrity', () => {
     }
   });
 
-  it('every program has at least 5 airline partners', () => {
-    for (const p of PROGRAMS) {
+  it('every transferable program has at least 5 airline partners', () => {
+    const transferable = ['amex_mr', 'bilt', 'cap1_miles', 'chase_ur', 'citi_typ', 'wf_rewards'];
+    for (const pid of transferable) {
       const airlines = TRANSFER_EDGES.filter(
-        (e) => e.program === p.id && PARTNER_BY_ID.get(e.partner)?.kind === 'airline',
+        (e) => e.program === pid && PARTNER_BY_ID.get(e.partner)?.kind === 'airline',
       );
-      expect(airlines.length, p.id).toBeGreaterThanOrEqual(5);
+      expect(airlines.length, pid).toBeGreaterThanOrEqual(5);
     }
   });
 
@@ -53,9 +63,19 @@ describe('transfer-partner knowledge graph integrity', () => {
       expect(seen.has(c.id), c.id).toBe(false);
       seen.add(c.id);
     }
-    // every ecosystem has at least one transfer-ENABLED card
-    for (const p of PROGRAMS) {
-      expect(CARD_CATALOG.some((c) => c.program === p.id && c.transferEnabled), p.id).toBe(true);
+    // every TRANSFERABLE ecosystem has at least one transfer-ENABLED card
+    const transferable = ['amex_mr', 'bilt', 'cap1_miles', 'chase_ur', 'citi_typ', 'wf_rewards'];
+    for (const pid of transferable) {
+      expect(CARD_CATALOG.some((c) => c.program === pid && c.transferEnabled), pid).toBe(true);
+    }
+    // co-brand programs should only have transferEnabled: false cards
+    const cobrandIds = PROGRAMS.filter((p) => p.id.endsWith('_cobrand')).map((p) => p.id);
+    for (const cid of cobrandIds) {
+      const cards = CARD_CATALOG.filter((c) => c.program === cid);
+      expect(cards.length, `${cid} should have cards`).toBeGreaterThan(0);
+      for (const c of cards) {
+        expect(c.transferEnabled, `${c.id} should be transferEnabled:false`).toBe(false);
+      }
     }
   });
 

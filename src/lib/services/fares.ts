@@ -145,9 +145,11 @@ export async function findTopDeals(
   limit = 25,
   minDealScore = 0.10,
 ): Promise<TopDeal[]> {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const where: Record<string, unknown> = {};
   if (origin) where.origin = origin;
   where.dealScore = { gte: minDealScore };
+  where.lastSeen = { gte: sevenDaysAgo };
 
   const rows = await prisma.fareCache.findMany({
     where,

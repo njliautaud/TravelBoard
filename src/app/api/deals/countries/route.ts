@@ -11,8 +11,10 @@ import { Decimal } from "@prisma/client/runtime/library";
 export async function GET() {
   try {
     // Get all cached fares, grouped by flyToCode — we need the cheapest per destination country
+    // Filter out stale entries older than 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const fares = await prisma.fareCache.findMany({
-      where: { dealScore: { gte: 0.05 } },
+      where: { dealScore: { gte: 0.05 }, lastSeen: { gte: sevenDaysAgo } },
       orderBy: { price: "asc" },
       select: {
         flyToCode: true,

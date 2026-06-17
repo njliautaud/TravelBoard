@@ -9,15 +9,18 @@ import EntryForm, { type PinDropResult } from "./EntryForm";
 import AuthModal from "./AuthModal";
 import DraftInbox from "./DraftInbox";
 import AmbientMode from "./AmbientMode";
+import DealsMapPanel from "./DealsMapPanel";
 import type { DraftItem, DraftPrefill, LocationItem, SessionUser } from "@/lib/types";
 import { DEFAULT_SETTINGS, type UserSettings } from "@/lib/settings";
-import { DEMO_LOCATIONS, DEMO_COUNTRY_DEALS, DEMO_JOURNAL_COUNTRIES, DEMO_DEAL_ROUTES, setDemoMode, getDemoMode } from "@/lib/demoData";
+import { setDemoMode, getDemoMode } from "@/lib/demoData";
 
 interface MapAppProps {
   initialLocations: LocationItem[];
+  /** When true, force the map into deals overlay mode and show floating deals panel */
+  dealsMode?: boolean;
 }
 
-export default function MapApp({ initialLocations }: MapAppProps) {
+export default function MapApp({ initialLocations, dealsMode = false }: MapAppProps) {
   const mapRef = useRef<TravelMapHandle>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [locations, setLocations] = useState<LocationItem[]>(initialLocations);
@@ -46,12 +49,26 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [ambientMode, setAmbientMode] = useState(false);
   const [journalCountries, setJournalCountries] = useState<JournalCountry[]>([]);
   const [dealRoutes, setDealRoutes] = useState<DealRoute[]>([]);
+  // Country selected on the map in deals mode (for filtering the deals panel)
+  const [dealsCountryFilter, setDealsCountryFilter] = useState<string | null>(null);
+  // Store the global (unfiltered) deal routes so we can restore them when clearing the country filter
+  const [globalDealRoutes, setGlobalDealRoutes] = useState<DealRoute[]>([]);
+  const [countryRoutesLoading, setCountryRoutesLoading] = useState(false);
 
   const loggedIn = user !== null;
   // In demo mode (API unreachable), hide login prompts.
   // Also suppress during initial load before auth check completes.
   const [authChecked, setAuthChecked] = useState(false);
   const isDemoActive = getDemoMode() || !authChecked;
+
+  // Start in deals overlay when app loads (dealsMode is always true now)
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (dealsMode && !initializedRef.current) {
+      setOverlayMode("deals");
+      initializedRef.current = true;
+    }
+  }, [dealsMode]);
 
   const refreshLocations = useCallback(async () => {
     try {
@@ -101,20 +118,15 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         setAuthChecked(true);
       })
       .catch(() => {
-        // Static/demo mode — populate with sample data
+        // Static/demo mode — no backend available
         setDemoMode(true);
-        setLocations(DEMO_LOCATIONS);
-        setCountryDeals(DEMO_COUNTRY_DEALS);
-        setJournalCountries(DEMO_JOURNAL_COUNTRIES);
-        setDealRoutes(DEMO_DEAL_ROUTES);
         setAuthChecked(true);
       });
   }, [refreshAll]);
 
-  // Fetch country deals for map overlay (skip if demo data already loaded)
+  // Fetch country deals for map overlay
   useEffect(() => {
     if (overlayMode !== "deals") return;
-    if (countryDeals.length > 0) return; // demo data already present
     fetch("/api/deals/countries")
       .then((r) => r.json())
       .then((d) => {
@@ -124,14 +136,16 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     fetch("/api/deals/routes?limit=30")
       .then((r) => r.json())
       .then((d) => {
-        if (Array.isArray(d.routes)) setDealRoutes(d.routes);
+        if (Array.isArray(d.routes)) {
+          setDealRoutes(d.routes);
+          setGlobalDealRoutes(d.routes);
+        }
       })
       .catch(() => {});
-  }, [overlayMode, countryDeals.length]);
+  }, [overlayMode]);
 
-  // Fetch journal countries for map highlighting (skip if demo data already loaded)
+  // Fetch journal countries for map highlighting
   useEffect(() => {
-    if (!loggedIn && journalCountries.length > 0) return; // demo data present
     if (!loggedIn) return;
     fetch("/api/journal/countries")
       .then((r) => r.json())
@@ -139,7 +153,26 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         if (Array.isArray(d.countries)) setJournalCountries(d.countries);
       })
       .catch(() => {});
-  }, [loggedIn, journalCountries.length]);
+  }, [loggedIn]);
+
+  // Fetch country-specific deal routes when a country is clicked on the map
+  useEffect(() => {
+    if (!dealsCountryFilter) {
+      // Restore global routes when filter is cleared
+      if (globalDealRoutes.length > 0) {
+        setDealRoutes(globalDealRoutes);
+      }
+      return;
+    }
+    setCountryRoutesLoading(true);
+    fetch(`/api/deals/routes?country=${dealsCountryFilter}&limit=50`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.routes)) setDealRoutes(d.routes);
+      })
+      .catch(() => {})
+      .finally(() => setCountryRoutesLoading(false));
+  }, [dealsCountryFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll for new WhatsApp drafts while logged in
   useEffect(() => {
@@ -156,7 +189,11 @@ export default function MapApp({ initialLocations }: MapAppProps) {
 
   const handleCountryClick = useCallback((code: string, name: string) => {
     setSelection({ type: "country", code, name });
-  }, []);
+    // When in deals mode, filter the floating panel to this country
+    if (dealsMode) {
+      setDealsCountryFilter(code);
+    }
+  }, [dealsMode]);
 
   const handleDotClick = useCallback((id: string) => {
     setSelection({ type: "location", id });
@@ -164,8 +201,12 @@ export default function MapApp({ initialLocations }: MapAppProps) {
 
   const handleZoomStateChange = useCallback((zoomedIn: boolean) => {
     setZoomedIn(zoomedIn);
-    if (!zoomedIn) setSelection(null);
-  }, []);
+    if (!zoomedIn) {
+      setSelection(null);
+      // Clear country filter when zooming back to world view
+      if (dealsMode) setDealsCountryFilter(null);
+    }
+  }, [dealsMode]);
 
   const handlePinDrop = useCallback(async (lat: number, lng: number) => {
     setPinDropMode(false);
@@ -362,38 +403,55 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           />
         </div>
 
+        {/* Floating deals panel when deals overlay is active */}
+        {overlayMode === "deals" && (
+          <div className="pointer-events-auto absolute top-14 sm:top-3 right-2 sm:right-3 bottom-16 sm:bottom-3 z-20 w-[calc(100%-16px)] sm:w-80">
+            <DealsMapPanel
+              dealRoutes={dealRoutes}
+              countryDeals={countryDeals}
+              countryFilter={dealsCountryFilter}
+              onClearFilter={() => {
+                setDealsCountryFilter(null);
+                mapRef.current?.resetWorldView();
+              }}
+            />
+          </div>
+        )}
+
         {/* Overlay mode toggle — Wishes / Deals / Ambient */}
-        <div className="pointer-events-auto absolute bottom-14 sm:bottom-4 left-4 sm:left-20 z-20 flex rounded-full border border-slate-700/50 bg-slate-900/85 p-0.5 backdrop-blur-lg shadow-lg">
-          <button
-            onClick={() => setOverlayMode("wishes")}
-            className={[
-              "rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200",
-              overlayMode === "wishes"
-                ? "bg-amber-500/20 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]"
-                : "text-slate-500 hover:text-slate-300",
-            ].join(" ")}
-          >
-            Wishes
-          </button>
-          <button
-            onClick={() => setOverlayMode("deals")}
-            className={[
-              "rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200",
-              overlayMode === "deals"
-                ? "bg-teal-500/20 text-teal-300 shadow-[0_0_8px_rgba(20,184,166,0.2)]"
-                : "text-slate-500 hover:text-slate-300",
-            ].join(" ")}
-          >
-            Deals
-          </button>
-          <button
-            onClick={() => setAmbientMode(true)}
-            className="rounded-full px-3 py-1.5 text-xs font-medium text-slate-500 transition-all duration-200 hover:text-slate-300"
-            title="Enter ambient wall display mode"
-          >
-            Ambient
-          </button>
-        </div>
+        {(
+          <div className="pointer-events-auto absolute bottom-14 sm:bottom-4 left-4 sm:left-20 z-20 flex rounded-full border border-slate-700/50 bg-slate-900/85 p-0.5 backdrop-blur-lg shadow-lg">
+            <button
+              onClick={() => setOverlayMode("wishes")}
+              className={[
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200",
+                overlayMode === "wishes"
+                  ? "bg-amber-500/20 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]"
+                  : "text-slate-500 hover:text-slate-300",
+              ].join(" ")}
+            >
+              Wishes
+            </button>
+            <button
+              onClick={() => setOverlayMode("deals")}
+              className={[
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200",
+                overlayMode === "deals"
+                  ? "bg-teal-500/20 text-teal-300 shadow-[0_0_8px_rgba(20,184,166,0.2)]"
+                  : "text-slate-500 hover:text-slate-300",
+              ].join(" ")}
+            >
+              Deals
+            </button>
+            <button
+              onClick={() => setAmbientMode(true)}
+              className="rounded-full px-3 py-1.5 text-xs font-medium text-slate-500 transition-all duration-200 hover:text-slate-300"
+              title="Enter ambient wall display mode"
+            >
+              Ambient
+            </button>
+          </div>
+        )}
 
         {/* Welcome overlay for logged-out users — only when NOT in demo mode (demo uses AppShell landing) */}
         {!loggedIn && !authOpen && !isDemoActive && (

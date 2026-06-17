@@ -39,8 +39,8 @@ const categoryStyles: Record<string, { badge: string; border: string; label: str
   },
 };
 
-// Hardcoded changelog entries for the investor demo (no API dependency)
-const DEMO_ENTRIES: ChangelogEntry[] = [
+// Changelog entries (static — no API dependency needed)
+const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     version: "1.5.0",
     date: "2026-06-16",
@@ -86,7 +86,7 @@ const DEMO_ENTRIES: ChangelogEntry[] = [
 ];
 
 export function Changelog({ onClose }: { onClose: () => void }) {
-  const [entries] = useState<ChangelogEntry[]>(DEMO_ENTRIES);
+  const [entries] = useState<ChangelogEntry[]>(CHANGELOG_ENTRIES);
 
   useEffect(() => {
     // Mark latest as seen
@@ -154,7 +154,7 @@ export function useUnseenChangelog(): number {
   useEffect(() => {
     try {
       const lastSeen = localStorage.getItem(LAST_SEEN_KEY) ?? "0.0.0";
-      const unseen = DEMO_ENTRIES.filter((e) => e.version > lastSeen).length;
+      const unseen = CHANGELOG_ENTRIES.filter((e) => e.version > lastSeen).length;
       setCount(unseen);
     } catch {
       setCount(0);

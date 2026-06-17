@@ -11,7 +11,7 @@ import FlightTracker from "./FlightTracker";
 import MemoryMap from "./MemoryMap";
 import SavingsDashboard from "./SavingsDashboard";
 import PackingSuggestions from "./PackingSuggestions";
-import { DEMO_LOYALTY_PROGRAMS, DEMO_CARDS } from "@/lib/demoData";
+// demoData import removed — all data comes from APIs
 
 type ToolId = "hub" | "calculator" | "optimizer" | "cards" | "trips" | "prediction" | "loyalty" | "flight-tracker" | "memory-map" | "savings" | "packing";
 
@@ -235,14 +235,7 @@ function QuickStatsBanner() {
             cardPoints = items.reduce((s: number, c: { pointsBalance: number }) => s + c.pointsBalance, 0);
           }
         }
-      } catch { /* fallback below */ }
-
-      // If both empty, use demo data
-      if (loyaltyCount === 0 && cardPoints === 0) {
-        loyaltyPoints = DEMO_LOYALTY_PROGRAMS.reduce((s, b) => s + b.balance, 0);
-        loyaltyCount = DEMO_LOYALTY_PROGRAMS.length;
-        cardPoints = DEMO_CARDS.reduce((s, c) => s + c.pointsBalance, 0);
-      }
+      } catch { /* API unavailable */ }
 
       setTotalPoints(loyaltyPoints + cardPoints);
       setProgramCount(loyaltyCount);

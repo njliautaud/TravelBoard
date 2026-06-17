@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { DEMO_SWEET_SPOTS, type DemoSweetSpot } from "@/lib/demoData";
+import type { DemoSweetSpot } from "@/lib/demoData";
 
 interface CalcOption {
   partner: string;
@@ -29,7 +29,7 @@ export default function PointsCalculator() {
   const [transferBonus, setTransferBonus] = useState(0);
   const [result, setResult] = useState<CalcResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sweetSpots, setSweetSpots] = useState<DemoSweetSpot[]>(DEMO_SWEET_SPOTS);
+  const [sweetSpots, setSweetSpots] = useState<DemoSweetSpot[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -42,7 +42,7 @@ export default function PointsCalculator() {
             return;
           }
         }
-      } catch { /* use demo fallback */ }
+      } catch { /* API unavailable — keep empty */ }
     })();
   }, []);
 
