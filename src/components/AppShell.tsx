@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useClerkUser, useClerkAuth, CLERK_ENABLED } from "@/lib/useClerkSafe";
+import ClerkUserButton from "./ClerkUserButton";
 import MapApp from "./MapApp";
 import JournalView from "./JournalView";
 import SettingsView from "./SettingsView";
@@ -16,6 +19,8 @@ import UserProfile from "./UserProfile";
 import ActivityFeed from "./ActivityFeed";
 import type { LocationItem, SessionUser } from "@/lib/types";
 import { getDemoMode } from "@/lib/demoData";
+
+// CLERK_ENABLED is imported from @/lib/useClerkSafe
 
 type Tab = "map" | "search" | "alerts" | "journal" | "tools" | "community" | "settings";
 
@@ -100,6 +105,12 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function AppShell({ initialLocations }: AppShellProps) {
+  const router = useRouter();
+
+  // Clerk hooks — safe wrappers return defaults when Clerk is not enabled
+  const { isLoaded: clerkLoaded, isSignedIn: clerkSignedIn, user: clerkUser } = useClerkUser();
+  const { signOut } = useClerkAuth();
+
   const [activeTab, setActiveTab] = useState<Tab>("map");
   const [alertCount, setAlertCount] = useState(0);
   const [showChangelog, setShowChangelog] = useState(false);
@@ -116,37 +127,60 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   // Map always shows deals — unified experience, no separate deals tab
   const dealsMode = activeTab === "map";
 
-  // Check auth + onboarding status on mount
+  // Auth check — Clerk path vs legacy path
   useEffect(() => {
     const { prefs: loadedPrefs } = loadLocalPrefs();
     setPrefs(loadedPrefs);
 
-    // Check if user is logged in
-    fetch("/api/auth/me")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data?.user) {
-          setCurrentUser(data.user);
-          // Check onboarding status
-          fetch("/api/onboarding")
-            .then((r) => r.json())
-            .then((ob) => {
-              if (ob.onboarded) {
-                setAppEntered(true);
-              } else {
-                setShowOnboarding(true);
-              }
-            })
-            .catch(() => setAppEntered(true));
-        } else {
-          // Not logged in — stay on landing page (HC #631: login required)
-          // Do NOT auto-enter from localStorage
-        }
-      })
-      .catch(() => {
-        // API unavailable — stay on landing, require login
-      });
-  }, []);
+    if (CLERK_ENABLED) {
+      // Wait for Clerk to load
+      if (!clerkLoaded) return;
+
+      if (clerkSignedIn && clerkUser) {
+        // Map Clerk user to SessionUser shape for downstream compatibility
+        const sessionUser: SessionUser = {
+          id: clerkUser.id,
+          username: clerkUser.username ?? clerkUser.firstName ?? clerkUser.primaryEmailAddress?.emailAddress ?? "user",
+        };
+        setCurrentUser(sessionUser);
+
+        // Check onboarding
+        fetch("/api/onboarding")
+          .then((r) => r.json())
+          .then((ob) => {
+            if (ob.onboarded) {
+              setAppEntered(true);
+            } else {
+              setShowOnboarding(true);
+            }
+          })
+          .catch(() => setAppEntered(true));
+      }
+      // If not signed in, landing page stays visible (buttons redirect to /sign-in)
+    } else {
+      // Legacy auth: check /api/auth/me
+      fetch("/api/auth/me")
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data?.user) {
+            setCurrentUser(data.user);
+            fetch("/api/onboarding")
+              .then((r) => r.json())
+              .then((ob) => {
+                if (ob.onboarded) {
+                  setAppEntered(true);
+                } else {
+                  setShowOnboarding(true);
+                }
+              })
+              .catch(() => setAppEntered(true));
+          }
+        })
+        .catch(() => {
+          // API unavailable — stay on landing, require login
+        });
+    }
+  }, [clerkLoaded, clerkSignedIn, clerkUser]);
 
   // Poll unread alert count periodically (skip in demo mode)
   useEffect(() => {
@@ -217,8 +251,11 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             </div>
             <button
               onClick={() => {
-                // Show auth/onboarding flow
-                setShowAuth(true);
+                if (CLERK_ENABLED) {
+                  router.push("/sign-up");
+                } else {
+                  setShowAuth(true);
+                }
               }}
               className="mt-1 w-full rounded-2xl bg-amber-500 px-8 py-3.5 text-base font-bold text-slate-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-400 hover:shadow-amber-400/30 active:scale-95"
             >
@@ -226,7 +263,11 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             </button>
             <button
               onClick={() => {
-                setShowAuth(true);
+                if (CLERK_ENABLED) {
+                  router.push("/sign-in");
+                } else {
+                  setShowAuth(true);
+                }
               }}
               className="w-full rounded-2xl border border-slate-700 px-8 py-3 text-sm font-medium text-slate-300 transition hover:border-slate-600 hover:text-slate-100"
             >
@@ -336,17 +377,30 @@ export default function AppShell({ initialLocations }: AppShellProps) {
         {/* Profile / Activity / Changelog */}
         {(
           <>
-            <button
-              onClick={() => setShowProfile(true)}
-              title="Profile"
-              className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-              <span>Profile</span>
-            </button>
+            {CLERK_ENABLED && clerkSignedIn ? (
+              <div className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2">
+                <ClerkUserButton
+                  appearance={{
+                    elements: {
+                      avatarBox: "w-7 h-7",
+                    },
+                  }}
+                />
+                <span className="text-[10px] font-medium text-slate-500">Profile</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowProfile(true)}
+                title="Profile"
+                className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                <span>Profile</span>
+              </button>
+            )}
             <button
               onClick={() => setShowActivityFeed(true)}
               title="Activity"

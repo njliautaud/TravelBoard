@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
+/* ── CORS ─────────────────────────────────────────────── */
 const ALLOWED_ORIGINS = [
   "https://travelboard-9q0.pages.dev",
   "http://localhost:3000",
@@ -21,10 +23,21 @@ function corsHeaders(origin: string | null) {
   };
 }
 
-export default function middleware(req: NextRequest) {
+/* ── Public routes (no auth required) ─────────────────── */
+const isPublicRoute = createRouteMatcher([
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/api(.*)",
+  "/",
+]);
+
+/* ── Clerk enabled check ──────────────────────────────── */
+const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+/* ── Combined middleware ──────────────────────────────── */
+function corsFallback(req: NextRequest) {
   const origin = req.headers.get("origin");
 
-  // Handle preflight OPTIONS requests
   if (req.method === "OPTIONS") {
     return new NextResponse(null, {
       status: 204,
@@ -34,7 +47,6 @@ export default function middleware(req: NextRequest) {
 
   const res = NextResponse.next();
 
-  // Add CORS headers to all API responses
   if (req.nextUrl.pathname.startsWith("/api/")) {
     const headers = corsHeaders(origin);
     for (const [key, value] of Object.entries(headers)) {
@@ -43,6 +55,43 @@ export default function middleware(req: NextRequest) {
   }
 
   return res;
+}
+
+const clerkMw = clerkMiddleware(async (auth, req) => {
+  const origin = req.headers.get("origin");
+
+  // Handle preflight OPTIONS
+  if (req.method === "OPTIONS") {
+    return new NextResponse(null, {
+      status: 204,
+      headers: corsHeaders(origin),
+    });
+  }
+
+  // Protect non-public routes
+  if (!isPublicRoute(req)) {
+    await auth.protect();
+  }
+
+  const res = NextResponse.next();
+
+  // CORS headers for API routes
+  if (req.nextUrl.pathname.startsWith("/api/")) {
+    const headers = corsHeaders(origin);
+    for (const [key, value] of Object.entries(headers)) {
+      res.headers.set(key, value);
+    }
+  }
+
+  return res;
+});
+
+export default function middleware(req: NextRequest) {
+  if (!clerkEnabled) {
+    return corsFallback(req);
+  }
+  // clerkMiddleware returns a function that takes (req, event)
+  return (clerkMw as (req: NextRequest) => Response | Promise<Response>)(req);
 }
 
 export const config = {

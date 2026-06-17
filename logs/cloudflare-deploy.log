@@ -1,0 +1,250 @@
+Tue Jun 16 09:17:37 PM EDT 2026 — Deploying to Cloudflare Pages (API: https://documented-runtime-workflow-friends.trycloudflare.com)
+   ▲ Next.js 15.5.19
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 2.4s
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/8) ...
+   Generating static pages (2/8) 
+   Generating static pages (4/8) 
+   Generating static pages (6/8) 
+ ✓ Generating static pages (8/8)
+   Finalizing page optimization ...
+   Collecting build traces ...
+   Exporting (0/3) ...
+ ✓ Exporting (3/3)
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                     343 kB         445 kB
+├ ○ /_not-found                            994 B         103 kB
+├ ○ /admin                               1.78 kB         107 kB
+├ ● /journal/[id]                          166 B         106 kB
+├ ○ /sign-in                               166 B         106 kB
+└ ○ /sign-up                               166 B         106 kB
++ First Load JS shared by all             102 kB
+  ├ chunks/255-b742017c75bef0ba.js       46.1 kB
+  ├ chunks/4bd1b696-21f374d1156f834a.js  54.2 kB
+  └ other shared chunks (total)          1.88 kB
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+ ⛅️ wrangler 4.101.0
+────────────────────
+Uploading... (41/51)
+Uploading... (45/51)
+Uploading... (48/51)
+Uploading... (51/51)
+✨ Success! Uploaded 10 files (41 already uploaded) (1.08 sec)
+
+🌎 Deploying...
+✨ Deployment complete! Take a peek over at https://6c2c3a27.travelboard-9q0.pages.dev
+Tue Jun 16 09:18:02 PM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev
+Tue Jun 16 09:21:57 PM EDT 2026 — Deploying to Cloudflare Pages (API: https://documented-runtime-workflow-friends.trycloudflare.com)
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /tmp/package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * /tmp/tmp.XKNUFzbDuv/travelboard-deploy/package-lock.json
+
+   ▲ Next.js 15.5.19
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 10.1s
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/8) ...
+   Generating static pages (2/8) 
+   Generating static pages (4/8) 
+   Generating static pages (6/8) 
+ ✓ Generating static pages (8/8)
+   Finalizing page optimization ...
+   Collecting build traces ...
+   Exporting (0/3) ...
+ ✓ Exporting (3/3)
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                     343 kB         445 kB
+├ ○ /_not-found                            993 B         103 kB
+├ ○ /admin                               1.78 kB         107 kB
+├ ● /journal/[id]                          167 B         105 kB
+├ ○ /sign-in                               167 B         105 kB
+└ ○ /sign-up                               167 B         105 kB
++ First Load JS shared by all             102 kB
+  ├ chunks/142-69da4545d6eaea88.js       45.8 kB
+  ├ chunks/6ad05b90-a254aa99dae450d3.js  54.2 kB
+  └ other shared chunks (total)          1.88 kB
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+ ⛅️ wrangler 4.101.0
+────────────────────
+Uploading... (23/51)
+Uploading... (32/51)
+Uploading... (41/51)
+Uploading... (51/51)
+✨ Success! Uploaded 28 files (23 already uploaded) (1.98 sec)
+
+🌎 Deploying...
+✨ Deployment complete! Take a peek over at https://ecb6977c.travelboard-9q0.pages.dev
+
+> travelboard@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.19
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 5.0s
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/65) ...
+   Generating static pages (16/65) 
+   Generating static pages (32/65) 
+   Generating static pages (48/65) 
+ ✓ Generating static pages (65/65)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                       Size  First Load JS
+┌ ○ /                                           343 kB         445 kB
+├ ○ /_not-found                                  999 B         103 kB
+├ ○ /admin                                     1.78 kB         107 kB
+├ ƒ /api/admin/stats                             321 B         103 kB
+├ ƒ /api/alerts                                  321 B         103 kB
+├ ƒ /api/alerts/[id]/ack                         321 B         103 kB
+├ ƒ /api/auth/login                              321 B         103 kB
+├ ƒ /api/auth/logout                             321 B         103 kB
+├ ƒ /api/auth/me                                 321 B         103 kB
+├ ƒ /api/auth/register                           321 B         103 kB
+├ ƒ /api/awards/availability                     321 B         103 kB
+├ ƒ /api/awards/refresh                          321 B         103 kB
+├ ƒ /api/boards                                  321 B         103 kB
+├ ƒ /api/boards/[id]                             321 B         103 kB
+├ ƒ /api/boards/[id]/deals                       321 B         103 kB
+├ ƒ /api/boards/[id]/deals/[dealId]/comments     321 B         103 kB
+├ ƒ /api/boards/[id]/deals/[dealId]/vote         321 B         103 kB
+├ ƒ /api/cover-image                             321 B         103 kB
+├ ƒ /api/deals/compare                           321 B         103 kB
+├ ƒ /api/deals/countries                         321 B         103 kB
+├ ƒ /api/deals/routes                            321 B         103 kB
+├ ƒ /api/deals/score                             321 B         103 kB
+├ ƒ /api/destinations/[code]                     321 B         103 kB
+├ ƒ /api/drafts                                  321 B         103 kB
+├ ƒ /api/drafts/[id]                             321 B         103 kB
+├ ƒ /api/drafts/[id]/promote                     321 B         103 kB
+├ ƒ /api/drafts/enrich                           321 B         103 kB
+├ ƒ /api/drafts/import                           321 B         103 kB
+├ ƒ /api/drafts/ingest                           321 B         103 kB
+├ ƒ /api/export/csv                              321 B         103 kB
+├ ƒ /api/export/json                             321 B         103 kB
+├ ƒ /api/fare-prediction                         321 B         103 kB
+├ ƒ /api/fares                                   321 B         103 kB
+├ ƒ /api/fares/history/[origin]/[destination]    321 B         103 kB
+├ ƒ /api/fares/top-deals                         321 B         103 kB
+├ ƒ /api/fares/warm                              321 B         103 kB
+├ ƒ /api/flight-prices                           321 B         103 kB
+├ ƒ /api/gamification/badges                     321 B         103 kB
+├ ƒ /api/gamification/event                      321 B         103 kB
+├ ƒ /api/gamification/progress                   321 B         103 kB
+├ ƒ /api/geocode                                 321 B         103 kB
+├ ƒ /api/hardware-sync                           321 B         103 kB
+├ ƒ /api/image-proxy                             321 B         103 kB
+├ ƒ /api/journal                                 321 B         103 kB
+├ ƒ /api/journal/[id]                            321 B         103 kB
+├ ƒ /api/journal/[id]/public                     321 B         103 kB
+├ ƒ /api/journal/countries                       321 B         103 kB
+├ ƒ /api/journal/stats                           321 B         103 kB
+├ ƒ /api/locations                               321 B         103 kB
+├ ƒ /api/locations/[id]                          321 B         103 kB
+├ ƒ /api/locations/[id]/star                     321 B         103 kB
+├ ƒ /api/lounges/[id]                            321 B         103 kB
+├ ƒ /api/lounges/search                          321 B         103 kB
+├ ƒ /api/loyalty                                 321 B         103 kB
+├ ƒ /api/loyalty/[id]                            321 B         103 kB
+├ ƒ /api/loyalty/programs                        321 B         103 kB
+├ ƒ /api/loyalty/transfers                       321 B         103 kB
+├ ƒ /api/onboarding                              321 B         103 kB
+├ ƒ /api/packing                                 321 B         103 kB
+├ ƒ /api/points/calculator                       321 B         103 kB
+├ ƒ /api/points/cards                            321 B         103 kB
+├ ƒ /api/points/cards/[id]                       321 B         103 kB
+├ ƒ /api/points/optimize                         321 B         103 kB
+├ ƒ /api/points/sweet-spots                      321 B         103 kB
+├ ƒ /api/prefs                                   321 B         103 kB
+├ ƒ /api/profile                                 321 B         103 kB
+├ ƒ /api/saved-deals                             321 B         103 kB
+├ ƒ /api/savings                                 321 B         103 kB
+├ ƒ /api/search                                  321 B         103 kB
+├ ƒ /api/search/calendar                         321 B         103 kB
+├ ƒ /api/settings                                321 B         103 kB
+├ ƒ /api/track/[flight]                          321 B         103 kB
+├ ƒ /api/trips                                   321 B         103 kB
+├ ƒ /api/trips/[id]                              321 B         103 kB
+├ ƒ /api/trips/plans                             321 B         103 kB
+├ ƒ /api/trips/plans/[id]                        321 B         103 kB
+├ ƒ /api/trips/plans/[id]/legs                   321 B         103 kB
+├ ƒ /api/trips/plans/[id]/legs/[legId]           321 B         103 kB
+├ ƒ /api/trips/stats                             321 B         103 kB
+├ ƒ /api/upload                                  321 B         103 kB
+├ ƒ /api/watches                                 321 B         103 kB
+├ ƒ /api/watches/[id]                            321 B         103 kB
+├ ● /journal/[id]                                172 B         106 kB
+├ ○ /sign-in                                     172 B         106 kB
+└ ○ /sign-up                                     172 B         106 kB
++ First Load JS shared by all                   102 kB
+  ├ chunks/1255-b4deec658da15f4f.js            46.1 kB
+  ├ chunks/4bd1b696-f6bedae49f0827a5.js        54.2 kB
+  └ other shared chunks (total)                1.88 kB
+
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses generateStaticParams)
+ƒ  (Dynamic)  server-rendered on demand
+
+[1m[34mUse --update-env to update environment variables[39m[22m
+[32m[PM2] [39mApplying action restartProcessId on app [travelboard](ids: [ 32 ])
+[32m[PM2] [39m[travelboard](32) ✓
+┌────┬────────────────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name                       │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ [1m[36m20[39m[22m │ aeroforge-backend          │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 96953    │ 2D     │ 43   │ [32m[1monline[22m[39m    │ 0%       │ 77.0mb   │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m26[39m[22m │ aeroforge-frontend         │ default     │ 14.2.29 │ [7m[1mfork[22m[27m    │ 429498   │ 28h    │ 10   │ [32m[1monline[22m[39m    │ 0%       │ 130.4mb  │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m4[39m[22m  │ alert-router               │ default     │ 1.0.0   │ [7m[1mfork[22m[27m    │ 996802   │ 13D    │ 40   │ [32m[1monline[22m[39m    │ 0%       │ 117.2mb  │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m17[39m[22m │ external-trigger-daemon    │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 2730642  │ 5D     │ 6    │ [32m[1monline[22m[39m    │ 0%       │ 3.6mb    │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m12[39m[22m │ mbo-recorder               │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 0        │ 0      │ 6    │ [31m[1mstopped[22m[39m   │ 0%       │ 0b       │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m11[39m[22m │ paper-mamba                │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 0        │ 0      │ 0    │ [31m[1mstopped[22m[39m   │ 0%       │ 0b       │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m7[39m[22m  │ persistent-monitor         │ default     │ 1.0.0   │ [7m[1mfork[22m[27m    │ 2639273  │ 5D     │ 8    │ [32m[1monline[22m[39m    │ 0%       │ 75.1mb   │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m2[39m[22m  │ qcc-daemon                 │ default     │ 1.0.0   │ [7m[1mfork[22m[27m    │ 2365360  │ 6D     │ 5    │ [32m[1monline[22m[39m    │ 0%       │ 88.3mb   │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m3[39m[22m  │ qcc-orchestrator           │ default     │ 1.0.0   │ [7m[1mfork[22m[27m    │ 992738   │ 44D    │ 0    │ [32m[1monline[22m[39m    │ 0%       │ 39.8mb   │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m13[39m[22m │ quant-dashboard            │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 1414208  │ 42D    │ 14   │ [32m[1monline[22m[39m    │ 0%       │ 8.2mb    │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m18[39m[22m │ queue-puller-jupiter       │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 1096088  │ 29D    │ 0    │ [32m[1monline[22m[39m    │ 0%       │ 12.0mb   │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m22[39m[22m │ ray-head                   │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 2528937  │ 6D     │ 0    │ [32m[1monline[22m[39m    │ 0%       │ 3.4mb    │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m15[39m[22m │ razer-watchdog             │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 0        │ 0      │ 2    │ [31m[1mstopped[22m[39m   │ 0%       │ 0b       │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m5[39m[22m  │ sleep-orchestrator         │ default     │ 1.0.0   │ [7m[1mfork[22m[27m    │ 4678     │ 50D    │ 0    │ [32m[1monline[22m[39m    │ 0%       │ 73.4mb   │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m16[39m[22m │ sweep-result-watcher       │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 3316999  │ 37D    │ 1    │ [32m[1monline[22m[39m    │ 0%       │ 896.0kb  │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m25[39m[22m │ teleclaude-bridge          │ default     │ 1.0.0   │ [7m[1mfork[22m[27m    │ 556338   │ 20h    │ 2    │ [32m[1monline[22m[39m    │ 0%       │ 69.9mb   │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m32[39m[22m │ travelboard                │ default     │ 0.1.0   │ [34m[1mcluster[22m[39m │ 822462   │ 0s     │ 8    │ [32m[1monline[22m[39m    │ 0%       │ 45.2mb   │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m31[39m[22m │ travelboard-tunnel         │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 787255   │ 73m    │ 0    │ [32m[1monline[22m[39m    │ 0%       │ 36.6mb   │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m21[39m[22m │ wheel-paper-balanced       │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 2476303  │ 6D     │ 0    │ [32m[1monline[22m[39m    │ 0%       │ 222.7mb  │ [1mjupiter[22m  │ [90mdisabled[39m │
+│ [1m[36m19[39m[22m │ wheel-paper-engine         │ default     │ N/A     │ [7m[1mfork[22m[27m    │ 2261348  │ 7D     │ 1    │ [32m[1monline[22m[39m    │ 0%       │ 222.5mb  │ [1mjupiter[22m  │ [90mdisabled[39m │
+└────┴────────────────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[1mModule[22m
+┌────┬──────────────────────────────┬───────────────┬──────────┬──────────┬──────┬──────────┬──────────┬──────────┐
+│ id │ module                       │ version       │ pid      │ status   │ ↺    │ cpu      │ mem      │ user     │
+├────┼──────────────────────────────┼───────────────┼──────────┼──────────┼──────┼──────────┼──────────┼──────────┤
+│ [1m[36m0[39m[22m  │ pm2-logrotate                │ 3.0.0         │ 4043     │ [32m[1monline[22m[39m   │ 0    │ 0%       │ 54.7mb   │ [1mjupiter[22m  │
+└────┴──────────────────────────────┴───────────────┴──────────┴──────────┴──────┴──────────┴──────────┴──────────┘
+Tue Jun 16 09:22:45 PM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev
