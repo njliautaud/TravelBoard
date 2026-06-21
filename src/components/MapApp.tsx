@@ -8,6 +8,7 @@ import GeoBanner from "./GeoBanner";
 import EntryForm, { type PinDropResult } from "./EntryForm";
 import AuthModal from "./AuthModal";
 import DraftInbox from "./DraftInbox";
+import LocationDetailsModal from "./LocationDetailsModal";
 import type { DraftItem, DraftPrefill, LocationItem, SessionUser } from "@/lib/types";
 import { DEFAULT_SETTINGS, type UserSettings } from "@/lib/settings";
 
@@ -26,6 +27,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [zoomedIn, setZoomedIn] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
+  const [detailsLoc, setDetailsLoc] = useState<LocationItem | null>(null);
   const [editing, setEditing] = useState<LocationItem | null>(null);
   const [draftPrefill, setDraftPrefill] = useState<DraftPrefill | null>(null);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
@@ -36,6 +38,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [inboxOpen, setInboxOpen] = useState(false);
   const [pendingAdd, setPendingAdd] = useState(false);
+  const [pendingShare, setPendingShare] = useState<{ url: string; text: string | null } | null>(null);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const settingsSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -158,6 +161,16 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     });
   };
 
+  const handleViewDetails = useCallback((loc: LocationItem) => {
+    setDetailsLoc(loc);
+    setFocusPoint({
+      lng: loc.longitude,
+      lat: loc.latitude,
+      dimCountry: loc.countryCode,
+      nonce: Date.now(),
+    });
+  }, []);
+
   const openEdit = (loc: LocationItem) => {
     setEditing(loc);
     setDraftPrefill(null);
@@ -182,6 +195,40 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     setPinDropResult(null);
     setFormOpen(true);
   };
+
+  // Open the prefilled "Add a place" form from a shared link (Android share / ?share= URL).
+  const openSharePrefill = useCallback((url: string, text: string | null) => {
+    setInboxOpen(false);
+    setSidebarOpen(false);
+    setEditing(null);
+    setActiveDraftId(null);
+    setDraftPrefill({
+      activityName: "",
+      notes: "",
+      enrichUrl: url,
+      enrichRawText: text && text.trim() ? text : url,
+      media: [{ type: "LINK", url, caption: "Source link", sortOrder: 0 }],
+    });
+    setPinDropResult(null);
+    setFormOpen(true);
+  }, []);
+
+  // Capture a ?share=<url>&text=<caption> deep-link (Android share target) once on load.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const url = params.get("share")?.trim();
+    if (!url) return;
+    setPendingShare({ url, text: params.get("text") });
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
+  // Open the prefilled form as soon as we're logged in (immediately, or after login).
+  useEffect(() => {
+    if (!pendingShare || !loggedIn) return;
+    openSharePrefill(pendingShare.url, pendingShare.text);
+    setPendingShare(null);
+  }, [pendingShare, loggedIn, openSharePrefill]);
 
   const handleDelete = async (loc: LocationItem) => {
     if (!window.confirm(`Delete "${loc.activityName}"? This cannot be undone.`)) return;
@@ -419,8 +466,20 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         locations={locations}
         editor={loggedIn}
         onClose={() => setSelection(null)}
+        onDetails={handleViewDetails}
         onEdit={openEdit}
         onDelete={handleDelete}
+      />
+
+      <LocationDetailsModal
+        open={detailsLoc !== null}
+        location={detailsLoc}
+        editor={loggedIn}
+        onClose={() => setDetailsLoc(null)}
+        onEdit={(loc) => {
+          setDetailsLoc(null);
+          openEdit(loc);
+        }}
       />
 
       <EntryForm

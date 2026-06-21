@@ -1,7 +1,7 @@
 "use client";
 
 import type { LocationItem } from "@/lib/types";
-import { cleanThumb } from "@/lib/thumb";
+import { coverImageSrc } from "@/lib/thumb";
 
 export type PanelSelection =
   | { type: "country"; code: string; name: string }
@@ -13,6 +13,7 @@ interface SidePanelProps {
   locations: LocationItem[];
   editor: boolean;
   onClose: () => void;
+  onDetails: (loc: LocationItem) => void;
   onEdit: (loc: LocationItem) => void;
   onDelete: (loc: LocationItem) => void;
 }
@@ -36,25 +37,29 @@ function formatDate(iso: string): string {
 function EntryCard({
   loc,
   editor,
+  showDetails,
+  onDetails,
   onEdit,
   onDelete,
 }: {
   loc: LocationItem;
   editor: boolean;
+  showDetails: boolean;
+  onDetails: (l: LocationItem) => void;
   onEdit: (l: LocationItem) => void;
   onDelete: (l: LocationItem) => void;
 }) {
   const images = loc.media.filter((m) => m.type === "UPLOAD" || m.type === "IMAGE_URL");
   const links = loc.media.filter((m) => m.type === "LINK");
-  const coverSrc = loc.coverImageUrl ? cleanThumb(loc.coverImageUrl) : null;
+  const coverSrc = coverImageSrc(loc.coverImageUrl, 400);
   const reminderDue = loc.reminderAt !== null && new Date(loc.reminderAt) <= new Date();
 
   return (
     <div className="rounded-xl border border-slate-700/60 bg-slate-900/70 overflow-hidden">
       {coverSrc && (
-        <div className="relative h-40 w-full bg-slate-800">
+        <div className="relative flex h-40 w-full items-center justify-center bg-slate-800">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={coverSrc} alt={loc.activityName} className="h-40 w-full object-cover" />
+          <img src={coverSrc} alt={loc.activityName} className="max-h-40 w-full object-contain" />
           {images.length > 1 && (
             <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-slate-200">
               +{images.length - 1} more
@@ -124,29 +129,42 @@ function EntryCard({
           </p>
         )}
 
-        {editor && (
-          <div className="flex gap-2 pt-1">
+        {(showDetails || editor) && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          {showDetails && (
             <button
-              onClick={() => onEdit(loc)}
-              className="rounded-lg border border-slate-600 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-700/60"
+              onClick={() => onDetails(loc)}
+              className="rounded-lg border border-sky-600/50 px-2.5 py-1 text-xs text-sky-300 hover:bg-sky-600/20"
             >
-              Edit
+              Details
             </button>
-            <button
-              onClick={() => onDelete(loc)}
-              className="rounded-lg border border-rose-600/50 px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-600/20"
-            >
-              Delete
-            </button>
-          </div>
+          )}
+          {editor && (
+            <>
+              <button
+                onClick={() => onEdit(loc)}
+                className="rounded-lg border border-slate-600 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-700/60"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => onDelete(loc)}
+                className="rounded-lg border border-rose-600/50 px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-600/20"
+              >
+                Delete
+              </button>
+            </>
+          )}
+        </div>
         )}
       </div>
     </div>
   );
 }
 
-export default function SidePanel({ selection, locations, editor, onClose, onEdit, onDelete }: SidePanelProps) {
+export default function SidePanel({ selection, locations, editor, onClose, onDetails, onEdit, onDelete }: SidePanelProps) {
   const open = selection !== null;
+  const countryView = selection?.type === "country";
 
   let title = "";
   let subtitle = "";
@@ -188,7 +206,15 @@ export default function SidePanel({ selection, locations, editor, onClose, onEdi
         <div className="panel-scroll flex-1 space-y-3 overflow-y-auto p-4">
           {entries.length === 0 && <p className="text-sm text-slate-500">Nothing logged here yet.</p>}
           {entries.map((loc) => (
-            <EntryCard key={loc.id} loc={loc} editor={editor} onEdit={onEdit} onDelete={onDelete} />
+            <EntryCard
+              key={loc.id}
+              loc={loc}
+              editor={editor}
+              showDetails={countryView}
+              onDetails={onDetails}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
           ))}
         </div>
       </div>

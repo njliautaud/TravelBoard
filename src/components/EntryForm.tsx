@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { DraftPrefill, GeocodeResult, LocationItem, MediaItem, MediaType, VisitStatus } from "@/lib/types";
-import { cleanThumb } from "@/lib/thumb";
+import { cleanThumb, coverImageSrc } from "@/lib/thumb";
 
 export interface PinDropResult {
   latitude: number;
@@ -90,6 +90,18 @@ const labelCls = "block text-xs font-medium text-slate-400 mb-1";
 const amberBtnCls =
   "rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300 hover:bg-amber-500/20 disabled:opacity-50";
 
+type CoverOption = {
+  url: string;
+  previewUrl: string;
+  source: "wikipedia" | "commons" | "google";
+};
+
+const SOURCE_LABEL: Record<CoverOption["source"], string> = {
+  wikipedia: "Wikipedia",
+  commons: "Wikimedia",
+  google: "Google (CC)",
+};
+
 export default function EntryForm({
   open,
   hidden,
@@ -111,11 +123,9 @@ export default function EntryForm({
   const [enriching, setEnriching] = useState(false);
   const [enrichHint, setEnrichHint] = useState<string | null>(null);
   const [generatingCover, setGeneratingCover] = useState(false);
-  const [coverIndex, setCoverIndex] = useState(-1);
-  const [coverCandidateCount, setCoverCandidateCount] = useState(0);
+  const [coverOptions, setCoverOptions] = useState<CoverOption[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const coverCandidatesRef = useRef<string[]>([]);
   const coverCandidateKeyRef = useRef("");
 
   // Reset when (re)opened
@@ -144,10 +154,8 @@ export default function EntryForm({
       setResults([]);
       setError(null);
       setEnrichHint(null);
-      coverCandidatesRef.current = [];
       coverCandidateKeyRef.current = "";
-      setCoverIndex(-1);
-      setCoverCandidateCount(0);
+      setCoverOptions([]);
     }
   }, [open, editing, draftPrefill]);
 
@@ -160,10 +168,8 @@ export default function EntryForm({
   useEffect(() => {
     const key = coverSearchKey();
     if (coverCandidateKeyRef.current && coverCandidateKeyRef.current !== key) {
-      coverCandidatesRef.current = [];
       coverCandidateKeyRef.current = "";
-      setCoverIndex(-1);
-      setCoverCandidateCount(0);
+      setCoverOptions([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.activityName, form.city, form.region, form.countryName]);
@@ -355,49 +361,67 @@ export default function EntryForm({
 
   const clearCover = () => {
     setForm((f) => ({ ...f, coverImageUrl: "" }));
-    setCoverIndex(-1);
+    setCoverOptions([]);
+    coverCandidateKeyRef.current = "";
   };
 
   const generateCover = async () => {
-    if (!form.activityName.trim() && !form.city.trim() && !form.countryName.trim()) {
-      setError("Add an activity name or location to search for a cover image.");
+    if (!form.activityName.trim()) {
+      setError("Add an activity name before generating a cover image.");
+      return;
+    }
+    if (!form.city.trim() && !form.region.trim() && !form.countryName.trim()) {
+      setError("Add a city, region, or country so we can search with the activity name.");
       return;
     }
     setGeneratingCover(true);
     setError(null);
     const key = coverSearchKey();
     try {
-      let candidates = coverCandidatesRef.current;
-      if (coverCandidateKeyRef.current !== key || candidates.length === 0) {
-        const params = new URLSearchParams();
-        if (form.activityName.trim()) params.set("activityName", form.activityName.trim());
-        if (form.city.trim()) params.set("city", form.city.trim());
-        if (form.region.trim()) params.set("region", form.region.trim());
-        if (form.countryName.trim()) params.set("countryName", form.countryName.trim());
-        const res = await fetch(`/api/cover-image?${params}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Image search failed");
-        candidates = ((data.candidates ?? []) as string[]).filter(Boolean);
-        if (candidates.length === 0) {
-          setError("No images found — try a more specific activity or location name.");
-          return;
-        }
-        coverCandidatesRef.current = candidates;
-        coverCandidateKeyRef.current = key;
-        setCoverCandidateCount(candidates.length);
-        setCoverIndex(0);
-        setForm((f) => ({ ...f, coverImageUrl: candidates[0] }));
-      } else {
-        const next = (coverIndex + 1) % candidates.length;
-        setCoverIndex(next);
-        setForm((f) => ({ ...f, coverImageUrl: candidates[next] }));
+      const params = new URLSearchParams({ limit: "3" });
+      params.set("activityName", form.activityName.trim());
+      if (form.city.trim()) params.set("city", form.city.trim());
+      if (form.region.trim()) params.set("region", form.region.trim());
+      if (form.countryName.trim()) params.set("countryName", form.countryName.trim());
+      const res = await fetch(`/api/cover-image?${params}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Image search failed");
+      const raw = (data.candidates ?? []) as (CoverOption | string)[];
+      const options: CoverOption[] = raw
+        .map((c) => {
+          if (typeof c === "string") {
+            return { url: c, previewUrl: coverImageSrc(c, 240) ?? c, source: "wikipedia" as const };
+          }
+          if (c?.url) {
+            return {
+              url: c.url,
+              previewUrl: c.previewUrl || coverImageSrc(c.url, 240) || c.url,
+              source: c.source ?? "wikipedia",
+            };
+          }
+          return null;
+        })
+        .filter((c): c is CoverOption => c !== null);
+      if (options.length === 0) {
+        setCoverOptions([]);
+        setError(
+          data.query
+            ? `No images found for “${data.query}” — try a more specific name.`
+            : "No images found — try a more specific activity and location.",
+        );
+        return;
       }
+      coverCandidateKeyRef.current = key;
+      setCoverOptions(options);
+      setForm((f) => ({ ...f, coverImageUrl: options[0].url }));
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
       setGeneratingCover(false);
     }
   };
+
+  const pickCoverOption = (url: string) => setForm((f) => ({ ...f, coverImageUrl: url }));
 
   const setCaption = (idx: number, caption: string) =>
     setForm((f) => ({
@@ -476,21 +500,51 @@ export default function EntryForm({
         <div className="mb-4">
           <label className={labelCls}>Cover photo</label>
           {form.coverImageUrl ? (
-            <div className="overflow-hidden rounded-xl border border-slate-700/70">
+            <div className="flex h-36 items-center justify-center overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/60">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={cleanThumb(form.coverImageUrl)} alt="" className="h-36 w-full object-cover" />
+              <img
+                src={coverImageSrc(form.coverImageUrl, 480)}
+                alt=""
+                className="max-h-36 max-w-full object-contain"
+              />
             </div>
           ) : (
             <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-slate-700/70 bg-slate-900/40 text-xs text-slate-500">
-              No cover yet — generate one from Wikipedia
+              No cover yet — generate options from Wikipedia &amp; Google (CC)
+            </div>
+          )}
+          {coverOptions.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-2 text-xs text-slate-500">Pick a cover (tap to select):</p>
+              <div className="grid grid-cols-3 gap-2">
+                {coverOptions.map((opt) => {
+                  const selected = form.coverImageUrl === opt.url;
+                  const preview = opt.previewUrl || coverImageSrc(opt.url, 240) || opt.url;
+                  return (
+                    <button
+                      key={opt.url}
+                      type="button"
+                      onClick={() => pickCoverOption(opt.url)}
+                      className={`overflow-hidden rounded-lg border bg-slate-900/60 transition ${
+                        selected
+                          ? "border-amber-500 ring-2 ring-amber-500/40"
+                          : "border-slate-700/70 hover:border-slate-500"
+                      }`}
+                    >
+                      <div className="flex h-24 items-center justify-center bg-slate-800/80 p-1">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={preview} alt="" className="max-h-full max-w-full object-contain" />
+                      </div>
+                      <span className="block truncate px-1 py-1 text-[10px] text-slate-500">
+                        {SOURCE_LABEL[opt.source]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {coverIndex >= 0 && coverCandidateCount > 1 && (
-              <span className="text-xs text-slate-500">
-                {coverIndex + 1} of {coverCandidateCount}
-              </span>
-            )}
             <div className="ml-auto flex flex-wrap gap-2">
               <button
                 type="button"
@@ -498,11 +552,7 @@ export default function EntryForm({
                 onClick={generateCover}
                 className={amberBtnCls}
               >
-                {generatingCover
-                  ? "Searching…"
-                  : coverIndex >= 0 && coverCandidateCount > 1
-                    ? "Try another"
-                    : "Generate image"}
+                {generatingCover ? "Searching…" : coverOptions.length > 0 ? "Search again" : "Generate image"}
               </button>
               {form.coverImageUrl && (
                 <button type="button" onClick={clearCover} className={amberBtnCls}>

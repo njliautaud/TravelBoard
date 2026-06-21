@@ -4,7 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import maplibregl, { Map as MlMap, MapMouseEvent } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { LocationItem } from "@/lib/types";
-import { cleanThumb } from "@/lib/thumb";
+import { coverImageSrc } from "@/lib/thumb";
 import { countryFlagAccent } from "@/lib/countryFlagColors";
 import type { MapTheme } from "@/lib/settings";
 
@@ -588,7 +588,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
             x: e.point.x + 14,
             y: e.point.y + 14,
             name: dotHit.properties.name as string,
-            cover: cleanThumb(cover) || undefined,
+            cover: coverImageSrc(cover, 240),
           });
         } else if (countryHit) {
           const { name, count } = countryHit.properties as { name: string; count: number };
