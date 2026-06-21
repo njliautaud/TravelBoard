@@ -1,7 +1,7 @@
 # TravelBoard — AI Context & Handoff Document
 
 > Purpose: lets a fresh AI session pick up where the last one left off. Read fully before editing.
-> Last updated: 2026-06-13.
+> Last updated: 2026-06-21.
 
 ---
 
@@ -12,6 +12,8 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 - **Visual wishlist**: countries glow by wish density (choropleth heatmap).
 - **Journal**: pins hold notes, photos, links, seasons, reminders, flight-deal thresholds.
 - **WhatsApp ingestion**: share reel links to yourself → drafts inbox → smart-fill from caption/location/Wikimedia cover.
+- **Android app**: native share target → prefilled form (online) or queued draft (offline). See `android/`.
+- **Cover photos**: Google Images via Serper.dev, Postgres-cached with fuzzy/cross-language reuse and a duplicate-wish guard.
 - **Future**: ESP32 LED world map via `/api/hardware-sync`; partner Python script for flight prices.
 
 ### User preferences (do not violate)
@@ -31,7 +33,8 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 | Map | MapLibre GL JS v5, Carto `dark_all`, `public/data/countries.geo.json` (ISO alpha-3 ids) |
 | DB | PostgreSQL 16 + **Prisma 6** (do not upgrade to v7) |
 | Auth | Username/password (bcrypt), HMAC httpOnly cookie `tb_session` |
-| Images | `sharp` for thumbnail declutter; Wikimedia/Wikipedia in `coverImage.ts` |
+| Images | `sharp` declutter/resize; Wikimedia/Wikipedia in `coverImage.ts`; Google Images via `serperImages.ts`; reliability proxy `coverProxy.ts` + `/api/cover-proxy` |
+| Android | Kotlin WebView wrapper + share target in `android/` (Gradle, minSdk 26) |
 
 ---
 
@@ -45,10 +48,15 @@ src/app/page.tsx
        ├─ TravelMap.tsx      — heatmap, flag borders, Alaska/Hawaii zoom, world-view zoom threshold
        ├─ SidePanel.tsx      — right panel / mobile bottom sheet (auto-closes on world view)
        ├─ GeoBanner.tsx
-       ├─ EntryForm.tsx      — cover generate/remove, enrichment prefill, lat/lng at bottom
+       ├─ EntryForm.tsx      — Serper cover picker (generate/regenerate), enrichment prefill,
+       │                       duplicate-wish guard, lat/lng at bottom
+       ├─ LocationDetailsModal.tsx — full read-only wish view (opened from SidePanel "Details")
        ├─ DraftInbox.tsx
        └─ AuthModal.tsx
 ```
+
+`MapApp` also reads a `?share=<url>&text=` query param (Android share target) and opens
+the prefilled `EntryForm` once logged in.
 
 ### Map behavior
 
@@ -65,6 +73,28 @@ src/app/page.tsx
 - `thumbnailUrl` = reel frame; `coverImageUrl` = Wikimedia location photo.
 - `/api/image-proxy` strips baked-in play button via `declutterImage.ts` (sharp inpaint).
 
+### Cover image search (`src/lib/serperImages.ts`, `/api/fetch-previews`)
+
+- Google Images via **Serper.dev** (`SERPER_API_KEY`); junk hosts (`lookaside.*` — they
+  serve HTML) filtered out; over-fetch then slice to keep N good results.
+- **Cache-first** (`ImageCache` table): exact hit → fuzzy "same wish" hit (`overlapScore`
+  in `similarity.ts`, ≥0.6) → Serper pull (cached). `refresh=1` forces a fresh pull
+  (the EntryForm "Regenerate" button). No key / error ⇒ deterministic placeholders, not cached.
+
+### Reliable display (`src/lib/coverProxy.ts`, `src/lib/thumb.ts`, `/api/cover-proxy`)
+
+- `coverImageSrc()` routes **all** remote covers through `/api/cover-proxy` (social CDNs still
+  go through `image-proxy`). The proxy fetches any public https host with a browser UA, verifies
+  the response is really an image, resizes with sharp, and blocks private/LAN hosts (SSRF guard).
+
+### Similarity / duplicate detection (`src/lib/similarity.ts`)
+
+- `tokenize()` folds accents, drops stopwords + foreign articles, singularizes, and maps a
+  **multilingual travel-term synonym table** to canonical tokens (`salar`/`salt flat` → `saltflat`,
+  `cascada`/`waterfall`, …). Shared by the cache match **and** the duplicate-wish guard.
+- `isDuplicateWish()` gates on matching country, then activity-token overlap (location words
+  removed so Eiffel ≠ Louvre). EntryForm warns via `window.confirm` before saving a likely dup.
+
 ---
 
 ## 4. Database Schema (Prisma)
@@ -73,10 +103,15 @@ Key models:
 
 - **User**: `username`, `passwordHash`, `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes).
 - **Location**: per-user wishes; `starred`, seasons, `coverImageUrl`, `priceThreshold`, media, flight prices.
-- **Draft**: WhatsApp inbox items (`rawText`, `extractedUrl`).
+- **Draft**: WhatsApp/Android inbox items (`rawText`, `extractedUrl`, `source`).
 - **FlightPrice**: ingested via API key; latest price drives `isDeal` in serialize.
+- **ImageCache**: `searchQuery` (unique, normalized), `images` (Json: `PreviewImage[]`), `source`, timestamps. Permanent Serper image cache.
 
-Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000_multi_user_drafts_seasons`, `20260613120000_user_settings`.
+Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000_multi_user_drafts_seasons`, `20260613120000_user_settings`, `20260621120000_image_cache`.
+
+> **Migration drift:** the DB has pre-existing drift on `User.mapTheme`, so `prisma migrate dev`
+> wants to drop/recreate that column (**data loss**). Add new tables with a hand-written migration
+> + `prisma migrate deploy` instead (that's how `image_cache` was applied).
 
 ### Seed safety (`prisma/seed.ts`)
 
@@ -94,6 +129,8 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 | `/api/settings` | session | `mapTheme`, `homeAirports` |
 | `/api/drafts`, `/api/drafts/[id]`, `/api/drafts/ingest`, `/api/drafts/enrich` | session / ingest key | WhatsApp + enrichment |
 | `/api/cover-image` | public | Multi-candidate Wikimedia search |
+| `/api/fetch-previews` | public | Serper Google Images, cache-first (exact → fuzzy → pull); `refresh=1` forces pull |
+| `/api/cover-proxy` | public | Re-serve any public https image (browser UA, image check, SSRF guard) |
 | `/api/image-proxy` | public | Social CDN only; declutter play button |
 | `/api/geocode`, `/api/upload` | public / session | Nominatim, uploads |
 | `/api/flight-prices` | X-API-Key POST | Partner script |
@@ -123,7 +160,7 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 
 ---
 
-## 8. Current Status (2026-06-13)
+## 8. Current Status (2026-06-21)
 
 ### Done
 
@@ -131,6 +168,10 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 - Link enrichment, image proxy, cover generate/cycle, settings (theme + airports)
 - Flag border glow, Alaska/Hawaii zoom, world view UX, sidebar dropdown
 - Idempotent seed; cover delete no longer re-fetches on PATCH
+- **Serper Google-Images cover search** with Postgres cache + fuzzy/cross-language reuse
+- **Duplicate-wish guard** + **Details modal**; cover previews adapt to portrait/landscape
+- **`cover-proxy`** re-serves all cover hosts (fixed broken hotlinked/social images)
+- **Android app** (`android/`): WebView + share target, offline outbox → Inbox
 
 ### Open / roadmap
 
@@ -139,13 +180,17 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 - ESP32 + partner flight script (APIs exist)
 - Console warning cleanup (reported ~29 issues, not triaged)
 - Theme preference for logged-out users (localStorage)
+- Wire Android wrapper APK build / signing; broaden synonym table as needed
 
 ---
 
 ## 9. Gotchas
 
 - **Prisma 6 only.** `npx prisma generate` may EPERM if dev server locks DLL — restart dev first.
-- **Never** `prisma migrate reset` on a DB with real user data.
+- **Never** `prisma migrate reset` on a DB with real user data. New tables: hand-written migration + `migrate deploy` (avoid `migrate dev` — it wants to drop `User.mapTheme`).
+- **`SERPER_API_KEY` lives only in gitignored `.env`.** Blank ⇒ placeholder images (not cached). Cache is local Postgres (`ImageCache`), persistent, not Serper-side.
+- `cover-proxy` now fetches arbitrary public https hosts — keep the SSRF blocklist in `coverProxy.ts` intact.
+- Duplicate matching is intentionally aggressive (any two salt flats in a country match); `window.confirm` "add anyway" is the escape.
 - PATCH locations replaces media wholesale; empty `coverImageUrl` is respected (no auto re-fetch).
 - `SidePanel` is `fixed` — does not shrink map flex box; UI insets account for it.
 - EntryForm stays mounted during pin-drop (`hidden` not unmount).
@@ -153,7 +198,16 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 
 ---
 
-## 10. Git / GitHub
+## 10. Android App (`android/`)
+
+- Kotlin WebView wrapper + `ACTION_SEND` share target; Gradle project, `minSdk 26`, `targetSdk 35`.
+- `MainActivity` hosts the site (cookies, file upload); `ShareActivity` routes a shared link to the
+  prefilled form when the LAN server is reachable, else queues it (`Outbox`) and flushes via
+  `SyncWorker` → `POST /api/drafts/ingest` (`source: "android-share"`).
+- Config (server LAN URL, username, `WHATSAPP_INGEST_KEY`) in `SettingsActivity`. Build via Android
+  Studio; `gradle-wrapper.jar` is regenerated on import. See `android/README.md`.
+
+## 11. Git / GitHub
 
 - Repository: **TravelBoard** on GitHub (user: BSwann168).
 - `.env`, `node_modules`, `.next`, `public/uploads/*`, `.whatsapp-auth/`, `.wwebjs_cache/` are gitignored.
