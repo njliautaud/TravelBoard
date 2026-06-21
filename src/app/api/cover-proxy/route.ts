@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
-import { isAllowedCoverHost } from "@/lib/coverProxy";
+import { isBlockedProxyHost } from "@/lib/coverProxy";
 
 export const dynamic = "force-dynamic";
 
@@ -28,46 +28,56 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "invalid url" }, { status: 400 });
   }
 
-  if (parsed.protocol !== "https:" || !isAllowedCoverHost(parsed.hostname)) {
+  if (parsed.protocol !== "https:" || isBlockedProxyHost(parsed.hostname)) {
     return NextResponse.json({ error: "unsupported host" }, { status: 400 });
   }
 
   const width = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("w") ?? "480", 10) || 480, 64), 1200);
 
   try {
-    const upstream = await fetch(parsed.toString(), { headers: FETCH_HEADERS, cache: "no-store" });
+    const upstream = await fetch(parsed.toString(), {
+      headers: FETCH_HEADERS,
+      cache: "no-store",
+      redirect: "follow",
+      signal: AbortSignal.timeout(8000),
+    });
     if (!upstream.ok) {
       return NextResponse.json({ error: `upstream ${upstream.status}` }, { status: 502 });
     }
 
     const input = Buffer.from(await upstream.arrayBuffer());
-    const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
+    const contentType = (upstream.headers.get("content-type") ?? "").split(";")[0].trim();
 
+    // Confirm it's really an image — some hosts (e.g. fbsbx/lookaside) return
+    // an HTML page. Reject those so the browser shows nothing instead of a
+    // broken raster, and so we never serve HTML as an image.
+    let meta: sharp.Metadata | null = null;
     try {
-      const meta = await sharp(input).metadata();
-      if (meta.width && meta.width > width) {
-        const output = await sharp(input)
-          .resize({ width, withoutEnlargement: true })
-          .jpeg({ quality: 82 })
-          .toBuffer();
-        return new NextResponse(new Uint8Array(output), {
-          status: 200,
-          headers: {
-            "Content-Type": "image/jpeg",
-            "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
-          },
-        });
-      }
+      meta = await sharp(input).metadata();
     } catch {
-      /* SVG or unsupported — return original bytes */
+      /* not decodable by sharp (could still be a valid SVG) */
+    }
+    const isImage = Boolean(meta?.format) || contentType.startsWith("image/");
+    if (!isImage) {
+      return NextResponse.json({ error: "not an image" }, { status: 502 });
+    }
+
+    const cacheControl = "public, max-age=604800, stale-while-revalidate=86400";
+
+    if (meta?.width && meta.width > width) {
+      const output = await sharp(input)
+        .resize({ width, withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+      return new NextResponse(new Uint8Array(output), {
+        status: 200,
+        headers: { "Content-Type": "image/jpeg", "Cache-Control": cacheControl },
+      });
     }
 
     return new NextResponse(new Uint8Array(input), {
       status: 200,
-      headers: {
-        "Content-Type": contentType.split(";")[0],
-        "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
-      },
+      headers: { "Content-Type": contentType || "image/jpeg", "Cache-Control": cacheControl },
     });
   } catch (e) {
     return NextResponse.json({ error: `proxy failed: ${String(e)}` }, { status: 502 });

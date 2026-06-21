@@ -1,6 +1,6 @@
 // Client-safe helper (no sharp import) for routing thumbnails through server proxies.
 
-import { coverProxyPath, isAllowedCoverHost } from "@/lib/coverProxy";
+import { coverProxyPath } from "@/lib/coverProxy";
 
 const SOCIAL_CDN_RE =
   /(cdninstagram\.com|fbcdn\.net|tiktokcdn|ytimg\.com|sndcdn\.com|akamaihd\.net)/i;
@@ -29,22 +29,23 @@ export function coverImageSrc(url: string | null | undefined, width = 480): stri
   if (!url?.trim()) return undefined;
   const trimmed = url.trim();
 
+  // Same-origin (uploads, /api/*) and inline data URIs load directly.
   if (trimmed.startsWith("/")) return trimmed;
-  if (trimmed.startsWith("/api/")) return trimmed;
+  if (trimmed.startsWith("data:")) return trimmed;
 
   try {
     const host = new URL(trimmed).hostname;
+    // Social CDNs may have a baked-in play button — strip it via image-proxy.
     if (SOCIAL_CDN_RE.test(host)) {
       return `/api/image-proxy?url=${encodeURIComponent(trimmed)}`;
     }
-    if (isAllowedCoverHost(host)) {
-      return coverProxyPath(trimmed, width);
-    }
+    // Everything else (Wikimedia, Google-image hosts, travel sites, etc.) goes
+    // through cover-proxy so it loads reliably (browser UA, no hotlink block,
+    // same-origin, content-type checked).
+    return coverProxyPath(trimmed, width);
   } catch {
     return undefined;
   }
-
-  return trimmed;
 }
 
 /** @deprecated use coverImageSrc */

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DraftPrefill, GeocodeResult, LocationItem, MediaItem, MediaType, VisitStatus } from "@/lib/types";
 import { cleanThumb, coverImageSrc } from "@/lib/thumb";
+import { isDuplicateWish } from "@/lib/similarity";
 
 export interface PinDropResult {
   latitude: number;
@@ -16,6 +17,8 @@ interface EntryFormProps {
   editing: LocationItem | null;
   draftPrefill?: DraftPrefill | null;
   draftId?: string | null;
+  /** Existing wishes, used to warn before adding a likely duplicate. */
+  existingLocations?: LocationItem[];
   pinDropResult: PinDropResult | null;
   onRequestPinDrop: () => void;
   onClose: () => void;
@@ -99,7 +102,7 @@ type CoverOption = {
 const SOURCE_LABEL: Record<CoverOption["source"], string> = {
   wikipedia: "Wikipedia",
   commons: "Wikimedia",
-  google: "Google (CC)",
+  google: "Google",
 };
 
 export default function EntryForm({
@@ -108,6 +111,7 @@ export default function EntryForm({
   editing,
   draftPrefill,
   draftId,
+  existingLocations,
   pinDropResult,
   onRequestPinDrop,
   onClose,
@@ -124,6 +128,7 @@ export default function EntryForm({
   const [enrichHint, setEnrichHint] = useState<string | null>(null);
   const [generatingCover, setGeneratingCover] = useState(false);
   const [coverOptions, setCoverOptions] = useState<CoverOption[]>([]);
+  const [coverNote, setCoverNote] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const coverCandidateKeyRef = useRef("");
@@ -156,6 +161,7 @@ export default function EntryForm({
       setEnrichHint(null);
       coverCandidateKeyRef.current = "";
       setCoverOptions([]);
+      setCoverNote(null);
     }
   }, [open, editing, draftPrefill]);
 
@@ -362,58 +368,61 @@ export default function EntryForm({
   const clearCover = () => {
     setForm((f) => ({ ...f, coverImageUrl: "" }));
     setCoverOptions([]);
+    setCoverNote(null);
     coverCandidateKeyRef.current = "";
   };
 
-  const generateCover = async () => {
+  const generateCover = async (forceRefresh = false) => {
     if (!form.activityName.trim()) {
       setError("Add an activity name before generating a cover image.");
       return;
     }
-    if (!form.city.trim() && !form.region.trim() && !form.countryName.trim()) {
-      setError("Add a city, region, or country so we can search with the activity name.");
-      return;
-    }
     setGeneratingCover(true);
     setError(null);
+    setCoverNote(null);
     const key = coverSearchKey();
     try {
-      const params = new URLSearchParams({ limit: "3" });
-      params.set("activityName", form.activityName.trim());
-      if (form.city.trim()) params.set("city", form.city.trim());
-      if (form.region.trim()) params.set("region", form.region.trim());
-      if (form.countryName.trim()) params.set("countryName", form.countryName.trim());
-      const res = await fetch(`/api/cover-image?${params}`);
+      // Google Images via Serper (cached server-side) — best for niche places.
+      const query = [form.activityName, form.city, form.region, form.countryName]
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join(" ");
+      const params = new URLSearchParams({ query, limit: "6" });
+      if (forceRefresh) params.set("refresh", "1"); // Regenerate = fresh API pull
+      const res = await fetch(`/api/fetch-previews?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Image search failed");
-      const raw = (data.candidates ?? []) as (CoverOption | string)[];
-      const options: CoverOption[] = raw
-        .map((c) => {
-          if (typeof c === "string") {
-            return { url: c, previewUrl: coverImageSrc(c, 240) ?? c, source: "wikipedia" as const };
-          }
-          if (c?.url) {
-            return {
-              url: c.url,
-              previewUrl: c.previewUrl || coverImageSrc(c.url, 240) || c.url,
-              source: c.source ?? "wikipedia",
-            };
-          }
-          return null;
-        })
-        .filter((c): c is CoverOption => c !== null);
+
+      const images = (data.images ?? []) as { imageUrl?: string; thumbnailUrl?: string | null }[];
+      const options: CoverOption[] = images
+        .filter((im): im is { imageUrl: string; thumbnailUrl?: string | null } =>
+          typeof im.imageUrl === "string" && im.imageUrl.startsWith("http"),
+        )
+        .map((im) => ({
+          url: im.imageUrl,
+          // Serper thumbnails are Google-hosted (gstatic) and proxy reliably for the picker.
+          previewUrl: coverImageSrc(im.thumbnailUrl || im.imageUrl, 240) || im.imageUrl,
+          source: "google" as const,
+        }));
+
       if (options.length === 0) {
         setCoverOptions([]);
-        setError(
-          data.query
-            ? `No images found for “${data.query}” — try a more specific name.`
-            : "No images found — try a more specific activity and location.",
-        );
+        setError("No images found — try a more specific activity or place name.");
         return;
       }
       coverCandidateKeyRef.current = key;
       setCoverOptions(options);
       setForm((f) => ({ ...f, coverImageUrl: options[0].url }));
+
+      if (data.source === "placeholder") {
+        setCoverNote("Showing placeholders — set SERPER_API_KEY in .env (line 20) for real Google Images.");
+      } else if (data.match === "similar") {
+        setCoverNote(
+          `Reused images from a similar saved search (“${data.similarTo}”). Click Regenerate for a fresh Google search.`,
+        );
+      } else if (data.match === "exact") {
+        setCoverNote("From cache (no API credit used). Click Regenerate for a fresh search.");
+      }
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
@@ -440,6 +449,26 @@ export default function EntryForm({
       return setError("Country is required - use search or drop a pin.");
     if (Number.isNaN(lat) || Number.isNaN(lng))
       return setError("Coordinates are required - use search or drop a pin.");
+
+    // Warn before adding what looks like a duplicate of an existing wish.
+    if (!editing && existingLocations?.length) {
+      const candidate = {
+        activityName: form.activityName,
+        city: form.city,
+        region: form.region,
+        countryName: form.countryName,
+        countryCode: form.countryCode,
+      };
+      const dupe = existingLocations.find((l) => isDuplicateWish(candidate, l));
+      if (dupe) {
+        const proceed = window.confirm(
+          `This looks like the same wish as one you already have:\n\n` +
+            `“${dupe.activityName}” — ${[dupe.city, dupe.countryName].filter(Boolean).join(", ")}\n\n` +
+            `Add it as a separate wish anyway?`,
+        );
+        if (!proceed) return;
+      }
+    }
 
     setSaving(true);
     try {
@@ -544,15 +573,20 @@ export default function EntryForm({
               </div>
             </div>
           )}
+          {coverNote && <p className="mt-2 text-xs text-violet-300">{coverNote}</p>}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <div className="ml-auto flex flex-wrap gap-2">
               <button
                 type="button"
                 disabled={generatingCover}
-                onClick={generateCover}
+                onClick={() => generateCover(coverOptions.length > 0)}
                 className={amberBtnCls}
               >
-                {generatingCover ? "Searching…" : coverOptions.length > 0 ? "Search again" : "Generate image"}
+                {generatingCover
+                  ? "Searching…"
+                  : coverOptions.length > 0
+                    ? "Regenerate (new search)"
+                    : "Generate image"}
               </button>
               {form.coverImageUrl && (
                 <button type="button" onClick={clearCover} className={amberBtnCls}>

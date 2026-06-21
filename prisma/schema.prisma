@@ -108,3 +108,14 @@ model Draft {
 
   @@index([userId, createdAt])
 }
+
+/// Cached Google Images (Serper.dev) results, keyed by normalized query.
+/// Lets repeat lookups skip the external API entirely (0 credit cost).
+model ImageCache {
+  id          String   @id @default(cuid())
+  searchQuery String   @unique /// normalized: trimmed, lowercased, single-spaced
+  images      Json /// PreviewImage[] — see src/lib/serperImages.ts
+  source      String   @default("serper")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

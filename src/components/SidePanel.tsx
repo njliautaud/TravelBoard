@@ -168,7 +168,6 @@ function EntryCard({
 
 export default function SidePanel({ selection, locations, editor, onClose, onDetails, onEdit, onDelete }: SidePanelProps) {
   const open = selection !== null;
-  const countryView = selection?.type === "country";
 
   let title = "";
   let subtitle = "";
@@ -214,7 +213,7 @@ export default function SidePanel({ selection, locations, editor, onClose, onDet
               key={loc.id}
               loc={loc}
               editor={editor}
-              showDetails={countryView}
+              showDetails
               onDetails={onDetails}
               onEdit={onEdit}
               onDelete={onDelete}

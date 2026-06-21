@@ -488,6 +488,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         editing={editing}
         draftPrefill={draftPrefill}
         draftId={activeDraftId}
+        existingLocations={locations}
         pinDropResult={pinDropResult}
         onRequestPinDrop={() => setPinDropMode(true)}
         onClose={() => {
