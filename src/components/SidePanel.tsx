@@ -57,9 +57,13 @@ function EntryCard({
   return (
     <div className="rounded-xl border border-slate-700/60 bg-slate-900/70 overflow-hidden">
       {coverSrc && (
-        <div className="relative flex h-40 w-full items-center justify-center bg-slate-800">
+        <div className="relative flex w-full items-center justify-center bg-slate-800">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={coverSrc} alt={loc.activityName} className="max-h-40 w-full object-contain" />
+          <img
+            src={coverSrc}
+            alt={loc.activityName}
+            className="mx-auto block h-auto max-h-80 w-auto max-w-full object-contain"
+          />
           {images.length > 1 && (
             <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-slate-200">
               +{images.length - 1} more

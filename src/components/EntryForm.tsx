@@ -500,12 +500,12 @@ export default function EntryForm({
         <div className="mb-4">
           <label className={labelCls}>Cover photo</label>
           {form.coverImageUrl ? (
-            <div className="flex h-36 items-center justify-center overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/60">
+            <div className="flex items-center justify-center overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/60">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={coverImageSrc(form.coverImageUrl, 480)}
                 alt=""
-                className="max-h-36 max-w-full object-contain"
+                className="mx-auto block h-auto max-h-96 w-auto max-w-full object-contain"
               />
             </div>
           ) : (
@@ -531,9 +531,9 @@ export default function EntryForm({
                           : "border-slate-700/70 hover:border-slate-500"
                       }`}
                     >
-                      <div className="flex h-24 items-center justify-center bg-slate-800/80 p-1">
+                      <div className="aspect-[4/3] bg-slate-800/80">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={preview} alt="" className="max-h-full max-w-full object-contain" />
+                        <img src={preview} alt="" className="h-full w-full object-cover" />
                       </div>
                       <span className="block truncate px-1 py-1 text-[10px] text-slate-500">
                         {SOURCE_LABEL[opt.source]}

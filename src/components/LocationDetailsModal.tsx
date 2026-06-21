@@ -85,9 +85,13 @@ export default function LocationDetailsModal({
         </div>
 
         {coverSrc && (
-          <div className="mb-4 flex h-44 items-center justify-center overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/60">
+          <div className="mb-4 flex items-center justify-center overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/60">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={coverSrc} alt="" className="max-h-44 max-w-full object-contain" />
+            <img
+              src={coverSrc}
+              alt=""
+              className="mx-auto block h-auto max-h-[32rem] w-auto max-w-full object-contain"
+            />
           </div>
         )}
 
@@ -193,13 +197,13 @@ export default function LocationDetailsModal({
               {images.map((m, i) => (
                 <div
                   key={m.id ?? i}
-                  className="flex h-28 items-center justify-center overflow-hidden rounded-lg border border-slate-700/70 bg-slate-900/60"
+                  className="aspect-square overflow-hidden rounded-lg border border-slate-700/70 bg-slate-900/60"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={coverImageSrc(m.url, 240)}
                     alt={m.caption ?? ""}
-                    className="max-h-full max-w-full object-contain"
+                    className="h-full w-full object-cover"
                   />
                 </div>
               ))}
