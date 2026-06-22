@@ -308,6 +308,10 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   const selectedIsoRef = useRef<string | null>(null);
   const hoveredIsoRef = useRef<string | null>(null);
   const restoreBelowZoomRef = useRef(1.2);
+  // When we deliberately fly/fit to a country or wish, its settled zoom can land
+  // below WORLD_VIEW_ZOOM on small/portrait screens. Suppress the world-view
+  // close for the duration of that animation so the panel stays open.
+  const lastFocusAtRef = useRef(0);
   const dimValuesRef = useRef<Record<string, number>>({});
   const dimRafsRef = useRef<Record<string, number>>({});
   const [hover, setHover] = useState<{
@@ -537,6 +541,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
             const camera = map.cameraForBounds(bounds, { padding: 80, maxZoom: 7 });
             fitZoom = camera?.zoom ?? fitZoom;
             map.fitBounds(bounds, { padding: 80, duration: 1100, maxZoom: 7 });
+            lastFocusAtRef.current = performance.now();
           }
           // Fade the clicked country's heatmap glow so individual dots stand out
           const previous = selectedIsoRef.current;
@@ -562,6 +567,9 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
           setCountrySelectedAccent(null);
           selectedIsoRef.current = null;
         }
+        // Ignore the zoomend from a just-issued country/wish focus — its low fit
+        // zoom on a phone screen must not be mistaken for a return to world view.
+        if (performance.now() - lastFocusAtRef.current < 1600) return;
         if (z < WORLD_VIEW_ZOOM) {
           callbacksRef.current.onZoomStateChange?.(false);
         }
@@ -653,6 +661,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       zoom: targetZoom,
       duration: 1400,
     });
+    lastFocusAtRef.current = performance.now();
     if (focusPoint.dimCountry) {
       const previous = selectedIsoRef.current;
       if (previous && previous !== focusPoint.dimCountry) tweenDim(previous, 1);

@@ -1,7 +1,7 @@
 # TravelBoard — AI Context & Handoff Document
 
 > Purpose: lets a fresh AI session pick up where the last one left off. Read fully before editing.
-> Last updated: 2026-06-21.
+> Last updated: 2026-06-22.
 
 ---
 
@@ -12,7 +12,7 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 - **Visual wishlist**: countries glow by wish density (choropleth heatmap).
 - **Journal**: pins hold notes, photos, links, seasons, reminders, flight-deal thresholds.
 - **WhatsApp ingestion**: share reel links to yourself → drafts inbox → smart-fill from caption/location/Wikimedia cover.
-- **Android app**: native share target → prefilled form (online) or queued draft (offline). See `android/`.
+- **Android app**: native share target → always opens the prefilled form; reaches the server from anywhere via **Tailscale** with a saved-servers switcher. See `android/`.
 - **Cover photos**: Google Images via Serper.dev, Postgres-cached with fuzzy/cross-language reuse and a duplicate-wish guard.
 - **Future**: ESP32 LED world map via `/api/hardware-sync`; partner Python script for flight prices.
 
@@ -34,7 +34,7 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 | DB | PostgreSQL 16 + **Prisma 6** (do not upgrade to v7) |
 | Auth | Username/password (bcrypt), HMAC httpOnly cookie `tb_session` |
 | Images | `sharp` declutter/resize; Wikimedia/Wikipedia in `coverImage.ts`; Google Images via `serperImages.ts`; reliability proxy `coverProxy.ts` + `/api/cover-proxy` |
-| Android | Kotlin WebView wrapper + share target in `android/` (Gradle, minSdk 26) |
+| Android | Kotlin WebView wrapper + share target in `android/` (Gradle, minSdk 26, targetSdk 34 — temporary, see §10) |
 
 ---
 
@@ -46,7 +46,9 @@ src/app/page.tsx
        ├─ Sidebar.tsx        — dropdown: Your wishes | Settings
        ├─ SettingsPanel.tsx  — map theme, home airports
        ├─ TravelMap.tsx      — heatmap, flag borders, Alaska/Hawaii zoom, world-view zoom threshold
-       ├─ SidePanel.tsx      — right panel / mobile bottom sheet (auto-closes on world view)
+       ├─ SidePanel.tsx      — right panel / mobile bottom sheet (auto-closes on world view).
+       │                       Country with >1 wish = condensed cards (big left photo) with
+       │                       pointer-based drag-to-reorder (→ /api/locations/reorder); 1 wish = full card
        ├─ GeoBanner.tsx
        ├─ EntryForm.tsx      — Serper cover picker (generate/regenerate), enrichment prefill,
        │                       duplicate-wish guard, lat/lng at bottom
@@ -64,7 +66,9 @@ the prefilled `EntryForm` once logged in.
 - **Flag theme**: fill + glow use per-country `accent` from `src/lib/countryFlagColors.ts`.
 - **Hover/select**: flag-colored border glow (`country-accent-glow` layer), zoom-scaled width/blur.
 - **USA click**: sub-region bounds for Alaska/Hawaii vs lower 48 (`USA_SUBREGIONS` in `TravelMap.tsx`).
-- **World view**: zoom &lt; 2.5 or World view button → `onZoomStateChange(false)` → closes SidePanel.
+- **World view**: zoom &lt; 2.5 or World view button → `onZoomStateChange(false)` → closes SidePanel. A
+  deliberate country/wish focus is guarded for ~1.6s (`lastFocusAtRef`) so a low fit-zoom on small/portrait
+  screens isn't misread as a return to world view (was closing the panel on phones right after a country click).
 - World view button centered in **visible map** (inset for open right panel 400px, mobile left sidebar 288px).
 
 ### Link enrichment (`src/lib/linkEnrichment.ts`)
@@ -102,12 +106,12 @@ the prefilled `EntryForm` once logged in.
 Key models:
 
 - **User**: `username`, `passwordHash`, `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes).
-- **Location**: per-user wishes; `starred`, seasons, `coverImageUrl`, `priceThreshold`, media, flight prices.
+- **Location**: per-user wishes; `starred`, `sortOrder` (manual order within a country list), seasons, `coverImageUrl`, `priceThreshold`, media, flight prices.
 - **Draft**: WhatsApp/Android inbox items (`rawText`, `extractedUrl`, `source`).
 - **FlightPrice**: ingested via API key; latest price drives `isDeal` in serialize.
 - **ImageCache**: `searchQuery` (unique, normalized), `images` (Json: `PreviewImage[]`), `source`, timestamps. Permanent Serper image cache.
 
-Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000_multi_user_drafts_seasons`, `20260613120000_user_settings`, `20260621120000_image_cache`.
+Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000_multi_user_drafts_seasons`, `20260613120000_user_settings`, `20260621120000_image_cache`, `20260622093000_add_location_sortorder`.
 
 > **Migration drift:** the DB has pre-existing drift on `User.mapTheme`, so `prisma migrate dev`
 > wants to drop/recreate that column (**data loss**). Add new tables with a hand-written migration
@@ -126,6 +130,7 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 | --- | --- | --- |
 | `/api/auth/login`, `/register`, `/logout`, `/me` | — | Session auth |
 | `/api/locations`, `/api/locations/[id]`, `/api/locations/[id]/star` | session writes | User-scoped |
+| `/api/locations/reorder` | session | Body `{ ids: string[] }` → writes `sortOrder` = index (per-country order) |
 | `/api/settings` | session | `mapTheme`, `homeAirports` |
 | `/api/drafts`, `/api/drafts/[id]`, `/api/drafts/ingest`, `/api/drafts/enrich` | session / ingest key | WhatsApp + enrichment |
 | `/api/cover-image` | public | Multi-candidate Wikimedia search |
@@ -160,7 +165,7 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 
 ---
 
-## 8. Current Status (2026-06-21)
+## 8. Current Status (2026-06-22)
 
 ### Done
 
@@ -171,7 +176,9 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 - **Serper Google-Images cover search** with Postgres cache + fuzzy/cross-language reuse
 - **Duplicate-wish guard** + **Details modal**; cover previews adapt to portrait/landscape
 - **`cover-proxy`** re-serves all cover hosts (fixed broken hotlinked/social images)
-- **Android app** (`android/`): WebView + share target, offline outbox → Inbox
+- **Android app** (`android/`): WebView + share target, **Tailscale remote access** + saved-servers switcher, share **always opens the prefilled form**, `targetSdk 34` to dodge edge-to-edge bars
+- **Country panel reorder**: condensed cards (big left photo) for countries with >1 wish, pointer/touch **drag-to-reorder** persisted via `sortOrder` + `/api/locations/reorder`; single-wish countries keep the full card
+- **Panel auto-close fix**: country/wish focus guarded for ~1.6s so low fit-zoom on phones no longer closes the SidePanel
 
 ### Open / roadmap
 
@@ -200,12 +207,21 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 
 ## 10. Android App (`android/`)
 
-- Kotlin WebView wrapper + `ACTION_SEND` share target; Gradle project, `minSdk 26`, `targetSdk 35`.
-- `MainActivity` hosts the site (cookies, file upload); `ShareActivity` routes a shared link to the
-  prefilled form when the LAN server is reachable, else queues it (`Outbox`) and flushes via
-  `SyncWorker` → `POST /api/drafts/ingest` (`source: "android-share"`).
-- Config (server LAN URL, username, `WHATSAPP_INGEST_KEY`) in `SettingsActivity`. Build via Android
-  Studio; `gradle-wrapper.jar` is regenerated on import. See `android/README.md`.
+- Kotlin WebView wrapper + `ACTION_SEND` share target; Gradle project, `minSdk 26`, **`targetSdk 34`**.
+  - `targetSdk 34` is a **temporary** measure: Android 15 (`targetSdk 35`) forces edge-to-edge, which drew
+    the action bar under the status bar and content under the bottom gesture bar (overflow menu untappable on
+    a Nothing Phone 2). 34 restores opaque bars with the app inside them. Long-term fix = proper WindowInsets
+    handling at `targetSdk 35`.
+- `MainActivity` hosts the site (cookies, file upload); `ShareActivity` **always** opens the prefilled
+  `/?share=<url>&text=<caption>` form (no offline outbox/SyncWorker — removed, since Tailscale makes the
+  server reachable whenever you have a link).
+- **Remote access via Tailscale**: PC's tailnet IP `100.127.72.12:3000` reaches the dev server from anywhere.
+  `Config`/`SettingsActivity` store **multiple labelled servers** (Tailscale + Home Wi-Fi) and switch via a
+  dropdown. Config also holds username + `WHATSAPP_INGEST_KEY`.
+- Build via Android Studio, or headless: `JAVA_HOME` = Android Studio's `jbr`, invoke the cached Gradle
+  (`~/.gradle/wrapper/dists/gradle-8.9-bin/.../bin/gradle.bat`) since `gradle-wrapper.jar` is gitignored.
+  APK → `android/app/build/outputs/apk/debug/app-debug.apk`. See `android/README.md`.
+- **Path B (deferred)**: deploy site to Vercel + hosted Postgres for true standalone (PC-off) operation.
 
 ## 11. Git / GitHub
 

@@ -4,14 +4,20 @@
   "private": true,
   "scripts": {
     "predev": "node scripts/free-port.mjs 3000",
-    "dev": "next dev --turbopack -p 3000",
+    "dev": "next dev --turbopack -p 3000 -H 0.0.0.0",
+    "start:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-all.ps1",
     "build": "next build --turbopack",
     "start": "next start -p 3000",
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",
     "whatsapp-bot": "node --env-file=.env scripts/whatsapp-bot.mjs",
     "whatsapp-bot:setup": "npx puppeteer browsers install chrome",
-    "whatsapp-bot:stop": "node scripts/whatsapp-bot-stop.mjs"
+    "whatsapp-bot:stop": "node scripts/whatsapp-bot-stop.mjs",
+    "esp32:upload": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/esp32-pio.ps1 run -t upload --upload-port COM4",
+    "esp32:upload-idf54": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/esp32-pio.ps1 run --environment esp32-s3-idf54 -t upload --upload-port COM4",
+    "esp32:build-idf54": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/esp32-pio.ps1 run --environment esp32-s3-idf54",
+    "esp32:monitor": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/esp32-pio.ps1 device monitor --port COM4",
+    "esp32:usb-bridge": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware-usb-bridge.ps1"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

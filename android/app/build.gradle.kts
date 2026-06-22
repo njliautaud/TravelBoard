@@ -10,7 +10,10 @@ android {
     defaultConfig {
         applicationId = "com.travelboard.app"
         minSdk = 26
-        targetSdk = 35
+        // Temporary: targetSdk 34 keeps the classic opaque status/nav bars so the
+        // whole app (action bar included) lays out inside them, instead of Android
+        // 15's forced edge-to-edge drawing content under the top/bottom regions.
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
     }
@@ -40,6 +43,5 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }

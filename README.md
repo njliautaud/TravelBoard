@@ -48,6 +48,7 @@ npm run dev                 # http://localhost:3000 (port 3000 pinned)
 - **Cover photos**: **Generate image** searches Google Images (Serper.dev), cached in Postgres so repeat/similar searches cost 0 API credits; **Regenerate** forces a fresh pull. Results route through `/api/cover-proxy` so they load reliably; play-button overlays on social thumbnails are stripped server-side.
 - **Duplicate guard**: adding a wish that matches an existing one (same country + similar activity, across languages — e.g. *salar* ≈ *salt flat*) prompts before saving.
 - **Details**: every wish has a **Details** button opening a full read-only view.
+- **Country panel**: clicking a country opens its wishes in the right panel (and stays open while the map pans in). A country with **multiple** wishes shows condensed cards — a large cover photo fills the left, with name/location and edit/delete on the right — and you can **drag the grip handle to reorder** them (saved per country). A country with a **single** wish shows the full large card.
 - **World view**: bottom-center button when zoomed in; zooming out or clicking it closes the right detail panel.
 - **Flight deals**: set a price threshold per place; ingest prices via API; pins pulse red when below threshold.
 
@@ -69,6 +70,7 @@ npm run dev                 # http://localhost:3000 (port 3000 pinned)
 | `/api/auth/login`, `/register`, `/logout`, `/me` | — | Username/password sessions |
 | `/api/locations` | session for writes | CRUD wishlist entries |
 | `/api/locations/:id/star` | session | Star / unstar a wish |
+| `/api/locations/reorder` | session | Save manual wish order within a country (`sortOrder`) |
 | `/api/settings` | session | Map theme + home airports |
 | `/api/drafts`, `/drafts/ingest`, `/drafts/enrich` | session / ingest key | WhatsApp inbox + link enrichment |
 | `/api/cover-image` | public | Wikimedia cover search (multi-candidate) |
@@ -106,4 +108,4 @@ pg_dump -U postgres -d travelboard -F c -f travelboard-backup.dump
 
 ## Android app
 
-A thin Kotlin WebView wrapper plus a native share target lets you share Instagram reels / TikToks / journal links straight to TravelBoard — no WhatsApp. Online, a share opens the prefilled "Add a place" form; offline (away from the home Wi-Fi), the link is queued and posted to your **Inbox** via `/api/drafts/ingest` once you're back on the LAN. Open `android/` in Android Studio and follow [`android/README.md`](android/README.md) (set the server LAN URL, your username, and `WHATSAPP_INGEST_KEY`).
+A thin Kotlin WebView wrapper plus a native share target lets you share Instagram reels / TikToks / journal links straight to TravelBoard — no WhatsApp. **Sharing a link always opens the prefilled "Add a place" form** to finish the details. Reach the server from anywhere via **Tailscale** (point the app at the PC's tailnet address, e.g. `http://100.x.x.x:3000`); the Settings screen stores **multiple servers** (e.g. Home Wi-Fi and Tailscale) and switches between them. Open `android/` in Android Studio and follow [`android/README.md`](android/README.md) (set a server URL, your username, and `WHATSAPP_INGEST_KEY`).

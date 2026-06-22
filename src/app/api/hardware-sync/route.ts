@@ -22,8 +22,15 @@ export async function GET() {
     lat: l.latitude,
     lng: l.longitude,
     countryCode: l.countryCode,
+    countryName: l.countryName,
+    city: l.city,
+    region: l.region,
     status: l.status,
+    notes: l.notes,
     isDeal: l.isDeal,
+    latestPrice: l.latestPrice?.price ?? null,
+    priceCurrency: l.latestPrice?.currency ?? null,
+    coverImageUrl: l.coverImageUrl ?? null,
   }));
   return NextResponse.json({
     generatedAt: new Date().toISOString(),

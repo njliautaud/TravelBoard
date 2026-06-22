@@ -38,6 +38,13 @@ yarn-error.log*
 /public/uploads/*
 !/public/uploads/.gitkeep
 
+# local database backups (never commit)
+/backups/
+
+# PlatformIO / embedded firmware build artifacts
+esp32-touch/.pio/
+esp32-touch/include/secrets.h
+
 # whatsapp-web.js session
 .whatsapp-auth/
 .wwebjs_cache/

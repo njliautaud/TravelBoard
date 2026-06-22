@@ -111,19 +111,12 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             webView.loadUrl(targetUrl(intent))
         }
-
-        SyncWorker.schedulePeriodic(this)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         if (this::webView.isInitialized) webView.loadUrl(targetUrl(intent))
-    }
-
-    override fun onResume() {
-        super.onResume()
-        SyncWorker.enqueue(this)
     }
 
     override fun onPause() {

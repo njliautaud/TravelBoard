@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LocationItem } from "@/lib/types";
 import { coverImageSrc } from "@/lib/thumb";
 
@@ -16,6 +17,7 @@ interface SidePanelProps {
   onDetails: (loc: LocationItem) => void;
   onEdit: (loc: LocationItem) => void;
   onDelete: (loc: LocationItem) => void;
+  onReorder: (orderedIds: string[]) => void;
 }
 
 function linkLabel(url: string): string {
@@ -34,17 +36,228 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+function StatusBadge({ status }: { status: LocationItem["status"] }) {
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+        status === "VISITED"
+          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40"
+          : "bg-amber-500/15 text-amber-300 border border-amber-500/40"
+      }`}
+    >
+      {status === "VISITED" ? "Visited" : "To visit"}
+    </span>
+  );
+}
+
+/**
+ * Compact card for a country with several wishes: a large cover photo fills the
+ * whole left side, with name/location and the edit/delete/drag controls to the
+ * right. Tap the photo or title to open full details.
+ */
+function CondensedCard({
+  loc,
+  editor,
+  dragging,
+  onDetails,
+  onEdit,
+  onDelete,
+  handleProps,
+}: {
+  loc: LocationItem;
+  editor: boolean;
+  dragging: boolean;
+  onDetails: (l: LocationItem) => void;
+  onEdit: (l: LocationItem) => void;
+  onDelete: (l: LocationItem) => void;
+  handleProps: React.HTMLAttributes<HTMLButtonElement>;
+}) {
+  const coverSrc = coverImageSrc(loc.coverImageUrl, 320);
+  const place = [loc.city, loc.region, loc.countryName].filter(Boolean).join(", ");
+  return (
+    <div
+      data-card-id={loc.id}
+      className={`flex min-h-[7rem] items-stretch overflow-hidden rounded-xl border bg-slate-900/70 transition ${
+        dragging ? "border-amber-500/70 opacity-80 ring-2 ring-amber-500/50" : "border-slate-700/60"
+      }`}
+    >
+      <button
+        onClick={() => onDetails(loc)}
+        aria-label={`Details for ${loc.activityName}`}
+        className="w-36 shrink-0 self-stretch bg-slate-800"
+      >
+        {coverSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={coverSrc} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center">
+            <span
+              className={`h-3.5 w-3.5 rounded-full ${
+                loc.status === "VISITED" ? "bg-emerald-400" : "bg-amber-400"
+              }`}
+            />
+          </span>
+        )}
+      </button>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1 p-2.5">
+        <button onClick={() => onDetails(loc)} className="min-w-0 text-left">
+          <span className="flex items-start justify-between gap-2">
+            <span className="min-w-0 truncate text-sm font-semibold text-slate-100">{loc.activityName}</span>
+            <StatusBadge status={loc.status} />
+          </span>
+          {place && <span className="mt-0.5 block truncate text-xs text-slate-400">{place}</span>}
+        </button>
+
+        {editor && (
+          <div className="mt-auto flex items-center gap-2">
+            <button
+              onClick={() => onEdit(loc)}
+              className="rounded-lg border border-slate-600 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-700/60"
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => onDelete(loc)}
+              className="rounded-lg border border-rose-600/50 px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-600/20"
+            >
+              Delete
+            </button>
+            <span className="flex-1" />
+            <button
+              {...handleProps}
+              aria-label="Drag to reorder"
+              title="Hold and drag to move this up or down"
+              className="shrink-0 cursor-grab touch-none rounded-md p-1 text-slate-500 hover:bg-slate-700/70 hover:text-slate-300 active:cursor-grabbing"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <circle cx="9" cy="6" r="1.7" />
+                <circle cx="15" cy="6" r="1.7" />
+                <circle cx="9" cy="12" r="1.7" />
+                <circle cx="15" cy="12" r="1.7" />
+                <circle cx="9" cy="18" r="1.7" />
+                <circle cx="15" cy="18" r="1.7" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Country view: condensed, reorderable list of its wishes. */
+function CountryList({
+  entries,
+  editor,
+  onDetails,
+  onEdit,
+  onDelete,
+  onReorder,
+}: {
+  entries: LocationItem[];
+  editor: boolean;
+  onDetails: (l: LocationItem) => void;
+  onEdit: (l: LocationItem) => void;
+  onDelete: (l: LocationItem) => void;
+  onReorder: (orderedIds: string[]) => void;
+}) {
+  const [order, setOrder] = useState<string[]>(() => entries.map((e) => e.id));
+  const orderRef = useRef(order);
+  orderRef.current = order;
+  const dragIdRef = useRef<string | null>(null);
+  const movedRef = useRef(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  // Resync local order whenever the country's set of wishes changes (selection
+  // change, add/delete, or a server refresh with new sortOrder).
+  const idsKey = entries.map((e) => e.id).join(",");
+  useEffect(() => {
+    setOrder(entries.map((e) => e.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
+
+  const byId = useMemo(() => {
+    const m = new Map<string, LocationItem>();
+    for (const e of entries) m.set(e.id, e);
+    return m;
+  }, [entries]);
+
+  const ordered = order.map((id) => byId.get(id)).filter(Boolean) as LocationItem[];
+
+  const startDrag = (e: React.PointerEvent<HTMLButtonElement>, id: string) => {
+    e.preventDefault();
+    dragIdRef.current = id;
+    movedRef.current = false;
+    setDraggingId(id);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const onDragMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!dragIdRef.current) return;
+    const overId = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest("[data-card-id]")
+      ?.getAttribute("data-card-id");
+    if (!overId || overId === dragIdRef.current) return;
+    setOrder((prev) => {
+      const from = prev.indexOf(dragIdRef.current!);
+      const to = prev.indexOf(overId);
+      if (from < 0 || to < 0 || from === to) return prev;
+      const next = prev.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      movedRef.current = true;
+      return next;
+    });
+  };
+
+  const endDrag = () => {
+    if (!dragIdRef.current) return;
+    dragIdRef.current = null;
+    setDraggingId(null);
+    if (movedRef.current) onReorder(orderRef.current);
+    movedRef.current = false;
+  };
+
+  const handleProps = (id: string): React.HTMLAttributes<HTMLButtonElement> =>
+    editor
+      ? {
+          onPointerDown: (e) => startDrag(e as React.PointerEvent<HTMLButtonElement>, id),
+          onPointerMove: (e) => onDragMove(e as React.PointerEvent<HTMLButtonElement>),
+          onPointerUp: endDrag,
+          onPointerCancel: endDrag,
+        }
+      : {};
+
+  return (
+    <>
+      {ordered.map((loc) => (
+        <CondensedCard
+          key={loc.id}
+          loc={loc}
+          editor={editor}
+          dragging={draggingId === loc.id}
+          onDetails={onDetails}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          handleProps={handleProps(loc.id)}
+        />
+      ))}
+    </>
+  );
+}
+
+/** Full card for a single selected wish (clicking a dot/sidebar wish). */
 function EntryCard({
   loc,
   editor,
-  showDetails,
   onDetails,
   onEdit,
   onDelete,
 }: {
   loc: LocationItem;
   editor: boolean;
-  showDetails: boolean;
   onDetails: (l: LocationItem) => void;
   onEdit: (l: LocationItem) => void;
   onDelete: (l: LocationItem) => void;
@@ -74,15 +287,7 @@ function EntryCard({
       <div className="p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-semibold text-slate-100 leading-tight">{loc.activityName}</h3>
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-              loc.status === "VISITED"
-                ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40"
-                : "bg-amber-500/15 text-amber-300 border border-amber-500/40"
-            }`}
-          >
-            {loc.status === "VISITED" ? "Visited" : "To visit"}
-          </span>
+          <StatusBadge status={loc.status} />
         </div>
         <p className="text-xs text-slate-400">
           {[loc.city, loc.region, loc.countryName].filter(Boolean).join(", ")}
@@ -133,16 +338,13 @@ function EntryCard({
           </p>
         )}
 
-        {(showDetails || editor) && (
         <div className="flex flex-wrap gap-2 pt-1">
-          {showDetails && (
-            <button
-              onClick={() => onDetails(loc)}
-              className="rounded-lg border border-sky-600/50 px-2.5 py-1 text-xs text-sky-300 hover:bg-sky-600/20"
-            >
-              Details
-            </button>
-          )}
+          <button
+            onClick={() => onDetails(loc)}
+            className="rounded-lg border border-sky-600/50 px-2.5 py-1 text-xs text-sky-300 hover:bg-sky-600/20"
+          >
+            Details
+          </button>
           {editor && (
             <>
               <button
@@ -160,20 +362,34 @@ function EntryCard({
             </>
           )}
         </div>
-        )}
       </div>
     </div>
   );
 }
 
-export default function SidePanel({ selection, locations, editor, onClose, onDetails, onEdit, onDelete }: SidePanelProps) {
+export default function SidePanel({
+  selection,
+  locations,
+  editor,
+  onClose,
+  onDetails,
+  onEdit,
+  onDelete,
+  onReorder,
+}: SidePanelProps) {
   const open = selection !== null;
 
   let title = "";
   let subtitle = "";
   let entries: LocationItem[] = [];
   if (selection?.type === "country") {
-    entries = locations.filter((l) => l.countryCode === selection.code);
+    entries = locations
+      .filter((l) => l.countryCode === selection.code)
+      .sort(
+        (a, b) =>
+          a.sortOrder - b.sortOrder ||
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
     title = selection.name;
     subtitle = `${entries.length} ${entries.length === 1 ? "wish" : "wishes"} logged`;
   } else if (selection?.type === "location") {
@@ -208,17 +424,29 @@ export default function SidePanel({ selection, locations, editor, onClose, onDet
         </div>
         <div className="panel-scroll flex-1 space-y-3 overflow-y-auto p-4">
           {entries.length === 0 && <p className="text-sm text-slate-500">Nothing logged here yet.</p>}
-          {entries.map((loc) => (
-            <EntryCard
-              key={loc.id}
-              loc={loc}
+          {/* A country with multiple wishes gets the condensed, reorderable list;
+              a single wish (or a single-location selection) keeps the big card. */}
+          {selection?.type === "country" && entries.length > 1 ? (
+            <CountryList
+              entries={entries}
               editor={editor}
-              showDetails
               onDetails={onDetails}
               onEdit={onEdit}
               onDelete={onDelete}
+              onReorder={onReorder}
             />
-          ))}
+          ) : (
+            entries.map((loc) => (
+              <EntryCard
+                key={loc.id}
+                loc={loc}
+                editor={editor}
+                onDetails={onDetails}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
+            ))
+          )}
         </div>
       </div>
     </aside>

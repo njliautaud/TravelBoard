@@ -31,6 +31,7 @@ export interface LocationItem {
   reminderAt: string | null;
   priceThreshold: number | null;
   starred: boolean;
+  sortOrder: number;
   coverImageUrl: string | null;
   seasonSpring: boolean;
   seasonSummer: boolean;

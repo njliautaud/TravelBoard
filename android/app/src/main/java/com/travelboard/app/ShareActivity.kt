@@ -4,14 +4,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
- * No-UI router for the Android share sheet. Online → open the prefilled New Wish
- * form in MainActivity. Offline → queue the link and post it to the Inbox later.
+ * No-UI router for the Android share sheet. Opens the prefilled "Add a place"
+ * form in MainActivity so the user can finish the details and save it as a wish.
  */
 class ShareActivity : AppCompatActivity() {
 
@@ -36,23 +32,14 @@ class ShareActivity : AppCompatActivity() {
             return
         }
 
-        lifecycleScope.launch {
-            val reachable = withContext(Dispatchers.IO) { Net.isReachable(config.baseUrl) }
-            val url = Links.firstUrl(shared)
-            if (reachable) {
-                startActivity(
-                    Intent(this@ShareActivity, MainActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        .putExtra(MainActivity.EXTRA_SHARE_URL, url ?: shared)
-                        .putExtra(MainActivity.EXTRA_SHARE_TEXT, shared)
-                )
-            } else {
-                Outbox(this@ShareActivity).add(shared, url)
-                SyncWorker.enqueue(this@ShareActivity)
-                toast("Saved — will add to your Inbox when you're home")
-            }
-            finish()
-        }
+        val url = Links.firstUrl(shared)
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(MainActivity.EXTRA_SHARE_URL, url ?: shared)
+                .putExtra(MainActivity.EXTRA_SHARE_TEXT, shared)
+        )
+        finish()
     }
 
     private fun readSharedText(intent: Intent?): String? {

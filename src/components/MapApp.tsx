@@ -239,6 +239,24 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     }
   };
 
+  const handleReorder = async (orderedIds: string[]) => {
+    // Optimistic: apply the new sortOrder locally so the list stays put.
+    const rank = new Map(orderedIds.map((id, i) => [id, i]));
+    setLocations((prev) =>
+      prev.map((l) => (rank.has(l.id) ? { ...l, sortOrder: rank.get(l.id)! } : l))
+    );
+    try {
+      await fetch("/api/locations/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: orderedIds }),
+      });
+    } catch {
+      // optimistic order already applied; a later refresh reconciles
+    }
+    refreshLocations();
+  };
+
   const handleToggleStar = async (loc: LocationItem) => {
     const next = !loc.starred;
     setLocations((prev) => prev.map((l) => (l.id === loc.id ? { ...l, starred: next } : l)));
@@ -469,6 +487,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         onDetails={handleViewDetails}
         onEdit={openEdit}
         onDelete={handleDelete}
+        onReorder={handleReorder}
       />
 
       <LocationDetailsModal
