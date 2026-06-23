@@ -13,6 +13,7 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 - **Journal**: pins hold notes, photos, links, seasons, reminders, flight-deal thresholds.
 - **Draft inbox**: `POST /api/drafts/ingest` → drafts inbox → smart-fill from caption/location/Wikimedia cover. Reserved for future producers (notifications, flight deals); links are now added via the Android share form.
 - **Android app**: native share target → always opens the prefilled form; reaches the server from anywhere via **Tailscale** with a saved-servers switcher. See `android/`.
+- **Profiles**: a logged-in user can switch the sidebar dropdown to view any other account's board **read-only** (`/api/users`, `/api/locations?userId=`); edits stay owner-only (small private instance — everyone logged in may view everyone).
 - **Cover photos**: Google Images via Serper.dev, Postgres-cached with fuzzy/cross-language reuse and a duplicate-wish guard.
 - **Future**: ESP32 LED world map via `/api/hardware-sync`; partner Python script for flight prices.
 
@@ -44,8 +45,9 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 src/app/page.tsx
   └─ MapApp.tsx              — also owns the bottom-center All/Wished/Visited map filter
        │                       (`statusFilter`) and lazy-loads US-state polygons for states mode
-       ├─ Sidebar.tsx        — dropdown: Select (default) | World | Wishes | Visited | Settings
-       │                       (World resets the map; Wishes/Visited filter the list)
+       ├─ Sidebar.tsx        — dropdown View group: World | Wishes (default) | Visited | Settings
+       │                       (World resets the map; Wishes/Visited filter the list) + a
+       │                       Profiles group to switch to another user's board (read-only)
        ├─ SettingsPanel.tsx  — map theme, USA one-country-vs-by-state, home airports
        ├─ TravelMap.tsx      — heatmap, flag borders, Alaska/Hawaii zoom, world-view zoom threshold.
        │                       `rebuildGeo()` is the single source of truth for glow + dots:
@@ -115,15 +117,19 @@ Key models:
 
 - **User**: `username`, `passwordHash`, `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes), `usaAsStates` (Boolean — render US states as independent map units).
 - **Location**: per-user wishes; `starred`, `sortOrder` (manual order within a country list), seasons, `coverImageUrl`, `priceThreshold`, media, flight prices.
-- **Draft**: WhatsApp/Android inbox items (`rawText`, `extractedUrl`, `source`).
+- **Draft**: inbox items (`rawText`, `extractedUrl`, `source`); fed by `POST /api/drafts/ingest`, reserved for future producers (notifications, flight deals).
 - **FlightPrice**: ingested via API key; latest price drives `isDeal` in serialize.
 - **ImageCache**: `searchQuery` (unique, normalized), `images` (Json: `PreviewImage[]`), `source`, timestamps. Permanent Serper image cache.
 
 Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000_multi_user_drafts_seasons`, `20260613120000_user_settings`, `20260621120000_image_cache`, `20260622093000_add_location_sortorder`, `20260622210000_user_usa_as_states`.
 
-> **Migration drift:** the DB has pre-existing drift on `User.mapTheme`, so `prisma migrate dev`
-> wants to drop/recreate that column (**data loss**). Add new tables with a hand-written migration
-> + `prisma migrate deploy` instead (that's how `image_cache` was applied).
+> **Migration drift:** `User.mapTheme` was historically plain `text` in the DB (not the
+> `MapTheme` enum), which broke every new-user insert with `type "public.MapTheme" does not
+> exist` (reads never cast, so it went unnoticed). **Repaired 2026-06-23** with hand-written
+> SQL — created the enum and converted the column (lossless; only `CLASSIC` existed). General
+> rule still stands: never `prisma migrate dev` here (it wants to drop/recreate columns =
+> **data loss**); add schema with hand-written SQL + `prisma migrate deploy` (how `image_cache`
+> was applied).
 
 ### Seed safety (`prisma/seed.ts`)
 
@@ -137,7 +143,8 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 | Route | Auth | Notes |
 | --- | --- | --- |
 | `/api/auth/login`, `/register`, `/logout`, `/me` | — | Session auth |
-| `/api/locations`, `/api/locations/[id]`, `/api/locations/[id]/star` | session writes | User-scoped |
+| `/api/users` | session | Lists accounts for the sidebar profile switcher |
+| `/api/locations`, `/api/locations/[id]`, `/api/locations/[id]/star` | session writes | User-scoped; `GET ?userId=` views another user's board read-only |
 | `/api/locations/reorder` | session | Body `{ ids: string[] }` → writes `sortOrder` = index (per-country order) |
 | `/api/settings` | session | `mapTheme`, `homeAirports` |
 | `/api/drafts`, `/api/drafts/[id]`, `/api/drafts/ingest`, `/api/drafts/enrich` | session / ingest key | Draft inbox + enrichment |
@@ -300,3 +307,33 @@ Claude's reply / permission prompt → SSE /events → whatsapp-bot.mjs → What
   compromised WhatsApp account injecting instructions — permission relay is the backstop.
 - The MCP `claude/channel` notification path can only be smoke-tested once Claude Code is restarted
   with the flag; the HTTP/secret/SSE layer is plain Node and syntax-checks clean.
+
+---
+
+## 13. Two-server setup: dev (:3000) + frozen stable (:3001)
+
+To let a friend use a stable build while you keep editing, two servers run in tandem against the
+**same** Postgres (so their wishes save to this PC and appear in your profile switcher):
+
+- **:3000 — development** — the main repo folder on `master`. Run `npm run dev`. This is what you
+  and Claude edit; hot-reloads on every change.
+- **:3001 — frozen stable** — a **git worktree** at `..\TravelBoard-stable` checked out to the
+  `stable` branch (pinned to a known-good commit, currently `5820911`). Run **from that folder**:
+  ```
+  npx next dev --turbopack -p 3001 -H 0.0.0.0
+  ```
+  Call Next directly — **not** `npm run dev` — because `predev` (`free-port.mjs 3000`) would kill
+  the :3000 server. Don't edit files in that folder (it's a live dev server; edits un-freeze it).
+
+Setup notes / gotchas:
+- The worktree needs its **own** `node_modules` (`npm install` there) and `.env` (copied; gitignored).
+  A symlinked/junctioned `node_modules` does **not** work — Turbopack rejects it ("points out of the
+  filesystem root"). After install, run `npx prisma generate` in the worktree (the `@prisma/client`
+  postinstall does not always run it → `@prisma/client did not initialize`).
+- A production build (`next build` + `next start`) currently fails on pre-existing type errors in
+  `src/app/api/hardware-cover/route.ts`, so the stable instance runs `next dev` (frozen folder = stable).
+- **Promote new code to the friend:** in the worktree, `git merge master` (or `git reset --hard
+  master`) then restart :3001. Re-run `npm install` there if deps changed; schema changes hit both
+  (shared DB).
+- Friend reaches it at `http://100.127.72.12:3001` over Tailscale. If unreachable, allow port 3001
+  through Windows Firewall (3000 already works).

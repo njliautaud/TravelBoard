@@ -42,7 +42,8 @@ npm run dev                 # http://localhost:3000 (port 3000 pinned)
 ## Using the app
 
 - **Accounts**: register / log in with username + password. Each user has their own map and wishlist.
-- **Left sidebar**: dropdown for **Your wishes** (sorted by season / starred) and **Settings** (map theme, home airports).
+- **Profiles**: switch the sidebar dropdown to any other account to view their board **read-only** — your own editing and settings are unaffected.
+- **Left sidebar**: dropdown to show **Wishes** / **Visited** (sorted by season / starred), reset to **World**, open **Settings** (map theme, USA-as-states, home airports), or pick a friend's **Profile**.
 - **Map themes** (Settings): **Classic** (amber glow) or **Flag colors** (each country uses its flag accent color). Hover/click borders also use flag colors.
 - **Add places**: search OpenStreetMap, drop a pin, send an Instagram/TikTok link to yourself on WhatsApp, or share a link to the Android app.
 - **Cover photos**: **Generate image** searches Google Images (Serper.dev), cached in Postgres so repeat/similar searches cost 0 API credits; **Regenerate** forces a fresh pull. Results route through `/api/cover-proxy` so they load reliably; play-button overlays on social thumbnails are stripped server-side.
@@ -68,7 +69,8 @@ npm run dev                 # http://localhost:3000 (port 3000 pinned)
 | Route | Auth | Purpose |
 | --- | --- | --- |
 | `/api/auth/login`, `/register`, `/logout`, `/me` | — | Username/password sessions |
-| `/api/locations` | session for writes | CRUD wishlist entries |
+| `/api/users` | session | List accounts for the profile switcher |
+| `/api/locations` | session for writes | CRUD wishlist entries; `GET ?userId=` views another user's board (read-only) |
 | `/api/locations/:id/star` | session | Star / unstar a wish |
 | `/api/locations/reorder` | session | Save manual wish order within a country (`sortOrder`) |
 | `/api/settings` | session | Map theme + home airports |
@@ -81,6 +83,22 @@ npm run dev                 # http://localhost:3000 (port 3000 pinned)
 | `/api/upload` | session | Image upload to `public/uploads/` |
 | `/api/flight-prices` | `X-API-Key` on POST | Flight price ingest |
 | `/api/hardware-sync` | public | Flat JSON for ESP32 LED map |
+
+## Sharing a stable instance (port 3001)
+
+To let someone use a frozen build while you keep developing, run a second server from a **git
+worktree** against the same database (so their wishes save to your PC):
+
+```bash
+git worktree add ../TravelBoard-stable stable   # 'stable' branch = known-good commit
+cd ../TravelBoard-stable
+cp ../TravelBoard/.env .env                       # .env is gitignored
+npm install && npx prisma generate
+npx next dev --turbopack -p 3001 -H 0.0.0.0       # NOT `npm run dev` (its predev kills :3000)
+```
+
+Keep developing in the main folder on `:3000`. To promote new code to the stable instance:
+`cd ../TravelBoard-stable && git merge master`, then restart `:3001`. See `PROJECT_CONTEXT.md` §13.
 
 See `PROJECT_CONTEXT.md` for architecture, data safety, and handoff notes.
 
