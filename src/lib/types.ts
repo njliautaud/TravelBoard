@@ -67,6 +67,12 @@ export interface SessionUser {
   username: string;
 }
 
+/** A selectable account in the sidebar profile switcher. */
+export interface UserProfile {
+  id: string;
+  username: string;
+}
+
 export interface GeocodeResult {
   displayName: string;
   latitude: number;

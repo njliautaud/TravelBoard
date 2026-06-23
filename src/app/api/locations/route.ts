@@ -18,11 +18,15 @@ async function resolveCover(body: LocationBody): Promise<string | null> {
   });
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ locations: [] });
+  // Any logged-in user may view another user's board read-only (?userId=...).
+  // Omitted ⇒ your own board. Editing stays owner-only on the mutating routes.
+  const requested = req.nextUrl.searchParams.get("userId")?.trim();
+  const targetUserId = requested || user.id;
   const locations = await prisma.location.findMany({
-    where: { userId: user.id },
+    where: { userId: targetUserId },
     include: locationInclude,
     orderBy: { createdAt: "desc" },
   });

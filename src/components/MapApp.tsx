@@ -9,7 +9,7 @@ import EntryForm, { type PinDropResult } from "./EntryForm";
 import AuthModal from "./AuthModal";
 import DraftInbox from "./DraftInbox";
 import LocationDetailsModal from "./LocationDetailsModal";
-import type { DraftItem, DraftPrefill, LocationItem, SessionUser, StatusFilter } from "@/lib/types";
+import type { DraftItem, DraftPrefill, LocationItem, SessionUser, StatusFilter, UserProfile } from "@/lib/types";
 import { DEFAULT_SETTINGS, type UserSettings } from "@/lib/settings";
 import { loadUsStates, type UsStateFeature } from "@/lib/usStates";
 import { unitForLocation } from "@/lib/geoUnits";
@@ -49,13 +49,31 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [usStates, setUsStates] = useState<UsStateFeature[] | null>(null);
 
-  const loggedIn = user !== null;
+  // Profile switcher: other accounts you can view, and which board you're on now
+  // (null = your own). Viewing another board is read-only.
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [viewedUser, setViewedUser] = useState<UserProfile | null>(null);
 
-  const refreshLocations = useCallback(async () => {
+  const loggedIn = user !== null;
+  const canEdit = loggedIn && viewedUser === null;
+
+  // userId omitted ⇒ your own board; otherwise a friend's board (read-only).
+  const refreshLocations = useCallback(async (userId?: string) => {
     try {
-      const res = await fetch("/api/locations");
+      const qs = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+      const res = await fetch(`/api/locations${qs}`);
       const data = await res.json();
       if (Array.isArray(data.locations)) setLocations(data.locations);
+    } catch {
+      // keep stale
+    }
+  }, []);
+
+  const refreshProfiles = useCallback(async () => {
+    try {
+      const res = await fetch("/api/users");
+      const data = await res.json();
+      if (Array.isArray(data.users)) setProfiles(data.users);
     } catch {
       // keep stale
     }
@@ -82,8 +100,23 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   }, []);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([refreshLocations(), refreshDrafts(), refreshSettings()]);
-  }, [refreshLocations, refreshDrafts, refreshSettings]);
+    await Promise.all([refreshLocations(), refreshDrafts(), refreshSettings(), refreshProfiles()]);
+  }, [refreshLocations, refreshDrafts, refreshSettings, refreshProfiles]);
+
+  // Re-fetch the board whenever you switch which profile you're viewing.
+  useEffect(() => {
+    if (!loggedIn) return;
+    refreshLocations(viewedUser?.id);
+  }, [viewedUser, loggedIn, refreshLocations]);
+
+  // Switch the viewed board (null = back to your own) and reset the map context.
+  const selectProfile = useCallback((profile: UserProfile | null) => {
+    setViewedUser(profile);
+    setSelection(null);
+    setStatusFilter("all");
+    setSidebarOpen(false);
+    mapRef.current?.resetWorldView();
+  }, []);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -343,6 +376,8 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     setLocations([]);
     setDrafts([]);
     setSettings(DEFAULT_SETTINGS);
+    setProfiles([]);
+    setViewedUser(null);
     setSelection(null);
     setZoomedIn(false);
     mapRef.current?.resetWorldView();
@@ -352,10 +387,15 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     <div className="flex h-dvh w-full overflow-hidden">
       <Sidebar
         locations={locations}
-        editor={loggedIn}
+        editor={canEdit}
+        loggedIn={loggedIn}
         open={sidebarOpen}
         settings={settings}
         settingsSaving={settingsSaving}
+        profiles={profiles}
+        viewedUser={viewedUser}
+        currentUserId={user?.id ?? null}
+        onSelectProfile={selectProfile}
         onClose={() => setSidebarOpen(false)}
         onAddPlace={handleAddPlace}
         onSelectWish={handleSelectWish}
@@ -536,7 +576,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       <SidePanel
         selection={selection}
         locations={locations}
-        editor={loggedIn}
+        editor={canEdit}
         statusFilter={statusFilter}
         unitCodeOf={unitCodeOf}
         onClose={() => setSelection(null)}
@@ -549,7 +589,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       <LocationDetailsModal
         open={detailsLoc !== null}
         location={detailsLoc}
-        editor={loggedIn}
+        editor={canEdit}
         onClose={() => setDetailsLoc(null)}
         onEdit={(loc) => {
           setDetailsLoc(null);
