@@ -315,6 +315,14 @@ Claude's reply / permission prompt → SSE /events → whatsapp-bot.mjs → What
 To let a friend use a stable build while you keep editing, two servers run in tandem against the
 **same** Postgres (so their wishes save to this PC and appear in your profile switcher):
 
+> **⚠️ Standing rules — apply automatically whenever you change the app:**
+> 1. **Added / removed / upgraded an npm dependency?** Also run `npm install` in the
+>    `..\TravelBoard-stable` worktree (it has its **own** `node_modules`), then restart `:3001`.
+>    Otherwise the stable server breaks on the missing/old package.
+> 2. **Changed the Prisma schema or ran a migration?** It hits **both** servers — they share one
+>    database. Use hand-written SQL + `prisma migrate deploy` (never `migrate dev`), and remember
+>    `:3001` runs older code, so avoid schema changes that break it while the friend is connected.
+
 - **:3000 — development** — the main repo folder on `master`. Run `npm run dev`. This is what you
   and Claude edit; hot-reloads on every change.
 - **:3001 — frozen stable** — a **git worktree** at `..\TravelBoard-stable` checked out to the
