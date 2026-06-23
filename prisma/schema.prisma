@@ -45,6 +45,8 @@ model User {
   nonstopOnly     Boolean    @default(false)
   tripStyles      String     @default("[]")
   flightPref      String     @default("both")   /// "international", "domestic", "both"
+  distancePref    String     @default("no_preference") /// "farther", "nearby", "no_preference"
+  preferFarther   Boolean    @default(false)
   loyaltyPrograms String     @default("[]")      /// JSON array of program IDs
   heldCards       String     @default("[]")      /// JSON array of card IDs
   onboarded       Boolean    @default(false)
@@ -436,6 +438,32 @@ model AwardCache {
   @@index([destination])
   @@index([expiresAt])
   @@index([score])
+}
+
+/// Deduplication cache for flight searches — prevents duplicate API calls when
+/// multiple users search the same origin+month within the TTL window.
+/// Key = origin (IATA) + month (0-11). One row per unique search criteria.
+model SearchCache {
+  id          String   @id @default(cuid())
+  /// Canonical cache key: "ORIGIN:MONTH" (e.g. "MCO:6")
+  cacheKey    String   @unique
+  origin      String
+  month       Int
+  /// Number of fare results stored from this search
+  resultCount Int      @default(0)
+  /// When the provider API was last called for this key
+  fetchedAt   DateTime @default(now())
+  /// Hard expiry — after this time, next request triggers a re-fetch
+  expiresAt   DateTime
+  /// Tracks concurrent fetch dedup — true while an API call is in flight
+  fetching    Boolean  @default(false)
+  /// PID/request that owns the in-flight fetch (stale-lock detection)
+  fetchLockId String?
+  /// When the fetch lock was acquired (detect zombie locks)
+  fetchLockAt DateTime?
+
+  @@index([origin, month])
+  @@index([expiresAt])
 }
 
 /// Key-value application settings

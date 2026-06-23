@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import PriceHistoryChart from "./PriceHistoryChart";
+import { trackSearch, trackDealClick, trackAlertCreate } from "@/lib/tracker";
 // demoData import removed — all data comes from APIs
 
 // ---------------------------------------------------------------------------
@@ -219,6 +220,12 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
     else if (destInput.trim()) params.set("q", destInput.trim());
     if (month != null) params.set("month", String(month));
 
+    trackSearch({
+      origin: originInput.trim().toUpperCase() || undefined,
+      destination: selectedDest || destInput.trim().toUpperCase() || undefined,
+      dates: month != null ? `month-${month}` : undefined,
+    });
+
     fetch(`/api/search?${params}`)
       .then((r) => r.json())
       .then((d) => {
@@ -273,6 +280,7 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
 
   // Watch a route
   const addWatch = async (origin: string, destCode: string, price: number) => {
+    trackAlertCreate({ origin, destination: destCode, targetPrice: Math.round(price * 0.9) });
     try {
       const res = await fetch("/api/watches", {
         method: "POST",

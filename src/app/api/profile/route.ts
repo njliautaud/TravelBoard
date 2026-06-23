@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 import { prisma } from "@/lib/prisma";
 
 
@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
  * GET /api/profile — returns user profile stats for the UserProfile component.
  */
 export async function GET() {
-  const session = await getSessionUser();
+  const session = await getAuthUser();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

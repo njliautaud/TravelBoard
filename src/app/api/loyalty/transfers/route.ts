@@ -16,6 +16,7 @@ import type { ProgramId } from "@travelboard/core";
  * as a query param (identity-only, no credentials).
  */
 export async function GET(req: NextRequest) {
+  try {
   const { searchParams } = new URL(req.url);
   const cardIds = (searchParams.get("cards") ?? "")
     .split(",")
@@ -66,4 +67,8 @@ export async function GET(req: NextRequest) {
     }),
     transfers,
   });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message, status: 500 }, { status: 500 });
+  }
 }

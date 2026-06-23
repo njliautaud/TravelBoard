@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 import { prisma } from "@/lib/prisma";
 
 
@@ -12,12 +12,18 @@ function escCsv(v: unknown): string {
 }
 
 /**
- * GET /api/export/csv — download user data as CSV (locations + trips).
+ * GET /api/export/csv
+ *
+ * Auth: required.
+ * Downloads user data as CSV (locations, trips, journal entries, watches).
+ *
+ * Response: text/csv file download
  */
 export async function GET() {
-  const session = await getSessionUser();
+  try {
+  const session = await getAuthUser();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized", status: 401 }, { status: 401 });
   }
 
   const [locations, trips, journalEntries, watches] = await Promise.all([
@@ -104,4 +110,8 @@ export async function GET() {
       "Content-Disposition": `attachment; filename="travelboard-export-${new Date().toISOString().slice(0, 10)}.csv"`,
     },
   });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message, status: 500 }, { status: 500 });
+  }
 }

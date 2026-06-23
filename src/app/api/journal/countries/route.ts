@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 import { prisma } from "@/lib/prisma";
 
 
@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
  * Used by the map to highlight countries where the user has memories.
  */
 export async function GET() {
-  const user = await getSessionUser();
+  const user = await getAuthUser();
   if (!user) return NextResponse.json({ countries: [] });
 
   try {

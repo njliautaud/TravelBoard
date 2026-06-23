@@ -13,7 +13,7 @@ export interface AuthUser {
   id: string;        // DB user id
   username: string;
   clerkId?: string;  // Only set when using Clerk
-  imageUrl?: string; // Clerk profile image
+  imageUrl?: string | null; // Clerk profile image
 }
 
 const isClerkEnabled = !!(
@@ -45,7 +45,7 @@ async function getClerkUser(): Promise<AuthUser | null> {
     // Find or create user in our DB linked to Clerk ID
     let dbUser = await prisma.user.findFirst({
       where: { clerkId: userId },
-      select: { id: true, username: true, clerkId: true },
+      select: { id: true, username: true, clerkId: true, imageUrl: true },
     });
 
     if (!dbUser) {
@@ -61,8 +61,9 @@ async function getClerkUser(): Promise<AuthUser | null> {
           username,
           passwordHash: "", // Not used with Clerk
           clerkId: userId,
+          imageUrl: clerkUser?.imageUrl,
         },
-        select: { id: true, username: true, clerkId: true },
+        select: { id: true, username: true, clerkId: true, imageUrl: true },
       });
     }
 
@@ -70,6 +71,7 @@ async function getClerkUser(): Promise<AuthUser | null> {
       id: dbUser.id,
       username: dbUser.username,
       clerkId: userId,
+      imageUrl: dbUser.imageUrl,
     };
   } catch {
     return null;

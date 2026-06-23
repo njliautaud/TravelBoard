@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 import { enrichLink } from "@/lib/linkEnrichment";
 
 
@@ -13,7 +13,7 @@ type Params = { params: Promise<{ id: string }> };
  * Optionally accepts overrides in the body: { title, content, mood, weather, tags, isPublic }
  */
 export async function POST(req: NextRequest, { params }: Params) {
-  const user = await getSessionUser();
+  const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
 

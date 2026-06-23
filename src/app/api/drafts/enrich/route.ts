@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 import { enrichLink } from "@/lib/linkEnrichment";
 
 
 /** GET /api/drafts/enrich?url=...&rawText=... — smart-fill from reel/post metadata */
 export async function GET(req: NextRequest) {
-  const user = await getSessionUser();
+  const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);

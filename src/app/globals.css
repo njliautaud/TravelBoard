@@ -177,3 +177,88 @@ body {
 .animate-slide-up {
   animation: slide-up 0.25s ease-out;
 }
+
+/* Clerk dark theme overrides — ensure all text is readable on dark backgrounds */
+.cl-rootBox,
+.cl-card,
+.cl-cardBox {
+  --clerk-bg: #020617;
+  color: #e2e8f0 !important;
+}
+
+.cl-internal-b3fm6y,
+.cl-footer,
+.cl-footerAction,
+.cl-footerAction__signIn,
+.cl-footerAction__signUp,
+.cl-footerActionText,
+.cl-footerPages,
+.cl-footerPagesLink,
+.cl-formFieldHintText,
+.cl-formFieldLabel,
+.cl-formHeaderTitle,
+.cl-formHeaderSubtitle,
+.cl-headerTitle,
+.cl-headerSubtitle,
+.cl-identityPreviewText,
+.cl-userPreviewMainIdentifier,
+.cl-userPreviewSecondaryIdentifier,
+.cl-profileSectionTitle,
+.cl-profileSectionContent,
+.cl-menuItem,
+.cl-breadcrumbs,
+.cl-breadcrumbsItem,
+.cl-navbarButton,
+.cl-selectOption,
+.cl-tagPillContainer,
+.cl-alertText,
+.cl-formFieldErrorText {
+  color: #cbd5e1 !important;
+}
+
+.cl-footerActionLink,
+.cl-formResendCodeLink,
+.cl-identityPreviewEditButton {
+  color: #f59e0b !important;
+}
+
+.cl-card,
+.cl-cardBox,
+.cl-modalContent,
+.cl-userButtonPopoverCard {
+  background-color: #020617 !important;
+  border-color: rgba(51, 65, 85, 0.7) !important;
+}
+
+.cl-socialButtonsBlockButton,
+.cl-alternativeMethodsBlockButton {
+  border-color: rgba(51, 65, 85, 0.7) !important;
+  color: #e2e8f0 !important;
+}
+
+.cl-socialButtonsBlockButton:hover,
+.cl-alternativeMethodsBlockButton:hover {
+  background-color: rgba(30, 41, 59, 0.8) !important;
+}
+
+.cl-socialButtonsProviderIcon,
+.cl-providerIcon {
+  filter: brightness(0) invert(1) opacity(0.8);
+}
+
+.cl-formFieldInput,
+.cl-otpCodeFieldInput,
+.cl-phoneNumberInput,
+.cl-selectButton {
+  background-color: #0f172a !important;
+  border-color: rgba(51, 65, 85, 0.7) !important;
+  color: #e2e8f0 !important;
+}
+
+.cl-dividerLine {
+  background-color: #334155 !important;
+}
+
+.cl-dividerText {
+  color: #64748b !important;
+}

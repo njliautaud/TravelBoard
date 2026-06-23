@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 import { createEntry } from "@/lib/services/journal";
 import { prisma } from "@/lib/prisma";
 
@@ -167,7 +167,7 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata> {
  * Returns: { entry, destinations, vibes, metadata }
  */
 export async function POST(req: NextRequest) {
-  const user = await getSessionUser();
+  const user = await getAuthUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

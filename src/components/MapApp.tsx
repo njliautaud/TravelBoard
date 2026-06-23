@@ -13,6 +13,7 @@ import DealsMapPanel from "./DealsMapPanel";
 import type { DraftItem, DraftPrefill, LocationItem, SessionUser } from "@/lib/types";
 import { DEFAULT_SETTINGS, type UserSettings } from "@/lib/settings";
 import { setDemoMode, getDemoMode } from "@/lib/demoData";
+import { trackMapInteraction, trackDestinationView } from "@/lib/tracker";
 
 interface MapAppProps {
   initialLocations: LocationItem[];
@@ -164,6 +165,7 @@ export default function MapApp({ initialLocations, dealsMode = false }: MapAppPr
       }
       return;
     }
+    trackMapInteraction("country_click", { country: dealsCountryFilter });
     setCountryRoutesLoading(true);
     fetch(`/api/deals/routes?country=${dealsCountryFilter}&limit=50`)
       .then((r) => r.json())
@@ -453,8 +455,8 @@ export default function MapApp({ initialLocations, dealsMode = false }: MapAppPr
           </div>
         )}
 
-        {/* Welcome overlay for logged-out users — only when NOT in demo mode (demo uses AppShell landing) */}
-        {!loggedIn && !authOpen && !isDemoActive && (
+        {/* Welcome overlay for logged-out users — only when NOT in demo mode and NOT in dealsMode (AppShell manages auth in dealsMode) */}
+        {!loggedIn && !authOpen && !isDemoActive && !dealsMode && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
             {/* Subtle dark gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-slate-950/60" />
@@ -535,7 +537,7 @@ export default function MapApp({ initialLocations, dealsMode = false }: MapAppPr
                   Log out
                 </button>
               </>
-            ) : !isDemoActive ? (
+            ) : !isDemoActive && !dealsMode ? (
               <>
                 <button
                   onClick={() => requireAuth("register")}

@@ -51,10 +51,14 @@ export async function listWatches(userId: string): Promise<WatchItem[]> {
   // Enrich with current best prices from fare cache
   const enriched: WatchItem[] = [];
   for (const w of watches) {
+    // Try matching by flyToCode (IATA code) first, fall back to destination (city name)
     const bestFare = await prisma.fareCache.findFirst({
       where: {
         origin: w.origin,
-        destination: w.destinationCode,
+        OR: [
+          { flyToCode: w.destinationCode },
+          { destination: w.destinationCode },
+        ],
       },
       orderBy: { price: "asc" },
       select: { price: true },
@@ -165,11 +169,14 @@ export async function checkWatchAlerts(userId: string): Promise<number> {
   const dedupWindow = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   for (const w of watches) {
-    // Find cheapest current fare for this route
+    // Find cheapest current fare for this route (try IATA code first, then city name)
     const bestFare = await prisma.fareCache.findFirst({
       where: {
         origin: w.origin,
-        destination: w.destinationCode,
+        OR: [
+          { flyToCode: w.destinationCode },
+          { destination: w.destinationCode },
+        ],
       },
       orderBy: { price: "asc" },
     });

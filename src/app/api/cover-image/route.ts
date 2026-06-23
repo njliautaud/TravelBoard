@@ -21,27 +21,34 @@ function parseFields(req: NextRequest): CoverSearchFields | null {
 
 /**
  * GET /api/cover-image?activityName=...&city=...&region=...&countryName=...
- * Returns multiple Wikipedia / Wikimedia candidates for cycling in the form.
  *
- * Legacy: GET /api/cover-image?q=... still returns a single url.
+ * Auth: none (public).
+ * Returns cover image candidates from Wikipedia/Wikimedia.
+ * Legacy: GET /api/cover-image?q=... returns a single url.
+ *
+ * Response: { candidates: string[], url: string | null, total: number }
  */
 export async function GET(req: NextRequest) {
-  const fields = parseFields(req);
-  if (!fields) {
-    return NextResponse.json({ error: "activityName or location fields required" }, { status: 400 });
-  }
+  try {
+    const fields = parseFields(req);
+    if (!fields) {
+      return NextResponse.json({ error: "activityName or location fields required", status: 400 }, { status: 400 });
+    }
 
-  // Simple single-query lookup (legacy clients)
-  const qOnly = req.nextUrl.searchParams.get("q")?.trim();
-  if (qOnly && !req.nextUrl.searchParams.get("activityName")) {
-    const url = await searchCoverImage(qOnly);
-    return NextResponse.json({ url });
-  }
+    const qOnly = req.nextUrl.searchParams.get("q")?.trim();
+    if (qOnly && !req.nextUrl.searchParams.get("activityName")) {
+      const url = await searchCoverImage(qOnly);
+      return NextResponse.json({ url });
+    }
 
-  const candidates = await listCoverImageCandidates(fields);
-  return NextResponse.json({
-    candidates,
-    url: candidates[0] ?? null,
-    total: candidates.length,
-  });
+    const candidates = await listCoverImageCandidates(fields);
+    return NextResponse.json({
+      candidates,
+      url: candidates[0] ?? null,
+      total: candidates.length,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message, status: 500 }, { status: 500 });
+  }
 }

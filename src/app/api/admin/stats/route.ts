@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 import { prisma } from "@/lib/prisma";
 
 
@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
  * Requires an authenticated user with OWNER role.
  */
 export async function GET() {
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getAuthUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

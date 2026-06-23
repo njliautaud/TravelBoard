@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 import { extractFirstUrl } from "@/lib/extractUrl";
 import { serializeDraft } from "@/lib/serialize";
 
@@ -12,7 +12,7 @@ import { serializeDraft } from "@/lib/serialize";
  * Body: { "text": "https://instagram.com/reel/...", "source"?: "instagram" | "manual" }
  */
 export async function POST(req: NextRequest) {
-  const user = await getSessionUser();
+  const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => null);

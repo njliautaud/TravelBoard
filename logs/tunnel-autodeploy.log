@@ -1,0 +1,70 @@
+2026-06-16 22:29:41 Starting tunnel-with-autodeploy...
+2026-06-16 22:29:45 New tunnel URL: https://prevent-substance-entrance-kick.trycloudflare.com (was: )
+2026-06-16 22:29:45 Triggering auto-deploy...
+Tue Jun 16 10:29:48 PM EDT 2026 — Deploying to Cloudflare Pages (API: https://prevent-substance-entrance-kick.trycloudflare.com)
+   ▲ Next.js 15.3.3
+   - Environments: .env
+
+   Creating an optimized production build ...
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (218kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled successfully in 13.0s
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/7) ...
+   Generating static pages (1/7) 
+   Generating static pages (3/7) 
+   Generating static pages (5/7) 
+ ✓ Generating static pages (7/7)
+   Finalizing page optimization ...
+   Collecting build traces ...
+ ⚠ Statically exporting a Next.js application via `next export` disables API routes and middleware.
+This command is meant for static-only hosts, and is not necessary to make your application static.
+Pages in your application without server-side data dependencies will be automatically statically exported by `next build`, including pages powered by `getStaticProps`.
+Learn more: https://nextjs.org/docs/messages/api-routes-static-export
+   Exporting (0/4) ...
+   Exporting (1/4) 
+   Exporting (2/4) 
+   Exporting (3/4) 
+ ✓ Exporting (4/4)
+
+Route (app)                                  Size  First Load JS
+┌ ○ /                                      384 kB         485 kB
+├ ○ /_not-found                             140 B         101 kB
+├ ● /journal/[id]                         3.44 kB         105 kB
+├ ○ /sign-in                              1.47 kB         103 kB
+└ ○ /sign-up                              1.46 kB         103 kB
++ First Load JS shared by all              101 kB
+  ├ chunks/495-3fd3f58b7f639659.js        46.1 kB
+  ├ chunks/6ad05b90-ee512a2c4f71b4c1.js   53.2 kB
+  └ other shared chunks (total)           1.97 kB
+
+Route (pages)                                Size  First Load JS
+─   /_app                                     0 B        93.5 kB
++ First Load JS shared by all             93.5 kB
+  ├ chunks/framework-43eecf830e17037a.js  57.7 kB
+  ├ chunks/main-ec6e3e3ea73385ac.js       33.8 kB
+  └ other shared chunks (total)           2.03 kB
+
+ƒ Middleware                              90.3 kB
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+ ⛅️ wrangler 4.101.0
+────────────────────
+Uploading... (37/51)
+Uploading... (41/51)
+Uploading... (46/51)
+Uploading... (51/51)
+✨ Success! Uploaded 14 files (37 already uploaded) (108.17 sec)
+
+🌎 Deploying...
+✨ Deployment complete! Take a peek over at https://af1d39d7.travelboard-9q0.pages.dev
+Tue Jun 16 10:32:05 PM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev
+2026-06-16 22:32:05 Auto-deploy SUCCESS
+2026-06-16 23:16:31 Starting tunnel (Worker proxy mode — no frontend rebuild needed)...
+2026-06-16 23:16:35 New tunnel URL: https://itself-cast-painted-instances.trycloudflare.com (was: https://prevent-substance-entrance-kick.trycloudflare.com)
+Tue Jun 16 11:16:37 PM EDT 2026 — Worker TUNNEL_URL updated to https://itself-cast-painted-instances.trycloudflare.com
+2026-06-16 23:16:37 Worker proxy updated — no frontend rebuild needed

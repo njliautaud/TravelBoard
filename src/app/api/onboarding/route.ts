@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 import { prisma } from "@/lib/prisma";
 
 /**
  * POST /api/onboarding
- * Body: { airports: string[], flightPref: string, loyaltyPrograms: string[] }
  *
- * Saves onboarding preferences. Creates a default user if none exists (anonymous).
+ * Auth: optional (creates anonymous user if not authenticated).
+ * Saves onboarding preferences. Creates a default user if none exists.
+ *
+ * Body: { airports: string[], flightPref: string, distancePref: string, loyaltyPrograms: string[] }
+ * Response: { ok: true, userId: string }
  */
 export async function POST(req: NextRequest) {
   let body: {
@@ -18,77 +21,86 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON", status: 400 }, { status: 400 });
   }
 
-  const airports = Array.isArray(body.airports)
-    ? body.airports.filter((a): a is string => typeof a === "string" && /^[A-Z]{3}$/.test(a))
-    : [];
-  const flightPref = ["international", "domestic", "both"].includes(body.flightPref ?? "")
-    ? body.flightPref!
-    : "both";
-  const distancePref = ["farther", "nearby", "no_preference"].includes(body.distancePref ?? "")
-    ? body.distancePref!
-    : "no_preference";
-  const loyaltyPrograms = Array.isArray(body.loyaltyPrograms)
-    ? body.loyaltyPrograms.filter((p): p is string => typeof p === "string")
-    : [];
-  // Derive preferFarther from distance preference for backward compatibility
-  const preferFarther = distancePref === "farther";
+  try {
+    const airports = Array.isArray(body.airports)
+      ? body.airports.filter((a): a is string => typeof a === "string" && /^[A-Z]{3}$/.test(a))
+      : [];
+    const flightPref = ["international", "domestic", "both"].includes(body.flightPref ?? "")
+      ? body.flightPref!
+      : "both";
+    const distancePref = ["farther", "nearby", "no_preference"].includes(body.distancePref ?? "")
+      ? body.distancePref!
+      : "no_preference";
+    const loyaltyPrograms = Array.isArray(body.loyaltyPrograms)
+      ? body.loyaltyPrograms.filter((p): p is string => typeof p === "string")
+      : [];
+    // Derive preferFarther from distance preference for backward compatibility
+    const preferFarther = distancePref === "farther";
 
-  // Try to find existing user, or create one
-  let session = await getSessionUser();
-  let userId: string;
+    // Try to find existing user, or create one
+    const session = await getAuthUser();
+    let userId: string;
 
-  if (session) {
-    userId = session.id;
-  } else {
-    // Create anonymous user for onboarding
-    const user = await prisma.user.create({
+    if (session) {
+      userId = session.id;
+    } else {
+      // Create anonymous user for onboarding
+      const user = await prisma.user.create({
+        data: {
+          username: `traveler_${Date.now().toString(36)}`,
+          passwordHash: "",
+          homeAirports: JSON.stringify(airports),
+          flightPref,
+          distancePref,
+          preferFarther,
+          loyaltyPrograms: JSON.stringify(loyaltyPrograms),
+          onboarded: true,
+        },
+      });
+      userId = user.id;
+
+      // Set session cookie
+      const { createSessionToken, SESSION_COOKIE } = await import("@/lib/auth");
+      const token = createSessionToken(userId);
+      const res = NextResponse.json({ ok: true, userId });
+      res.cookies.set(SESSION_COOKIE, token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60,
+        path: "/",
+      });
+      return res;
+    }
+
+    // Update existing user
+    await prisma.user.update({
+      where: { id: userId },
       data: {
-        username: `traveler_${Date.now().toString(36)}`,
-        passwordHash: "",
         homeAirports: JSON.stringify(airports),
         flightPref,
+        distancePref,
+        preferFarther,
         loyaltyPrograms: JSON.stringify(loyaltyPrograms),
         onboarded: true,
       },
     });
-    userId = user.id;
 
-    // Set session cookie
-    const { createSessionToken, SESSION_COOKIE } = await import("@/lib/auth");
-    const token = createSessionToken(userId);
-    const res = NextResponse.json({ ok: true, userId });
-    res.cookies.set(SESSION_COOKIE, token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60,
-      path: "/",
-    });
-    return res;
+    return NextResponse.json({ ok: true, userId });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message, status: 500 }, { status: 500 });
   }
-
-  // Update existing user
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      homeAirports: JSON.stringify(airports),
-      flightPref,
-      loyaltyPrograms: JSON.stringify(loyaltyPrograms),
-      onboarded: true,
-    },
-  });
-
-  return NextResponse.json({ ok: true, userId });
 }
 
 /**
  * GET /api/onboarding — check if current user has completed onboarding
  */
 export async function GET() {
-  const session = await getSessionUser();
+  const session = await getAuthUser();
   if (!session) {
     return NextResponse.json({ onboarded: false });
   }
@@ -99,6 +111,8 @@ export async function GET() {
       onboarded: true,
       homeAirports: true,
       flightPref: true,
+      distancePref: true,
+      preferFarther: true,
       loyaltyPrograms: true,
     },
   });
@@ -116,6 +130,8 @@ export async function GET() {
     onboarded: user.onboarded,
     airports,
     flightPref: user.flightPref,
+    distancePref: user.distancePref,
+    preferFarther: user.preferFarther,
     loyaltyPrograms: programs,
   });
 }

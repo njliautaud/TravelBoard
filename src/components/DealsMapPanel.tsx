@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { HOME_AIRPORTS, type AirportOption } from "@/lib/airports";
 import { alpha3ToCountryName } from "@/lib/countryCodes";
+import { trackDealClick, trackDealSave } from "@/lib/tracker";
 import type { CountryDeal, DealRoute } from "./TravelMap";
 
 // ---------------------------------------------------------------------------
@@ -242,6 +243,13 @@ function DealDetailOverlay({
           href={deal.deepLink}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => trackDealClick({
+            origin: deal.origin,
+            destination: deal.destination,
+            price: deal.price,
+            source: "book_click",
+            dealType: deal.isAward ? "award" : "cash",
+          })}
           className="block rounded-xl bg-teal-500/15 py-2.5 text-center text-sm font-medium text-teal-300 transition hover:bg-teal-500/25"
         >
           View &amp; Book
@@ -278,7 +286,7 @@ export default function DealsMapPanel({
         } else if (!origin) {
           // Fall back to onboarding prefs in localStorage
           try {
-            const raw = localStorage.getItem("tb_prefs");
+            const raw = localStorage.getItem("travelboard.prefs");
             if (raw) {
               const prefs = JSON.parse(raw);
               if (prefs.homeAirport) setOrigin(prefs.homeAirport.toUpperCase());
@@ -294,7 +302,7 @@ export default function DealsMapPanel({
       .catch(() => {
         // API unavailable — use localStorage or default
         try {
-          const raw = localStorage.getItem("tb_prefs");
+          const raw = localStorage.getItem("travelboard.prefs");
           if (raw) {
             const prefs = JSON.parse(raw);
             if (prefs.homeAirport) setOrigin(prefs.homeAirport.toUpperCase());
@@ -464,7 +472,16 @@ export default function DealsMapPanel({
             <CompactDealCard
               key={deal.id}
               deal={deal}
-              onClick={() => setSelectedDeal(deal)}
+              onClick={() => {
+                trackDealClick({
+                  origin: deal.origin,
+                  destination: deal.destination,
+                  price: deal.price,
+                  source: deal.source ?? undefined,
+                  dealType: deal.isAward ? "award" : "cash",
+                });
+                setSelectedDeal(deal);
+              }}
             />
           ))
         )}

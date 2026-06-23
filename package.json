@@ -11,7 +11,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "whatsapp-bot": "node --env-file=.env scripts/whatsapp-bot.mjs",
     "whatsapp-bot:setup": "npx puppeteer browsers install chrome",
-    "whatsapp-bot:stop": "node scripts/whatsapp-bot-stop.mjs"
+    "whatsapp-bot:stop": "node scripts/whatsapp-bot-stop.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -43,6 +45,7 @@
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.9"
   }
 }

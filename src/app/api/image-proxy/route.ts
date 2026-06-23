@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(url, { headers: FETCH_HEADERS });
+    const upstream = await fetch(url, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(10000) });
     if (!upstream.ok) {
       return NextResponse.json({ error: `upstream ${upstream.status}` }, { status: 502 });
     }

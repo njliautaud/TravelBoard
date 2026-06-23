@@ -19,6 +19,7 @@ import UserProfile from "./UserProfile";
 import ActivityFeed from "./ActivityFeed";
 import type { LocationItem, SessionUser } from "@/lib/types";
 import { getDemoMode } from "@/lib/demoData";
+import { trackPageView, trackSignIn, trackOnboardingComplete, trackFeatureUse } from "@/lib/tracker";
 
 // CLERK_ENABLED is imported from @/lib/useClerkSafe
 
@@ -132,6 +133,42 @@ export default function AppShell({ initialLocations }: AppShellProps) {
     const { prefs: loadedPrefs } = loadLocalPrefs();
     setPrefs(loadedPrefs);
 
+    // Helper: check if user already completed onboarding locally
+    const locallyOnboarded = () => {
+      try {
+        return localStorage.getItem("tb_entered") === "1" ||
+               localStorage.getItem("travelboard.onboarded") === "1";
+      } catch { return false; }
+    };
+
+    // Helper: check onboarding status from server, with localStorage fallback
+    const checkOnboarding = () => {
+      // If user already completed onboarding in a previous session, skip the server check
+      if (locallyOnboarded()) {
+        setAppEntered(true);
+        return;
+      }
+
+      fetch("/api/onboarding")
+        .then((r) => r.ok ? r.json() : null)
+        .then((ob) => {
+          if (ob?.onboarded) {
+            setAppEntered(true);
+            try { localStorage.setItem("tb_entered", "1"); } catch {}
+          } else {
+            setShowOnboarding(true);
+          }
+        })
+        .catch(() => {
+          // API unavailable — if locally onboarded, enter app; otherwise show onboarding
+          if (locallyOnboarded()) {
+            setAppEntered(true);
+          } else {
+            setShowOnboarding(true);
+          }
+        });
+    };
+
     if (CLERK_ENABLED) {
       // Wait for Clerk to load
       if (!clerkLoaded) return;
@@ -143,18 +180,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           username: clerkUser.username ?? clerkUser.firstName ?? clerkUser.primaryEmailAddress?.emailAddress ?? "user",
         };
         setCurrentUser(sessionUser);
-
-        // Check onboarding
-        fetch("/api/onboarding")
-          .then((r) => r.ok ? r.json() : null)
-          .then((ob) => {
-            if (ob?.onboarded) {
-              setAppEntered(true);
-            } else {
-              setShowOnboarding(true);
-            }
-          })
-          .catch(() => setAppEntered(true));
+        checkOnboarding();
       }
       // If not signed in, landing page stays visible (buttons redirect to /sign-in)
     } else {
@@ -164,16 +190,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
         .then((data) => {
           if (data?.user) {
             setCurrentUser(data.user);
-            fetch("/api/onboarding")
-              .then((r) => r.ok ? r.json() : null)
-              .then((ob) => {
-                if (ob?.onboarded) {
-                  setAppEntered(true);
-                } else {
-                  setShowOnboarding(true);
-                }
-              })
-              .catch(() => setAppEntered(true));
+            checkOnboarding();
           }
         })
         .catch(() => {
@@ -182,9 +199,19 @@ export default function AppShell({ initialLocations }: AppShellProps) {
     }
   }, [clerkLoaded, clerkSignedIn, clerkUser]);
 
-  // Poll unread alert count periodically (skip in demo mode)
+  // Track page views on tab change
   useEffect(() => {
-    if (getDemoMode()) return;
+    if (appEntered) trackPageView(activeTab);
+  }, [activeTab, appEntered]);
+
+  // Track sign-in when user first authenticates
+  useEffect(() => {
+    if (currentUser) trackSignIn(CLERK_ENABLED ? "clerk" : "legacy");
+  }, [currentUser]);
+
+  // Poll unread alert count periodically (skip in demo mode and when not logged in)
+  useEffect(() => {
+    if (getDemoMode() || !currentUser) return;
     let stopped = false;
     const fetchCount = () => {
       if (stopped) return;
@@ -199,7 +226,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
     fetchCount();
     const iv = setInterval(fetchCount, 60_000);
     return () => clearInterval(iv);
-  }, []);
+  }, [currentUser]);
 
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
@@ -287,13 +314,23 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           onSuccess={(user: SessionUser) => {
             setCurrentUser(user);
             setShowAuth(false);
-            // Check if they need onboarding
+            // Check if they already completed onboarding (localStorage first, then API)
+            const locallyDone = (() => {
+              try {
+                return localStorage.getItem("tb_entered") === "1" ||
+                       localStorage.getItem("travelboard.onboarded") === "1";
+              } catch { return false; }
+            })();
+            if (locallyDone) {
+              setAppEntered(true);
+              return;
+            }
             fetch("/api/onboarding")
-              .then((r) => r.json())
+              .then((r) => r.ok ? r.json() : null)
               .then((ob) => {
-                if (ob.onboarded) {
+                if (ob?.onboarded) {
                   setAppEntered(true);
-                  localStorage.setItem("tb_entered", "1");
+                  try { localStorage.setItem("tb_entered", "1"); } catch {}
                 } else {
                   setShowOnboarding(true);
                 }
@@ -309,10 +346,15 @@ export default function AppShell({ initialLocations }: AppShellProps) {
       {/* Onboarding wizard */}
       {showOnboarding && (
         <OnboardingWizard
-          onComplete={(_data: OnboardingData) => {
+          onComplete={(data: OnboardingData) => {
             setShowOnboarding(false);
             setAppEntered(true);
             if (typeof window !== "undefined") localStorage.setItem("tb_entered", "1");
+            trackOnboardingComplete({
+              airportCount: data.airports?.length ?? 0,
+              flightPref: data.flightPref,
+              programCount: data.loyaltyPrograms?.length ?? 0,
+            });
           }}
         />
       )}

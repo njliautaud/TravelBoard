@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { HOME_AIRPORTS, type AirportOption } from "@/lib/airports";
+import { HOME_AIRPORTS, sortAirportsByDistance, type AirportOption } from "@/lib/airports";
 
 // Re-export for backward compatibility
 export interface TravelPrefsDto {
@@ -163,6 +163,25 @@ export function OnboardingWizard({
   const [distancePref, setDistancePref] = useState<"farther" | "nearby" | "no_preference">("no_preference");
   const [loyaltyPrograms, setLoyaltyPrograms] = useState<string[]>([]);
   const [airportSearch, setAirportSearch] = useState("");
+  const [geoSortedAirports, setGeoSortedAirports] = useState<AirportOption[]>(HOME_AIRPORTS);
+  const [geoStatus, setGeoStatus] = useState<"pending" | "granted" | "denied">("pending");
+
+  // Request geolocation on mount to sort airports by proximity
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGeoStatus("denied");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const sorted = sortAirportsByDistance(HOME_AIRPORTS, pos.coords.latitude, pos.coords.longitude);
+        setGeoSortedAirports(sorted);
+        setGeoStatus("granted");
+      },
+      () => setGeoStatus("denied"),
+      { timeout: 8000, maximumAge: 300_000 },
+    );
+  }, []);
 
   const toggleAirport = (iata: string) => {
     setAirports((cur) =>
@@ -177,21 +196,23 @@ export function OnboardingWizard({
   };
 
   const filteredAirports = useMemo(() => {
-    if (!airportSearch.trim()) return HOME_AIRPORTS;
+    const base = geoSortedAirports;
+    if (!airportSearch.trim()) return base;
     const q = airportSearch.toLowerCase();
-    return HOME_AIRPORTS.filter(
+    return base.filter(
       (a) =>
         a.iata.toLowerCase().includes(q) ||
         a.city.toLowerCase().includes(q) ||
         a.name.toLowerCase().includes(q),
     );
-  }, [airportSearch]);
+  }, [airportSearch, geoSortedAirports]);
 
-  const finish = () => {
+  const finish = async () => {
     const data: OnboardingData = { airports, flightPref, distancePref, loyaltyPrograms };
-    // Save to localStorage for immediate use
+    // Save to localStorage FIRST for immediate use and as fallback if API fails
     try {
       localStorage.setItem(ONBOARDED_LS_KEY, "1");
+      localStorage.setItem("tb_entered", "1");
       localStorage.setItem(
         PREFS_LS_KEY,
         JSON.stringify({
@@ -201,12 +222,14 @@ export function OnboardingWizard({
         }),
       );
     } catch {}
-    // Save to backend
-    void fetch("/api/onboarding", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(data),
-    }).catch(() => {});
+    // Save to backend (best-effort, localStorage is the fallback)
+    try {
+      await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    } catch {}
     onComplete(data);
   };
 
@@ -291,6 +314,9 @@ export function OnboardingWizard({
               </h3>
               <p className="text-xs text-slate-400 mb-3">
                 Select all that apply. We&apos;ll find deals from these airports.
+                {geoStatus === "granted" && (
+                  <span className="ml-1 text-teal-400">Sorted by distance from you.</span>
+                )}
               </p>
 
               {/* Search */}

@@ -582,3 +582,60 @@ Uploading... (56/56)
 🌎 Deploying...
 ✨ Deployment complete! Take a peek over at https://1874b92c.travelboard-9q0.pages.dev
 Wed Jun 17 10:41:24 AM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev
+Wed Jun 17 11:50:43 AM EDT 2026 — Deploying to Cloudflare Pages (API: https://travelboard-api.relentlessrobotics.workers.dev — permanent, no tunnel URL rotation)
+   ▲ Next.js 15.3.3
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ⚠ Production code optimization has been disabled in your project. Read more: https://nextjs.org/docs/messages/minification-disabled
+ ✓ Compiled successfully in 8.0s
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/9) ...
+   Generating static pages (2/9) 
+   Generating static pages (4/9) 
+   Generating static pages (6/9) 
+ ✓ Generating static pages (9/9)
+   Finalizing page optimization ...
+   Collecting build traces ...
+   Exporting (0/4) ...
+   Exporting (1/4) 
+   Exporting (2/4) 
+   Exporting (3/4) 
+ ✓ Exporting (4/4)
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                     505 kB         718 kB
+├ ○ /_not-found                            241 B         214 kB
+├ ○ /journal                               310 B         221 kB
+├ ● /journal/[id]                          310 B         221 kB
+├ ○ /share                               3.11 kB         217 kB
+├ ○ /sign-in                             3.54 kB         217 kB
+└ ○ /sign-up                             3.53 kB         217 kB
++ First Load JS shared by all             214 kB
+  ├ chunks/495-3c8551ff2a98ad42.js        118 kB
+  ├ chunks/6ad05b90-3e13e1a025fa11cf.js  92.2 kB
+  └ other shared chunks (total)          4.03 kB
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+ ⛅️ wrangler 4.101.0
+────────────────────
+✨ Compiled Worker successfully
+Uploading... (42/60)
+Uploading... (48/60)
+Uploading... (54/60)
+Uploading... (60/60)
+✨ Success! Uploaded 18 files (42 already uploaded) (1.94 sec)
+
+✨ Uploading _headers
+✨ Uploading _redirects
+✨ Uploading Functions bundle
+✨ Uploading _routes.json
+🌎 Deploying...
+✨ Deployment complete! Take a peek over at https://f8626c5a.travelboard-9q0.pages.dev
+Wed Jun 17 11:51:08 AM EDT 2026 — Deploy complete: https://travelboard-9q0.pages.dev

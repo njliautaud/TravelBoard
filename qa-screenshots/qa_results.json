@@ -1,0 +1,38 @@
+{
+  "timestamp": "20260617_1041",
+  "live_url": "https://travelboard-9q0.pages.dev",
+  "api_url": "http://localhost:3000",
+  "api_endpoints": {
+    "auth/me": {
+      "status": "ERROR",
+      "error": "HTTP Error 308: Permanent Redirect"
+    },
+    "deals/countries": {
+      "status": "ERROR",
+      "error": "HTTP Error 308: Permanent Redirect"
+    },
+    "deals/routes?limit=5": {
+      "status": "ERROR",
+      "error": "HTTP Error 308: Permanent Redirect"
+    },
+    "awards?origin=MCO&limit=5": {
+      "status": "ERROR",
+      "error": "HTTP Error 308: Permanent Redirect"
+    }
+  },
+  "screenshots": [
+    "01_desktop_landing.png",
+    "02_desktop_signin.png",
+    "03_desktop_signup.png",
+    "04_desktop_journal.png",
+    "05_desktop_404.png",
+    "06_local_landing.png",
+    "07_local_app_entered.png",
+    "08_local_deals_overlay.png",
+    "09_mobile_landing.png",
+    "10_mobile_signin.png",
+    "11_mobile_journal.png",
+    "12_mobile_404.png",
+    "13_mobile_local_app.png"
+  ]
+}

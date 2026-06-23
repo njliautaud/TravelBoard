@@ -96,6 +96,7 @@ export default function ClientShell({ children }: { children: ReactNode }) {
 CLIENTSHELL
 
 # Replace sign-in page to use @clerk/react (dynamic import to avoid SSR prerender crash)
+# Use routing="hash" so Clerk multi-step flows work without catch-all routes (static export compatible)
 cat > "$DEPLOY_DIR/src/app/sign-in/page.tsx" << 'SIGNIN'
 "use client";
 
@@ -110,13 +111,30 @@ export default function SignInPage() {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-slate-950">
       <SignIn
-        routing="path"
-        path="/sign-in"
+        routing="hash"
         signUpUrl="/sign-up"
         appearance={{
+          variables: {
+            colorPrimary: "#f59e0b",
+            colorBackground: "#020617",
+            colorText: "#e2e8f0",
+            colorTextSecondary: "#94a3b8",
+            colorInputBackground: "#0f172a",
+            colorInputText: "#e2e8f0",
+          },
           elements: {
             rootBox: "mx-auto",
             card: "bg-slate-950 border border-slate-700/70 shadow-2xl",
+            headerTitle: "text-slate-100",
+            headerSubtitle: "text-slate-400",
+            formFieldLabel: "text-slate-300",
+            formFieldInput: "bg-slate-900 text-slate-100 border-slate-700",
+            footerActionLink: "text-amber-400 hover:text-amber-300",
+            formButtonPrimary: "bg-amber-500 hover:bg-amber-400 text-slate-950",
+            dividerLine: "bg-slate-700",
+            dividerText: "text-slate-500",
+            socialButtonsBlockButton: "border-slate-700 text-slate-200 hover:bg-slate-800",
+            socialButtonsBlockButtonText: "text-slate-200",
           },
         }}
       />
@@ -140,13 +158,30 @@ export default function SignUpPage() {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-slate-950">
       <SignUp
-        routing="path"
-        path="/sign-up"
+        routing="hash"
         signInUrl="/sign-in"
         appearance={{
+          variables: {
+            colorPrimary: "#f59e0b",
+            colorBackground: "#020617",
+            colorText: "#e2e8f0",
+            colorTextSecondary: "#94a3b8",
+            colorInputBackground: "#0f172a",
+            colorInputText: "#e2e8f0",
+          },
           elements: {
             rootBox: "mx-auto",
             card: "bg-slate-950 border border-slate-700/70 shadow-2xl",
+            headerTitle: "text-slate-100",
+            headerSubtitle: "text-slate-400",
+            formFieldLabel: "text-slate-300",
+            formFieldInput: "bg-slate-900 text-slate-100 border-slate-700",
+            footerActionLink: "text-amber-400 hover:text-amber-300",
+            formButtonPrimary: "bg-amber-500 hover:bg-amber-400 text-slate-950",
+            dividerLine: "bg-slate-700",
+            dividerText: "text-slate-500",
+            socialButtonsBlockButton: "border-slate-700 text-slate-200 hover:bg-slate-800",
+            socialButtonsBlockButtonText: "text-slate-200",
           },
         }}
       />

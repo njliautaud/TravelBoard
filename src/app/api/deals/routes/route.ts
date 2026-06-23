@@ -5,6 +5,7 @@ import {
   INTERNATIONAL_AIRPORTS,
 } from "@travelboard/core";
 import { alpha2ToAlpha3 } from "@/lib/countryCodes";
+import { countryNameToISO2 } from "@/lib/api-utils";
 
 /**
  * GET /api/deals/routes?origin=MCO&limit=20&country=JPN
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     // Collect all unique country names for airports whose country maps to this ISO-3 code
     const matchingCountryNames = new Set<string>();
     for (const airport of INTERNATIONAL_AIRPORTS) {
-      const cc2 = countryNameToISO2Quick(airport.country);
+      const cc2 = countryNameToISO2(airport.country);
       const cc3 = cc2 ? alpha2ToAlpha3(cc2) : null;
       if (cc3 === countryFilter) {
         matchingCountryNames.add(airport.country);
@@ -119,7 +120,7 @@ export async function GET(req: NextRequest) {
             destination: row.destination,
             destCity: row.destCity ?? row.destination,
             price: row.miles,
-            dealScore: row.score != null ? Math.min(row.score / 2, 1) : null,
+            dealScore: row.score != null ? Math.min(row.score / 2, 1) : 0,
             tier: (row.score ?? 0) >= 1.5 ? "cheap" : (row.score ?? 0) >= 1.2 ? "fair" : "splurge",
             originLat: originAirport?.lat ?? 0,
             originLon: originAirport?.lon ?? 0,
@@ -155,54 +156,4 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** Quick country-name → ISO-2 lookup (replicates the map from /api/deals/countries). */
-function countryNameToISO2Quick(name: string): string | null {
-  const MAP: Record<string, string> = {
-    "USA": "US", "United States": "US", "US": "US",
-    "Canada": "CA", "Mexico": "MX", "Brazil": "BR", "Argentina": "AR",
-    "UK": "GB", "United Kingdom": "GB", "France": "FR", "Germany": "DE",
-    "Spain": "ES", "Italy": "IT", "Netherlands": "NL", "Switzerland": "CH",
-    "Turkey": "TR", "Türkiye": "TR", "UAE": "AE", "United Arab Emirates": "AE", "Qatar": "QA",
-    "Japan": "JP", "South Korea": "KR", "China": "CN", "Singapore": "SG",
-    "Australia": "AU", "New Zealand": "NZ",
-    "Thailand": "TH", "Indonesia": "ID", "Malaysia": "MY", "Philippines": "PH",
-    "India": "IN", "Pakistan": "PK",
-    "Egypt": "EG", "South Africa": "ZA", "Kenya": "KE", "Morocco": "MA",
-    "Colombia": "CO", "Peru": "PE", "Chile": "CL", "Ecuador": "EC",
-    "Costa Rica": "CR", "Panama": "PA", "Jamaica": "JM",
-    "Dominican Republic": "DO", "Cuba": "CU", "Puerto Rico": "PR",
-    "Iceland": "IS", "Norway": "NO", "Sweden": "SE", "Denmark": "DK",
-    "Finland": "FI", "Ireland": "IE", "Portugal": "PT", "Greece": "GR",
-    "Austria": "AT", "Belgium": "BE", "Czech Republic": "CZ", "Czechia": "CZ",
-    "Poland": "PL", "Hungary": "HU", "Romania": "RO", "Croatia": "HR",
-    "Bulgaria": "BG", "Serbia": "RS",
-    "Israel": "IL", "Jordan": "JO", "Lebanon": "LB", "Oman": "OM",
-    "Saudi Arabia": "SA", "Kuwait": "KW", "Bahrain": "BH",
-    "Vietnam": "VN", "Cambodia": "KH", "Myanmar": "MM", "Laos": "LA",
-    "Taiwan": "TW", "Hong Kong": "HK", "Macau": "MO",
-    "Russia": "RU", "Ukraine": "UA", "Georgia": "GE", "Armenia": "AM",
-    "Sri Lanka": "LK", "Nepal": "NP", "Bangladesh": "BD",
-    "Nigeria": "NG", "Ghana": "GH", "Ethiopia": "ET", "Tanzania": "TZ",
-    "Fiji": "FJ", "Maldives": "MV", "Mauritius": "MU", "Seychelles": "SC",
-    "Belize": "BZ", "Guatemala": "GT", "Honduras": "HN", "Nicaragua": "NI",
-    "El Salvador": "SV", "Uruguay": "UY", "Paraguay": "PY", "Bolivia": "BO",
-    "Venezuela": "VE", "Guyana": "GY", "Suriname": "SR",
-    "Luxembourg": "LU", "Malta": "MT", "Cyprus": "CY", "Estonia": "EE",
-    "Latvia": "LV", "Lithuania": "LT", "Slovakia": "SK", "Slovenia": "SI",
-    "Bosnia and Herzegovina": "BA", "North Macedonia": "MK", "Montenegro": "ME",
-    "Albania": "AL", "Moldova": "MD", "Belarus": "BY",
-    "Algeria": "DZ", "Tunisia": "TN", "Libya": "LY", "Sudan": "SD",
-    "Senegal": "SN", "Ivory Coast": "CI", "Côte d'Ivoire": "CI",
-    "Cameroon": "CM", "Uganda": "UG", "Rwanda": "RW", "Mozambique": "MZ",
-    "Madagascar": "MG", "Zambia": "ZM", "Zimbabwe": "ZW", "Botswana": "BW",
-    "Namibia": "NA", "Angola": "AO",
-    "Iraq": "IQ", "Iran": "IR", "Afghanistan": "AF", "Uzbekistan": "UZ",
-    "Kazakhstan": "KZ", "Azerbaijan": "AZ",
-    "Mongolia": "MN", "Brunei": "BN",
-    "Papua New Guinea": "PG", "Samoa": "WS", "Tonga": "TO",
-    "Trinidad and Tobago": "TT", "Barbados": "BB", "Bahamas": "BS",
-    "Bermuda": "BM", "Cayman Islands": "KY",
-    "French Polynesia": "PF", "New Caledonia": "NC",
-  };
-  return MAP[name] ?? null;
-}
+// countryNameToISO2 imported from @/lib/api-utils (shared mapping)

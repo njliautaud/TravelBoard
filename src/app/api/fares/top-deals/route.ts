@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findTopDeals } from "@/lib/services/fares";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 
 // Map onboarding loyalty program IDs -> seats.aero program keys (where they differ)
 const PROGRAM_ID_TO_SEATS_KEY: Record<string, string> = {
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   let preferFarther: boolean = false;
 
   try {
-    const session = await getSessionUser();
+    const session = await getAuthUser();
     if (session) {
       const user = await prisma.user.findUnique({
         where: { id: session.id },
@@ -99,6 +99,11 @@ export async function GET(req: NextRequest) {
         origins.map((o) => findTopDeals(o, effectiveLimit))
       );
       cashDeals = perOrigin.flat();
+    }
+
+    // Fallback: if origin-specific query returned nothing, try global deals
+    if (cashDeals.length === 0 && origins.length > 0) {
+      cashDeals = await findTopDeals(undefined, effectiveLimit);
     }
 
     // Apply flight preference filter to cash deals

@@ -8,7 +8,7 @@ async function wikiPageImage(title: string): Promise<string | null> {
   try {
     const wikiRes = await fetch(
       `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`,
-      { headers: WIKI_HEADERS, next: { revalidate: 86400 } }
+      { headers: WIKI_HEADERS, next: { revalidate: 86400 }, signal: AbortSignal.timeout(8000) }
     );
     if (!wikiRes.ok) return null;
     const data = await wikiRes.json();
@@ -34,6 +34,7 @@ async function wikiSearchImages(query: string, limit = 5): Promise<string[]> {
     const res = await fetch(`https://en.wikipedia.org/w/api.php?${params}`, {
       headers: WIKI_HEADERS,
       next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return out;
     const data = await res.json();
@@ -66,6 +67,7 @@ async function commonsSearchImages(query: string, limit = 8): Promise<string[]> 
     const res = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`, {
       headers: WIKI_HEADERS,
       next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return out;
     const data = await res.json();

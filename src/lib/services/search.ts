@@ -259,10 +259,31 @@ export async function searchFlights(q: FlightSearchQuery): Promise<FlightSearchR
   const limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
   const page = Math.max(1, q.page ?? 1);
 
+  // Auto-warm: if we have an origin+month, trigger smart cache to ensure data
+  // is fresh. This is the key deduplication point — if another user searched
+  // the same route recently, this is a no-op cache read.
+  if (q.origin && q.month != null) {
+    try {
+      const { smartFetch } = await import("./search-cache");
+      await smartFetch(q.origin.toUpperCase(), q.month);
+    } catch {
+      // Cache warm failed — still serve whatever's in DB
+    }
+  }
+
+  // Build the WHERE clause — maxPrice is now a DB-level filter (not post-filter)
   const where: Record<string, unknown> = {};
   if (q.origin) where.origin = q.origin.toUpperCase();
-  if (q.destination) where.destination = q.destination.toUpperCase();
+  if (q.destination) {
+    // Support both city name and IATA code search
+    const destUpper = q.destination.toUpperCase();
+    where.OR = [
+      { destination: { contains: destUpper } },
+      { flyToCode: destUpper },
+    ];
+  }
   if (q.month != null) where.month = q.month;
+  if (q.maxPrice != null) where.price = { lte: q.maxPrice };
 
   const [total, rows] = await Promise.all([
     prisma.fareCache.count({ where }),
@@ -274,24 +295,22 @@ export async function searchFlights(q: FlightSearchQuery): Promise<FlightSearchR
     }),
   ]);
 
-  const results: FlightSearchResult[] = rows
-    .filter((r) => q.maxPrice == null || Number(r.price) <= q.maxPrice)
-    .map((r) => ({
-      id: r.id,
-      origin: r.origin,
-      destination: r.destination,
-      flyToCode: r.flyToCode,
-      month: r.month,
-      outboundDate: r.outboundDate?.toISOString().slice(0, 10) ?? null,
-      returnDate: r.returnDate?.toISOString().slice(0, 10) ?? null,
-      price: Number(r.price),
-      currency: r.currency,
-      airline: r.airline,
-      source: r.source,
-      dealScore: r.dealScore,
-      tier: r.tier,
-      lastSeen: r.lastSeen.toISOString(),
-    }));
+  const results: FlightSearchResult[] = rows.map((r) => ({
+    id: r.id,
+    origin: r.origin,
+    destination: r.destination,
+    flyToCode: r.flyToCode,
+    month: r.month,
+    outboundDate: r.outboundDate?.toISOString().slice(0, 10) ?? null,
+    returnDate: r.returnDate?.toISOString().slice(0, 10) ?? null,
+    price: Number(r.price),
+    currency: r.currency,
+    airline: r.airline,
+    source: r.source,
+    dealScore: r.dealScore,
+    tier: r.tier,
+    lastSeen: r.lastSeen.toISOString(),
+  }));
 
   const pages = Math.max(1, Math.ceil(total / limit));
 

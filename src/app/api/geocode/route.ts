@@ -31,14 +31,14 @@ export async function GET(req: NextRequest) {
   try {
     if (q) {
       const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&q=${encodeURIComponent(q)}`;
-      const res = await fetch(url, { headers: NOMINATIM_HEADERS });
+      const res = await fetch(url, { headers: NOMINATIM_HEADERS, signal: AbortSignal.timeout(8000) });
       if (!res.ok) throw new Error(`Nominatim ${res.status}`);
       const data = await res.json();
       return NextResponse.json({ results: (data as any[]).map(toResult) });
     }
     if (lat && lon) {
       const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`;
-      const res = await fetch(url, { headers: NOMINATIM_HEADERS });
+      const res = await fetch(url, { headers: NOMINATIM_HEADERS, signal: AbortSignal.timeout(8000) });
       if (!res.ok) throw new Error(`Nominatim ${res.status}`);
       const data = await res.json();
       if (data?.error) return NextResponse.json({ results: [] });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { warmCache } from "@/lib/services/fares";
 import { getFlightProvider } from "@/lib/providers";
-import { getSessionUser } from "@/lib/auth";
+import { getAuthUser } from "@/lib/unified-auth";
 
 
 /**
@@ -11,7 +11,7 @@ import { getSessionUser } from "@/lib/auth";
  * Triggers a cache warming for the given origin + month.
  */
 export async function POST(req: NextRequest) {
-  const user = await getSessionUser();
+  const user = await getAuthUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -242,7 +242,7 @@ async function fetchOEmbed(
 
   for (const endpoint of endpoints) {
     try {
-      const res = await fetch(endpoint, { headers: FETCH_HEADERS, next: { revalidate: 3600 } });
+      const res = await fetch(endpoint, { headers: FETCH_HEADERS, next: { revalidate: 3600 }, signal: AbortSignal.timeout(8000) });
       if (!res.ok) continue;
       const data = await res.json();
       return {
@@ -271,6 +271,7 @@ async function fetchOpenGraph(
       headers: useCrawlerUA ? CRAWLER_HEADERS : FETCH_HEADERS,
       redirect: "follow",
       next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return { title: null, description: null, image: null };
     const html = await res.text();
@@ -311,7 +312,7 @@ function locationCandidates(caption: string | null, extra: string | null): strin
 async function geocodeQuery(query: string) {
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&q=${encodeURIComponent(query)}`;
-    const res = await fetch(url, { headers: NOMINATIM_HEADERS, next: { revalidate: 86400 } });
+    const res = await fetch(url, { headers: NOMINATIM_HEADERS, next: { revalidate: 86400 }, signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
     const data = await res.json();
     const item = data?.[0];
