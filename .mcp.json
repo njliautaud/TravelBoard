@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "claude-whatsapp": {
+      "command": "node",
+      "args": ["--env-file=.env", "scripts/claude-channel.mjs"]
+    }
+  }
+}

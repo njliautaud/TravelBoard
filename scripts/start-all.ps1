@@ -41,7 +41,7 @@ Write-Host "  Project: $projectRoot"
 Write-Host ""
 Write-Host "Opening two windows:" -ForegroundColor Yellow
 Write-Host "  1. npm run dev          (site at http://localhost:3000)"
-Write-Host "  2. npm run whatsapp-bot (WhatsApp draft inbox)"
+Write-Host "  2. npm run whatsapp-bot (WhatsApp -> Claude remote control)"
 Write-Host ""
 
 Start-TravelBoardWindow -Title "TravelBoard — dev server" -Command "npm run dev"
