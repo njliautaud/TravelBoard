@@ -1,6 +1,16 @@
 export type MediaType = "UPLOAD" | "IMAGE_URL" | "LINK";
 export type VisitStatus = "TO_VISIT" | "VISITED";
 
+/** Map/list view filter: everything, only to-visit ("wished"), or only visited. */
+export type StatusFilter = "all" | "wished" | "visited";
+
+/** True when a wish passes the given status filter. */
+export function matchesStatusFilter(status: VisitStatus, filter: StatusFilter): boolean {
+  if (filter === "wished") return status === "TO_VISIT";
+  if (filter === "visited") return status === "VISITED";
+  return true;
+}
+
 export interface MediaItem {
   id?: string;
   type: MediaType;

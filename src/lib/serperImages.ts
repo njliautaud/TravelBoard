@@ -15,6 +15,25 @@ export function normalizeQuery(q: string): string {
   return q.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+// Defense-in-depth alongside Google SafeSearch: queries that are obviously
+// after explicit imagery should never reuse the cache (a query cached before
+// SafeSearch was enabled may hold explicit results) and should never fall back
+// to a "similar" cached wish. Matched as whole words on the normalized query.
+const EXPLICIT_TERMS = [
+  "porn", "porno", "pornographic", "xxx", "nsfw", "nude", "nudes", "naked",
+  "sex", "sexy", "sexual", "boobs", "boob", "tits", "tit", "titties", "nipple",
+  "nipples", "pussy", "vagina", "penis", "dick", "cock", "cum", "cumshot",
+  "blowjob", "handjob", "anal", "horny", "erotic", "erotica", "hentai", "milf",
+  "escort", "escorts", "fetish", "bdsm", "orgasm", "masturbat", "onlyfans",
+  "camgirl", "stripper", "topless", "upskirt", "cleavage", "lingerie",
+];
+const EXPLICIT_RE = new RegExp(`\\b(${EXPLICIT_TERMS.join("|")})\\w*`, "i");
+
+/** True if the query is plainly seeking explicit/pornographic imagery. */
+export function looksExplicit(query: string): boolean {
+  return EXPLICIT_RE.test(normalizeQuery(query));
+}
+
 // Hosts that don't serve a usable raw image to an anonymous request
 // (Facebook/Instagram "lookaside" endpoints return HTML, not an image).
 const BAD_IMAGE_HOSTS = [/(^|\.)lookaside\./i, /(^|\.)fbsbx\.com$/i];
@@ -61,7 +80,9 @@ export async function fetchSerperImages(query: string, limit = 6): Promise<Previ
     method: "POST",
     headers: { "X-API-KEY": key, "Content-Type": "application/json" },
     // Over-fetch a little so we can drop junk hosts and still return [limit].
-    body: JSON.stringify({ q: query, num: Math.min(limit * 2 + 4, 20) }),
+    // safe:"active" = Google SafeSearch on — keeps explicit imagery out of results
+    // entirely (so it can never be a preview option or the selected cover).
+    body: JSON.stringify({ q: query, num: Math.min(limit * 2 + 4, 20), safe: "active" }),
     signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new Error(`serper ${res.status}`);

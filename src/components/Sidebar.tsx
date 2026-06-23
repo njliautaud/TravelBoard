@@ -6,7 +6,8 @@ import type { LocationItem } from "@/lib/types";
 import type { UserSettings } from "@/lib/settings";
 import SettingsPanel from "./SettingsPanel";
 
-export type SidebarView = "wishes" | "settings";
+/** "world" is a one-shot action (reset the map), not a persistent view. */
+export type SidebarView = "select" | "world" | "wishes" | "visited" | "settings";
 
 interface SidebarProps {
   locations: LocationItem[];
@@ -20,6 +21,8 @@ interface SidebarProps {
   onSelectWish: (loc: LocationItem) => void;
   onToggleStar: (loc: LocationItem) => void;
   onSettingsChange: (patch: Partial<UserSettings>) => void;
+  /** Reset the map to the world view (the "World" dropdown option). */
+  onResetWorld: () => void;
 }
 
 function reminderDueSoon(loc: LocationItem): boolean {
@@ -75,10 +78,32 @@ export default function Sidebar({
   onSelectWish,
   onToggleStar,
   onSettingsChange,
+  onResetWorld,
 }: SidebarProps) {
-  const [view, setView] = useState<SidebarView>("wishes");
+  const [view, setView] = useState<SidebarView>("select");
   const sorted = useMemo(() => sortBySeason(locations), [locations]);
-  const starredCount = sorted.filter((l) => l.starred).length;
+
+  // The list shown depends on the dropdown: Wishes = to-visit, Visited = visited,
+  // Select = everything.
+  const listed = useMemo(() => {
+    if (view === "wishes") return sorted.filter((l) => l.status === "TO_VISIT");
+    if (view === "visited") return sorted.filter((l) => l.status === "VISITED");
+    return sorted;
+  }, [sorted, view]);
+  const starredCount = listed.filter((l) => l.starred).length;
+
+  const handleViewChange = (value: SidebarView) => {
+    if (value === "world") {
+      // One-shot action: reset the map, leave the list view as-is.
+      onResetWorld();
+      onClose();
+      return;
+    }
+    setView(value);
+  };
+
+  const listHeading =
+    view === "wishes" ? "Wishes" : view === "visited" ? "Visited" : "Your wishes";
 
   return (
     <>
@@ -113,15 +138,18 @@ export default function Sidebar({
           <select
             id="sidebar-view"
             value={view}
-            onChange={(e) => setView(e.target.value as SidebarView)}
+            onChange={(e) => handleViewChange(e.target.value as SidebarView)}
             className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm font-medium text-slate-200 focus:border-amber-500/60 focus:outline-none"
           >
-            <option value="wishes">Your wishes</option>
+            <option value="select">Select</option>
+            <option value="world">World</option>
+            <option value="wishes">Wishes</option>
+            <option value="visited">Visited</option>
             <option value="settings">Settings</option>
           </select>
         </div>
 
-        {view === "wishes" ? (
+        {view !== "settings" ? (
           <>
             <div className="p-3">
               <button
@@ -133,18 +161,22 @@ export default function Sidebar({
             </div>
 
             <p className="px-4 pb-1 text-[11px] font-medium uppercase tracking-wider text-slate-500">
-              Your wishes{" "}
+              {listHeading}{" "}
               <span className="text-slate-600">
                 — {starredCount > 0 ? "starred first" : "in season first"}
               </span>
             </p>
 
             <nav className="panel-scroll flex-1 overflow-y-auto px-2 pb-3">
-              {sorted.length === 0 && (
-                <p className="px-2 pt-2 text-sm text-slate-500">No places yet. Add your first wish!</p>
+              {listed.length === 0 && (
+                <p className="px-2 pt-2 text-sm text-slate-500">
+                  {view === "visited"
+                    ? "No visited places yet."
+                    : "No places yet. Add your first wish!"}
+                </p>
               )}
               <ul className="space-y-0.5">
-                {sorted.map((loc) => {
+                {listed.map((loc) => {
                   const inSeason = isInSeason(loc) && loc.status !== "VISITED";
                   const due = reminderDueSoon(loc);
                   return (

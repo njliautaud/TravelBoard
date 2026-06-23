@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   fetchSerperImages,
+  looksExplicit,
   normalizeQuery,
   placeholderImages,
   type PreviewImage,
@@ -43,7 +44,11 @@ async function handle(
   const limit = Math.min(Math.max(Number(rawLimit) || 6, 3), 6);
   const refresh = rawRefresh === true || rawRefresh === "1" || rawRefresh === "true";
 
-  if (!refresh) {
+  // Explicit queries: never serve from cache (it may predate SafeSearch) and
+  // never reuse a "similar" wish — always do a fresh SafeSearch pull below.
+  const explicit = looksExplicit(searchQuery);
+
+  if (!refresh && !explicit) {
     // 2. Exact cache hit.
     const exact = await prisma.imageCache.findUnique({ where: { searchQuery } });
     if (exact) {
@@ -94,6 +99,11 @@ async function handle(
   try {
     const images = await fetchSerperImages(searchQuery, limit);
     if (images.length === 0) {
+      // SafeSearch returned nothing (e.g. an explicit query). Drop any stale
+      // cache row so it can't be served on a later non-refresh lookup.
+      if (explicit) {
+        await prisma.imageCache.deleteMany({ where: { searchQuery } });
+      }
       return NextResponse.json({
         query: searchQuery,
         cached: false,

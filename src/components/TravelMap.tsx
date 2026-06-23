@@ -1,11 +1,14 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import maplibregl, { Map as MlMap, MapMouseEvent } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { LocationItem } from "@/lib/types";
+import type { LocationItem, StatusFilter } from "@/lib/types";
+import { matchesStatusFilter } from "@/lib/types";
 import { coverImageSrc } from "@/lib/thumb";
 import { countryFlagAccent } from "@/lib/countryFlagColors";
+import { countByUnit } from "@/lib/geoUnits";
+import type { UsStateFeature } from "@/lib/usStates";
 import type { MapTheme } from "@/lib/settings";
 
 export interface FocusPoint {
@@ -24,6 +27,12 @@ interface TravelMapProps {
   pinDropMode: boolean;
   focusPoint: FocusPoint | null;
   mapTheme: MapTheme;
+  /** Map view filter: all wishes, only to-visit, or only visited. */
+  statusFilter: StatusFilter;
+  /** Treat each US state as its own map unit. */
+  usaAsStates: boolean;
+  /** US-state polygons (loaded by the parent); null until available. */
+  states: UsStateFeature[] | null;
   onCountryClick: (code: string, name: string) => void;
   onDotClick: (id: string) => void;
   onPinDrop: (lat: number, lng: number) => void;
@@ -101,6 +110,24 @@ function countryBounds(feature: GeoFeature): [[number, number], [number, number]
   ];
 }
 
+/**
+ * Padding (px) for fitBounds/flyTo so the target lands in the *visible* map area,
+ * not under the SidePanel. The panel is a fixed overlay: 400px on the right on
+ * desktop (sm+), a bottom sheet (~half the height) on mobile. The left sidebar is
+ * part of the desktop flex layout (already excluded from the map box) so it needs
+ * no compensation here.
+ */
+function visibleAreaPadding(panelOpen: boolean): number | maplibregl.PaddingOptions {
+  const base = 60;
+  if (!panelOpen || typeof window === "undefined") return base;
+  const isDesktop = window.innerWidth >= 640;
+  if (isDesktop) {
+    return { top: base, bottom: base, left: base, right: base + 400 };
+  }
+  // Mobile bottom sheet: pad the bottom so the country sits above it.
+  return { top: base, left: base, right: base, bottom: base + Math.round(window.innerHeight * 0.45) };
+}
+
 /** Pick zoom bounds based on where within a country the user clicked. */
 function countryBoundsForClick(
   feature: GeoFeature,
@@ -133,10 +160,14 @@ function dotsGeoJson(locations: LocationItem[]) {
   };
 }
 
-function countryCounts(locations: LocationItem[]): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const l of locations) counts[l.countryCode] = (counts[l.countryCode] ?? 0) + 1;
-  return counts;
+/** Country features minus USA, plus per-state features (when states mode is on). */
+function statesToFeatures(states: UsStateFeature[]): GeoFeature[] {
+  return states.map((s) => ({
+    type: "Feature",
+    id: s.id,
+    properties: { name: s.properties.name },
+    geometry: s.geometry as GeoFeature["geometry"],
+  }));
 }
 
 /** fill/line opacity are multiplied by the per-country "dim" feature-state (1 = normal). */
@@ -290,6 +321,9 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     pinDropMode,
     focusPoint,
     mapTheme,
+    statusFilter,
+    usaAsStates,
+    states,
     onCountryClick,
     onDotClick,
     onPinDrop,
@@ -301,7 +335,13 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   const mapRef = useRef<MlMap | null>(null);
   const loadedRef = useRef(false);
   const countriesRef = useRef<GeoFeature[]>([]);
+  // The feature set actually rendered (countries, with USA swapped for its
+  // states when "USA as states" is on). Used for click-to-fit bounds lookup.
+  const displayFeaturesRef = useRef<GeoFeature[]>([]);
   const locationsRef = useRef(locations);
+  const statusFilterRef = useRef(statusFilter);
+  const usaAsStatesRef = useRef(usaAsStates);
+  const statesRef = useRef(states);
   const pinDropRef = useRef(pinDropMode);
   const callbacksRef = useRef({ onCountryClick, onDotClick, onPinDrop, onZoomStateChange });
   const pulseRafRef = useRef<number>(0);
@@ -323,8 +363,48 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
 
   const mapThemeRef = useRef(mapTheme);
   mapThemeRef.current = mapTheme;
+  locationsRef.current = locations;
+  statusFilterRef.current = statusFilter;
+  usaAsStatesRef.current = usaAsStates;
+  statesRef.current = states;
   pinDropRef.current = pinDropMode;
   callbacksRef.current = { onCountryClick, onDotClick, onPinDrop, onZoomStateChange };
+
+  // Rebuild the country/state heatmap + dots from the current locations, status
+  // filter, and states-mode setting. Single source of truth for all of them.
+  const rebuildGeo = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !map.getSource("countries")) return;
+
+    const usaAsStates = usaAsStatesRef.current;
+    const states = statesRef.current;
+    const filtered = locationsRef.current.filter((l) =>
+      matchesStatusFilter(l.status, statusFilterRef.current),
+    );
+
+    const feats: GeoFeature[] =
+      usaAsStates && states?.length
+        ? [...countriesRef.current.filter((f) => f.id !== "USA"), ...statesToFeatures(states)]
+        : countriesRef.current;
+
+    const counts = countByUnit(filtered, { usaAsStates, states });
+    for (const f of feats) {
+      f.properties.count = counts[f.id] ?? 0;
+      f.properties.iso = f.id;
+      f.properties.accent = f.id.startsWith("US-")
+        ? countryFlagAccent("USA")
+        : countryFlagAccent(f.id);
+    }
+    displayFeaturesRef.current = feats;
+
+    const maxCount = Math.max(2, ...Object.values(counts), 0);
+    const countriesSource = map.getSource("countries") as maplibregl.GeoJSONSource | undefined;
+    countriesSource?.setData({ type: "FeatureCollection", features: feats } as GeoJSON.GeoJSON);
+    applyHeatmapTheme(map, mapThemeRef.current, maxCount);
+
+    const dotsSource = map.getSource("dots") as maplibregl.GeoJSONSource | undefined;
+    dotsSource?.setData(dotsGeoJson(filtered));
+  }, []);
 
   const hideHover = () => setHover(null);
 
@@ -411,7 +491,9 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       const geo = await res.json();
       countriesRef.current = geo.features as GeoFeature[];
 
-      const counts = countryCounts(locationsRef.current);
+      // Initial counts by country for the first paint; rebuildGeo() below applies
+      // the status filter and states-mode swap once layers/sources exist.
+      const counts = countByUnit(locationsRef.current, { usaAsStates: false, states: null });
       for (const f of countriesRef.current) {
         f.properties.count = counts[f.id] ?? 0;
         f.properties.iso = f.id;
@@ -520,6 +602,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       pulseRafRef.current = requestAnimationFrame(pulse);
 
       loadedRef.current = true;
+      // Apply status filter + states-mode (if already set) now that sources exist.
+      rebuildGeo();
 
       map.on("click", (e: MapMouseEvent) => {
         if (pinDropRef.current) {
@@ -534,13 +618,15 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         const countries = map.queryRenderedFeatures(e.point, { layers: [FILL_LAYER] });
         if (countries.length > 0) {
           const props = countries[0].properties as { iso: string; name: string; count: number };
-          const feature = countriesRef.current.find((f) => f.id === props.iso);
+          const feature = displayFeaturesRef.current.find((f) => f.id === props.iso);
           let fitZoom = map.getZoom();
           if (feature) {
             const bounds = countryBoundsForClick(feature, e.lngLat.lng, e.lngLat.lat);
-            const camera = map.cameraForBounds(bounds, { padding: 80, maxZoom: 7 });
+            // Panel opens for a country with wishes — keep it out of the fit area.
+            const padding = visibleAreaPadding(props.count > 0);
+            const camera = map.cameraForBounds(bounds, { padding, maxZoom: 7 });
             fitZoom = camera?.zoom ?? fitZoom;
-            map.fitBounds(bounds, { padding: 80, duration: 1100, maxZoom: 7 });
+            map.fitBounds(bounds, { padding, duration: 1100, maxZoom: 7 });
             lastFocusAtRef.current = performance.now();
           }
           // Fade the clicked country's heatmap glow so individual dots stand out
@@ -631,25 +717,10 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep sources in sync when locations change
+  // Keep heatmap + dots in sync with locations, theme, status filter, and states mode.
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-
-    const dotsSource = map.getSource("dots") as maplibregl.GeoJSONSource | undefined;
-    dotsSource?.setData(dotsGeoJson(locations));
-
-    const counts = countryCounts(locations);
-    for (const f of countriesRef.current) {
-      f.properties.count = counts[f.id] ?? 0;
-      f.properties.accent = countryFlagAccent(f.id);
-    }
-    const countriesSource = map.getSource("countries") as maplibregl.GeoJSONSource | undefined;
-    countriesSource?.setData({ type: "FeatureCollection", features: countriesRef.current } as GeoJSON.GeoJSON);
-
-    const maxCount = Math.max(2, ...Object.values(counts), 0);
-    applyHeatmapTheme(map, mapTheme, maxCount);
-  }, [locations, mapTheme]);
+    rebuildGeo();
+  }, [locations, mapTheme, statusFilter, usaAsStates, states, rebuildGeo]);
 
   // Fly to a wish selected in the sidebar
   useEffect(() => {
@@ -660,6 +731,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       center: [focusPoint.lng, focusPoint.lat],
       zoom: targetZoom,
       duration: 1400,
+      // A wish/location selection always opens the panel — center in the visible area.
+      padding: visibleAreaPadding(true),
     });
     lastFocusAtRef.current = performance.now();
     if (focusPoint.dimCountry) {
@@ -683,7 +756,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         setCountrySelectedAccent(null);
         selectedIsoRef.current = null;
       }
-      map.flyTo({ center: [20, 22], zoom: 1.6, duration: 1100 });
+      // Clear any panel padding left over from a country/wish fit so the world recenters.
+      map.flyTo({ center: [20, 22], zoom: 1.6, duration: 1100, padding: 0 });
       callbacksRef.current.onZoomStateChange?.(false);
     },
   }));

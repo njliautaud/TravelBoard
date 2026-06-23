@@ -3,11 +3,14 @@ export type MapTheme = "classic" | "flag";
 export interface UserSettings {
   mapTheme: MapTheme;
   homeAirports: string[];
+  /** Treat each US state as its own map unit (clickable, counted separately). */
+  usaAsStates: boolean;
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
   mapTheme: "classic",
   homeAirports: [],
+  usaAsStates: false,
 };
 
 export function parseMapTheme(value: string | null | undefined): MapTheme {

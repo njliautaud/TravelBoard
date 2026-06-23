@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { LocationItem } from "@/lib/types";
+import type { LocationItem, StatusFilter } from "@/lib/types";
+import { matchesStatusFilter } from "@/lib/types";
 import { coverImageSrc } from "@/lib/thumb";
 
 export type PanelSelection =
@@ -13,6 +14,10 @@ interface SidePanelProps {
   selection: PanelSelection;
   locations: LocationItem[];
   editor: boolean;
+  /** Map view filter — country lists show only wishes matching it. */
+  statusFilter: StatusFilter;
+  /** Geo unit (country, or US state in states mode) a wish belongs to. */
+  unitCodeOf: (loc: LocationItem) => string;
   onClose: () => void;
   onDetails: (loc: LocationItem) => void;
   onEdit: (loc: LocationItem) => void;
@@ -103,7 +108,7 @@ function CondensedCard({
       <div className="flex min-w-0 flex-1 flex-col gap-1 p-2.5">
         <button onClick={() => onDetails(loc)} className="min-w-0 text-left">
           <span className="flex items-start justify-between gap-2">
-            <span className="min-w-0 truncate text-sm font-semibold text-slate-100">{loc.activityName}</span>
+            <span className="min-w-0 break-words text-sm font-semibold leading-tight text-slate-100 line-clamp-2">{loc.activityName}</span>
             <StatusBadge status={loc.status} />
           </span>
           {place && <span className="mt-0.5 block truncate text-xs text-slate-400">{place}</span>}
@@ -371,6 +376,8 @@ export default function SidePanel({
   selection,
   locations,
   editor,
+  statusFilter,
+  unitCodeOf,
   onClose,
   onDetails,
   onEdit,
@@ -384,7 +391,10 @@ export default function SidePanel({
   let entries: LocationItem[] = [];
   if (selection?.type === "country") {
     entries = locations
-      .filter((l) => l.countryCode === selection.code)
+      .filter(
+        (l) =>
+          unitCodeOf(l) === selection.code && matchesStatusFilter(l.status, statusFilter),
+      )
       .sort(
         (a, b) =>
           a.sortOrder - b.sortOrder ||

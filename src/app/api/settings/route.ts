@@ -12,10 +12,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function serialize(user: { mapTheme: string; homeAirports: string[] }): UserSettings {
+function serialize(user: {
+  mapTheme: string;
+  homeAirports: string[];
+  usaAsStates: boolean;
+}): UserSettings {
   return {
     mapTheme: parseMapTheme(user.mapTheme),
     homeAirports: user.homeAirports ?? [],
+    usaAsStates: user.usaAsStates ?? false,
   };
 }
 
@@ -25,7 +30,7 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.id },
-    select: { mapTheme: true, homeAirports: true },
+    select: { mapTheme: true, homeAirports: true, usaAsStates: true },
   });
   if (!user) return NextResponse.json({ settings: DEFAULT_SETTINGS });
   return NextResponse.json({ settings: serialize(user) });
@@ -40,7 +45,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const data: { mapTheme?: "CLASSIC" | "FLAG"; homeAirports?: string[] } = {};
+  const data: { mapTheme?: "CLASSIC" | "FLAG"; homeAirports?: string[]; usaAsStates?: boolean } = {};
 
   if (body.mapTheme !== undefined) {
     const theme = body.mapTheme as MapTheme;
@@ -54,10 +59,14 @@ export async function PATCH(req: NextRequest) {
     data.homeAirports = normalizeHomeAirports(body.homeAirports);
   }
 
+  if (body.usaAsStates !== undefined) {
+    data.usaAsStates = Boolean(body.usaAsStates);
+  }
+
   const updated = await prisma.user.update({
     where: { id: session.id },
     data,
-    select: { mapTheme: true, homeAirports: true },
+    select: { mapTheme: true, homeAirports: true, usaAsStates: true },
   });
 
   return NextResponse.json({ settings: serialize(updated) });

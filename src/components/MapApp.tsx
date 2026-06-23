@@ -9,8 +9,10 @@ import EntryForm, { type PinDropResult } from "./EntryForm";
 import AuthModal from "./AuthModal";
 import DraftInbox from "./DraftInbox";
 import LocationDetailsModal from "./LocationDetailsModal";
-import type { DraftItem, DraftPrefill, LocationItem, SessionUser } from "@/lib/types";
+import type { DraftItem, DraftPrefill, LocationItem, SessionUser, StatusFilter } from "@/lib/types";
 import { DEFAULT_SETTINGS, type UserSettings } from "@/lib/settings";
+import { loadUsStates, type UsStateFeature } from "@/lib/usStates";
+import { unitForLocation } from "@/lib/geoUnits";
 
 interface MapAppProps {
   initialLocations: LocationItem[];
@@ -42,6 +44,10 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const settingsSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Map view filter (bottom-center toggle) + US-state geometry for states mode.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [usStates, setUsStates] = useState<UsStateFeature[] | null>(null);
 
   const loggedIn = user !== null;
 
@@ -91,7 +97,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       .catch(() => {});
   }, [refreshAll]);
 
-  // Poll for new WhatsApp drafts while logged in
+  // Poll for new drafts in the inbox while logged in
   useEffect(() => {
     if (!loggedIn) return;
     const tick = () => refreshDrafts();
@@ -103,6 +109,23 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       window.removeEventListener("focus", onFocus);
     };
   }, [loggedIn, refreshDrafts]);
+
+  // Lazy-load US-state polygons the first time states mode is turned on.
+  useEffect(() => {
+    if (settings.usaAsStates && !usStates) {
+      loadUsStates()
+        .then(setUsStates)
+        .catch(() => {});
+    }
+  }, [settings.usaAsStates, usStates]);
+
+  // Which map unit (country, or US state in states mode) a wish belongs to.
+  // Shared with the map so the SidePanel shows the same grouping.
+  const unitCodeOf = useCallback(
+    (loc: LocationItem) =>
+      unitForLocation(loc, { usaAsStates: settings.usaAsStates, states: usStates }).code,
+    [settings.usaAsStates, usStates],
+  );
 
   const handleCountryClick = useCallback((code: string, name: string) => {
     setSelection({ type: "country", code, name });
@@ -338,6 +361,10 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         onSelectWish={handleSelectWish}
         onToggleStar={handleToggleStar}
         onSettingsChange={handleSettingsChange}
+        onResetWorld={() => {
+          mapRef.current?.resetWorldView();
+          setStatusFilter("all");
+        }}
       />
 
       <div className="relative flex-1 overflow-hidden">
@@ -347,6 +374,9 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           pinDropMode={pinDropMode}
           focusPoint={focusPoint}
           mapTheme={settings.mapTheme}
+          statusFilter={statusFilter}
+          usaAsStates={settings.usaAsStates}
+          states={usStates}
           onCountryClick={handleCountryClick}
           onDotClick={handleDotClick}
           onPinDrop={handlePinDrop}
@@ -440,10 +470,10 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           </div>
         </header>
 
-        {zoomedIn && loggedIn && (
+        {loggedIn && (
           <div
             className={[
-              "pointer-events-none absolute bottom-6 z-20 flex justify-center",
+              "pointer-events-none absolute bottom-6 z-20 flex flex-col items-center gap-2",
               "left-0 transition-[left,right] duration-300 ease-out",
               sidebarOpen ? "max-sm:left-72" : "",
               selection ? "right-0 sm:right-[400px]" : "right-0",
@@ -451,16 +481,40 @@ export default function MapApp({ initialLocations }: MapAppProps) {
               .filter(Boolean)
               .join(" ")}
           >
-            <button
-              onClick={() => mapRef.current?.resetWorldView()}
-              className="pointer-events-auto flex items-center gap-2 rounded-full border border-slate-600/80 bg-slate-900/90 px-5 py-2.5 text-sm font-medium text-slate-200 shadow-lg backdrop-blur transition hover:border-amber-500/50 hover:text-amber-200"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-              </svg>
-              World view
-            </button>
+            {zoomedIn && (
+              <button
+                onClick={() => mapRef.current?.resetWorldView()}
+                className="pointer-events-auto flex items-center gap-2 rounded-full border border-slate-600/80 bg-slate-900/90 px-5 py-2.5 text-sm font-medium text-slate-200 shadow-lg backdrop-blur transition hover:border-amber-500/50 hover:text-amber-200"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+                World view
+              </button>
+            )}
+
+            {/* Wished / Visited / All map filter */}
+            <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-slate-600/80 bg-slate-900/90 p-1 text-sm shadow-lg backdrop-blur">
+              {([
+                ["all", "All", "bg-amber-500/90 text-slate-950"],
+                ["wished", "Wished", "bg-amber-500/90 text-slate-950"],
+                ["visited", "Visited", "bg-emerald-500/90 text-slate-950"],
+              ] as const).map(([value, label, activeCls]) => {
+                const active = statusFilter === value;
+                return (
+                  <button
+                    key={value}
+                    onClick={() => setStatusFilter(value)}
+                    className={`rounded-full px-4 py-1.5 font-medium transition ${
+                      active ? activeCls : "text-slate-300 hover:text-amber-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -483,6 +537,8 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         selection={selection}
         locations={locations}
         editor={loggedIn}
+        statusFilter={statusFilter}
+        unitCodeOf={unitCodeOf}
         onClose={() => setSelection(null)}
         onDetails={handleViewDetails}
         onEdit={openEdit}

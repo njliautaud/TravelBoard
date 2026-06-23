@@ -11,7 +11,7 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 
 - **Visual wishlist**: countries glow by wish density (choropleth heatmap).
 - **Journal**: pins hold notes, photos, links, seasons, reminders, flight-deal thresholds.
-- **WhatsApp ingestion**: share reel links to yourself → drafts inbox → smart-fill from caption/location/Wikimedia cover.
+- **Draft inbox**: `POST /api/drafts/ingest` → drafts inbox → smart-fill from caption/location/Wikimedia cover. Reserved for future producers (notifications, flight deals); links are now added via the Android share form.
 - **Android app**: native share target → always opens the prefilled form; reaches the server from anywhere via **Tailscale** with a saved-servers switcher. See `android/`.
 - **Cover photos**: Google Images via Serper.dev, Postgres-cached with fuzzy/cross-language reuse and a duplicate-wish guard.
 - **Future**: ESP32 LED world map via `/api/hardware-sync`; partner Python script for flight prices.
@@ -42,10 +42,14 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 
 ```
 src/app/page.tsx
-  └─ MapApp.tsx
-       ├─ Sidebar.tsx        — dropdown: Your wishes | Settings
-       ├─ SettingsPanel.tsx  — map theme, home airports
-       ├─ TravelMap.tsx      — heatmap, flag borders, Alaska/Hawaii zoom, world-view zoom threshold
+  └─ MapApp.tsx              — also owns the bottom-center All/Wished/Visited map filter
+       │                       (`statusFilter`) and lazy-loads US-state polygons for states mode
+       ├─ Sidebar.tsx        — dropdown: Select (default) | World | Wishes | Visited | Settings
+       │                       (World resets the map; Wishes/Visited filter the list)
+       ├─ SettingsPanel.tsx  — map theme, USA one-country-vs-by-state, home airports
+       ├─ TravelMap.tsx      — heatmap, flag borders, Alaska/Hawaii zoom, world-view zoom threshold.
+       │                       `rebuildGeo()` is the single source of truth for glow + dots:
+       │                       applies statusFilter and swaps USA→state features in states mode
        ├─ SidePanel.tsx      — right panel / mobile bottom sheet (auto-closes on world view).
        │                       Country with >1 wish = condensed cards (big left photo) with
        │                       pointer-based drag-to-reorder (→ /api/locations/reorder); 1 wish = full card
@@ -81,6 +85,10 @@ the prefilled `EntryForm` once logged in.
 
 - Google Images via **Serper.dev** (`SERPER_API_KEY`); junk hosts (`lookaside.*` — they
   serve HTML) filtered out; over-fetch then slice to keep N good results.
+- **SafeSearch**: every Serper request sends `safe:"active"` so explicit imagery never
+  appears as a preview option or the selected cover. Defense-in-depth: `looksExplicit()`
+  (denylist in `serperImages.ts`) makes obviously-explicit queries bypass the cache and the
+  "similar" reuse, and purges any stale poisoned cache row when SafeSearch returns nothing.
 - **Cache-first** (`ImageCache` table): exact hit → fuzzy "same wish" hit (`overlapScore`
   in `similarity.ts`, ≥0.6) → Serper pull (cached). `refresh=1` forces a fresh pull
   (the EntryForm "Regenerate" button). No key / error ⇒ deterministic placeholders, not cached.
@@ -105,13 +113,13 @@ the prefilled `EntryForm` once logged in.
 
 Key models:
 
-- **User**: `username`, `passwordHash`, `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes).
+- **User**: `username`, `passwordHash`, `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes), `usaAsStates` (Boolean — render US states as independent map units).
 - **Location**: per-user wishes; `starred`, `sortOrder` (manual order within a country list), seasons, `coverImageUrl`, `priceThreshold`, media, flight prices.
 - **Draft**: WhatsApp/Android inbox items (`rawText`, `extractedUrl`, `source`).
 - **FlightPrice**: ingested via API key; latest price drives `isDeal` in serialize.
 - **ImageCache**: `searchQuery` (unique, normalized), `images` (Json: `PreviewImage[]`), `source`, timestamps. Permanent Serper image cache.
 
-Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000_multi_user_drafts_seasons`, `20260613120000_user_settings`, `20260621120000_image_cache`, `20260622093000_add_location_sortorder`.
+Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000_multi_user_drafts_seasons`, `20260613120000_user_settings`, `20260621120000_image_cache`, `20260622093000_add_location_sortorder`, `20260622210000_user_usa_as_states`.
 
 > **Migration drift:** the DB has pre-existing drift on `User.mapTheme`, so `prisma migrate dev`
 > wants to drop/recreate that column (**data loss**). Add new tables with a hand-written migration
@@ -132,7 +140,7 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 | `/api/locations`, `/api/locations/[id]`, `/api/locations/[id]/star` | session writes | User-scoped |
 | `/api/locations/reorder` | session | Body `{ ids: string[] }` → writes `sortOrder` = index (per-country order) |
 | `/api/settings` | session | `mapTheme`, `homeAirports` |
-| `/api/drafts`, `/api/drafts/[id]`, `/api/drafts/ingest`, `/api/drafts/enrich` | session / ingest key | WhatsApp + enrichment |
+| `/api/drafts`, `/api/drafts/[id]`, `/api/drafts/ingest`, `/api/drafts/enrich` | session / ingest key | Draft inbox + enrichment |
 | `/api/cover-image` | public | Multi-candidate Wikimedia search |
 | `/api/fetch-previews` | public | Serper Google Images, cache-first (exact → fuzzy → pull); `refresh=1` forces pull |
 | `/api/cover-proxy` | public | Re-serve any public https image (browser UA, image check, SSRF guard) |
@@ -156,12 +164,16 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 
 ---
 
-## 7. WhatsApp Bot
+## 7. WhatsApp Bot (Claude remote control)
 
-- `scripts/whatsapp-bot.mjs` — listens `message_create` (self-messages), posts to `/api/drafts/ingest`
+- `scripts/whatsapp-bot.mjs` — listens `message_create` (self-messages) and relays
+  `Claude <instruction>` / `yes <id>` messages to the Claude Code channel (see §12).
+  It no longer ingests links to the draft inbox — links now go to the app directly
+  (Android share → prefilled "Add a place" form). The draft inbox itself stays for
+  future producers (notifications, flight deals) via `POST /api/drafts/ingest`.
 - `npm run whatsapp-bot:stop` — kill stale node/chrome locks
 - Requires Puppeteer Chrome: `npm run whatsapp-bot:setup`
-- Env: `WHATSAPP_INGEST_KEY`, `WHATSAPP_OWNER_USERNAME`, `TRAVELBOARD_API`
+- Env: `CLAUDE_CHANNEL_SECRET` (required — bot exits without it), `CLAUDE_CHANNEL_PORT`
 
 ---
 
@@ -179,6 +191,10 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 - **Android app** (`android/`): WebView + share target, **Tailscale remote access** + saved-servers switcher, share **always opens the prefilled form**, `targetSdk 34` to dodge edge-to-edge bars
 - **Country panel reorder**: condensed cards (big left photo) for countries with >1 wish, pointer/touch **drag-to-reorder** persisted via `sortOrder` + `/api/locations/reorder`; single-wish countries keep the full card
 - **Panel auto-close fix**: country/wish focus guarded for ~1.6s so low fit-zoom on phones no longer closes the SidePanel
+- **Image SafeSearch**: `safe:"active"` + explicit-query denylist guard (no explicit covers/previews)
+- **All/Wished/Visited map filter** (bottom-center segmented control) drives glow + dots; sidebar dropdown is now Select/World/Wishes/Visited/Settings
+- **USA as states** setting: `src/lib/usStates.ts` (state polygons + point-in-polygon) and `src/lib/geoUnits.ts` (`unitForLocation`) make each US state a clickable, separately-counted map unit shared by the map and SidePanel; data in `public/data/us-states.geo.json`
+- **Long wish names** in the condensed country panel now wrap to a second line (`line-clamp-2`) instead of truncating
 
 ### Open / roadmap
 
@@ -227,3 +243,60 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 
 - Repository: **TravelBoard** on GitHub (user: BSwann168).
 - `.env`, `node_modules`, `.next`, `public/uploads/*`, `.whatsapp-auth/`, `.wwebjs_cache/` are gitignored.
+
+---
+
+## 12. Remote control: WhatsApp → Claude Code (Channels)
+
+Drive a live Claude Code session from your phone. Built on Claude Code **Channels** (research
+preview, needs Claude Code ≥ v2.1.80; permission relay ≥ v2.1.81). A *channel* is an MCP server
+Claude Code spawns over stdio that pushes `notifications/claude/channel` events into the session.
+
+### Flow
+
+```
+phone → WhatsApp self-chat ("Claude <instruction>")
+  → scripts/whatsapp-bot.mjs (POST, X-Channel-Secret) → scripts/claude-channel.mjs (HTTP :8788)
+  → notifications/claude/channel → live Claude Code session → Claude acts
+Claude's reply / permission prompt → SSE /events → whatsapp-bot.mjs → WhatsApp self-chat → phone
+```
+
+### Pieces
+
+- **`scripts/claude-channel.mjs`** — the channel MCP server (Node + `@modelcontextprotocol/sdk`).
+  Two-way: declares `claude/channel` + `claude/channel/permission` + a `reply` tool. HTTP binds
+  **127.0.0.1 only**; inbound POST requires `X-Channel-Secret`; `GET /events` is the SSE outbound
+  stream. **Spawned by Claude Code over stdio — never writes to stdout (logs go to stderr).**
+- **`scripts/whatsapp-bot.mjs`** — intercepts `Claude <instruction>` and `yes/no <id>` verdicts →
+  POSTs to the channel; subscribes to `/events` and relays each message to the owner's own WhatsApp
+  chat. Relayed messages are prefixed `💬`/`🔐` and skipped on the way back in (loop guard). All of
+  this is gated behind `CLAUDE_CHANNEL_SECRET` — unset ⇒ feature off, draft flow unchanged.
+- **`.mcp.json`** (project root, **not committed-as-secret**; create manually — see below) registers
+  the server so Claude Code spawns it.
+- Env (`.env`): `CLAUDE_CHANNEL_SECRET` (required to enable), `CLAUDE_CHANNEL_PORT` (default 8788).
+
+### Activation (manual — agents are blocked from doing these by the safety classifier)
+
+1. Create `.mcp.json` in the project root:
+   ```json
+   { "mcpServers": { "claude-whatsapp": { "command": "node", "args": ["--env-file=.env", "scripts/claude-channel.mjs"] } } }
+   ```
+2. Set `CLAUDE_CHANNEL_SECRET="<long random>"` in `.env`.
+3. Launch Claude Code with the research-preview flag (it does **not** auto-activate):
+   ```
+   claude --dangerously-load-development-channels server:claude-whatsapp
+   ```
+   First run prompts "New MCP server found … claude-whatsapp" → **Use this MCP server**. A dim banner
+   `Channels (experimental) messages from server:claude-whatsapp inject directly in this session` confirms it.
+4. `npm run whatsapp-bot` (separate terminal). Test: message yourself `Claude: list the changed files`.
+
+### Safety (do not violate)
+
+- Run the channel session in the **default permission mode**. Do **not** add
+  `--dangerously-skip-permissions` / blanket auto-accept — permission relay only protects you if
+  Edit/Bash/Write actually prompt. With relay, those prompts appear in the terminal **and** on your
+  phone (`🔐 … reply "yes <id>"`); first answer wins.
+- HTTP is localhost-only + secret-gated; inbound rides your own self-chat. Residual risk = a
+  compromised WhatsApp account injecting instructions — permission relay is the backstop.
+- The MCP `claude/channel` notification path can only be smoke-tested once Claude Code is restarted
+  with the flag; the HTTP/secret/SSE layer is plain Node and syntax-checks clean.
