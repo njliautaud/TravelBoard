@@ -113,7 +113,15 @@ async function handle(
       });
     }
 
-    const imagesJson = images as unknown as Prisma.InputJsonValue;
+    // Preserve any captured Instagram cover(s) for this activity across a
+    // refresh — "Regenerate" pulls fresh Google images but the reel cover for
+    // the same activity stays among the options (appended, after the new pull).
+    const prior = await prisma.imageCache.findUnique({ where: { searchQuery } });
+    const igEntries = ((prior?.images as unknown as (PreviewImage & { source?: string })[] | undefined) ?? [])
+      .filter((p) => p.source === "instagram" && !images.some((im) => im.imageUrl === p.imageUrl));
+    const merged = [...images, ...igEntries];
+
+    const imagesJson = merged as unknown as Prisma.InputJsonValue;
     await prisma.imageCache.upsert({
       where: { searchQuery },
       create: { searchQuery, images: imagesJson, source: "serper" },
@@ -125,7 +133,7 @@ async function handle(
       cached: false,
       match: "fresh",
       source: "serper",
-      images,
+      images: merged,
     });
   } catch (e) {
     // 5. Serper down / 429 / missing key — graceful placeholder, not cached.

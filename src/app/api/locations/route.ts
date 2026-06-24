@@ -4,11 +4,26 @@ import { getSessionUser } from "@/lib/auth";
 import { locationInclude, serializeLocation } from "@/lib/serialize";
 import { validateLocationBody, type LocationBody } from "@/lib/validate";
 import { resolveCoverImage } from "@/lib/coverImage";
+import { captureInstagramCover, isInstagramCdnUrl } from "@/lib/instagramCover";
 
 export const dynamic = "force-dynamic";
 
 async function resolveCover(body: LocationBody): Promise<string | null> {
-  if (body.coverImageUrl?.trim()) return body.coverImageUrl.trim();
+  const chosen = body.coverImageUrl?.trim();
+  if (chosen) {
+    // A cover set from an Instagram reel is a signed, short-lived cdninstagram
+    // URL that breaks on other machines — capture the bytes into the shared DB.
+    if (isInstagramCdnUrl(chosen)) {
+      const captured = await captureInstagramCover(chosen, {
+        activityName: body.activityName!,
+        city: body.city,
+        region: body.region,
+        countryName: body.countryName,
+      });
+      return captured ?? chosen;
+    }
+    return chosen;
+  }
   // Only auto-fetch on create when the user didn't pick a cover themselves.
   return resolveCoverImage({
     activityName: body.activityName!,

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { locationInclude, serializeLocation } from "@/lib/serialize";
 import { validateLocationBody, type LocationBody } from "@/lib/validate";
+import { captureInstagramCover, isInstagramCdnUrl } from "@/lib/instagramCover";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error }, { status: 400 });
 
   // Respect explicit clears — never restore a deleted cover or auto-fetch on edit.
-  const coverImageUrl = body.coverImageUrl?.trim() || null;
+  let coverImageUrl = body.coverImageUrl?.trim() || null;
+  // A cover set from an Instagram reel (signed, short-lived cdninstagram URL)
+  // is captured into the shared DB so it stays valid across machines.
+  if (coverImageUrl && isInstagramCdnUrl(coverImageUrl)) {
+    const captured = await captureInstagramCover(coverImageUrl, {
+      activityName: body.activityName!,
+      city: body.city,
+      region: body.region,
+      countryName: body.countryName,
+    });
+    coverImageUrl = captured ?? coverImageUrl;
+  }
 
   const updated = await prisma.location.update({
     where: { id },

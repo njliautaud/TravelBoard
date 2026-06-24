@@ -159,6 +159,18 @@ model Draft {
   @@index([userId, createdAt])
 }
 
+/// Image bytes captured into the shared DB (e.g. an Instagram reel cover).
+/// cdninstagram URLs are signed and short-lived, so they break on another
+/// machine or after a while; we copy the bytes here once and serve them via
+/// /api/stored-image/[id] so the cover is stable everywhere.
+model StoredImage {
+  id        String   @id @default(cuid())
+  mime      String   @default("image/jpeg")
+  bytes     Bytes
+  source    String   @default("instagram")
+  createdAt DateTime @default(now())
+}
+
 /// Cached Google Images (Serper.dev) results, keyed by normalized query.
 /// Lets repeat lookups skip the external API entirely (0 credit cost).
 model ImageCache {

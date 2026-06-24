@@ -97,13 +97,14 @@ const amberBtnCls =
 type CoverOption = {
   url: string;
   previewUrl: string;
-  source: "wikipedia" | "commons" | "google";
+  source: "wikipedia" | "commons" | "google" | "instagram";
 };
 
 const SOURCE_LABEL: Record<CoverOption["source"], string> = {
   wikipedia: "Wikipedia",
   commons: "Wikimedia",
   google: "Google",
+  instagram: "Instagram",
 };
 
 export default function EntryForm({
@@ -395,16 +396,22 @@ export default function EntryForm({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Image search failed");
 
-      const images = (data.images ?? []) as { imageUrl?: string; thumbnailUrl?: string | null }[];
+      const images = (data.images ?? []) as {
+        imageUrl?: string;
+        thumbnailUrl?: string | null;
+        source?: string;
+      }[];
       const options: CoverOption[] = images
-        .filter((im): im is { imageUrl: string; thumbnailUrl?: string | null } =>
-          typeof im.imageUrl === "string" && im.imageUrl.startsWith("http"),
+        .filter((im): im is { imageUrl: string; thumbnailUrl?: string | null; source?: string } =>
+          // Google results are absolute http(s); a captured IG cover is a
+          // same-origin /api/stored-image path — accept both.
+          typeof im.imageUrl === "string" && (im.imageUrl.startsWith("http") || im.imageUrl.startsWith("/")),
         )
         .map((im) => ({
           url: im.imageUrl,
           // Serper thumbnails are Google-hosted (gstatic) and proxy reliably for the picker.
           previewUrl: coverImageSrc(im.thumbnailUrl || im.imageUrl, 240) || im.imageUrl,
-          source: "google" as const,
+          source: im.source === "instagram" ? ("instagram" as const) : ("google" as const),
         }));
 
       if (options.length === 0) {
