@@ -56,3 +56,8 @@ esp32-touch/include/secrets.h
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local dev server logs
+dev3000.log
+dev3001.log
+*.log

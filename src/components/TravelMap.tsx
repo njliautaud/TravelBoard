@@ -179,8 +179,12 @@ function restoreThreshold(fitZoom: number): number {
   return Math.min(3, Math.max(1.2, fitZoom - 1.2));
 }
 
-/** Below this zoom the map is treated as world view (panel closes, world button hides). */
-const WORLD_VIEW_ZOOM = 2.5;
+/**
+ * Below this zoom the map is treated as world view (panel closes, world button
+ * hides). Raised from 2.5 → 4.0 so the right panel closes after roughly half the
+ * zoom-out distance from a focused wish (~5.5) instead of the full way out.
+ */
+const WORLD_VIEW_ZOOM = 4.0;
 
 function fillOpacityExpr(maxCount: number) {
   return [
@@ -254,6 +258,59 @@ const DOTS_GLOW = "dots-glow";
 const DOTS_CORE = "dots-core";
 const DOTS_DEAL = "dots-deal";
 
+// --- Cinematic 2D⇄3D terrain (active only while the map is tilted) ---
+const TERRAIN_SOURCE = "terrain-dem";
+const HILLSHADE_LAYER = "terrain-hillshade";
+const OCEAN_MASK_SOURCE = "ocean-mask";
+const OCEAN_MASK_LAYER = "ocean-mask-fill";
+const OCEAN_COLOR = "#0a0f1c"; // smooth, dark, flat sea
+// Free global DEM (Tilezen Terrarium tiles on AWS Open Data, CORS-enabled).
+const TERRAIN_DEM_TILES = ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"];
+const TILT_ENTER_DEG = 3; // pitch above this turns terrain + rotation ON
+const TILT_EXIT_DEG = 1; // pitch below this turns them OFF (hysteresis band)
+
+/**
+ * Zoom-dependent terrain exaggeration. Mountain ranges are invisibly small
+ * relative to the globe at low zoom, so we amplify them hard when zoomed out and
+ * taper to realistic heights up close. MapLibre's terrain `exaggeration` is a
+ * plain number (no zoom expressions), so a zoom listener applies this curve live.
+ *   z ≤ 3  (continent/global) → 4.0   ranges like the Andes pop from afar
+ *   z = 7  (country/state)     → 2.4
+ *   z ≥ 12 (city/close)        → 1.2   natural & accurate up close
+ */
+function exaggerationForZoom(zoom: number): number {
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  if (zoom <= 3) return 4.0;
+  if (zoom <= 7) return lerp(4.0, 2.4, (zoom - 3) / 4);
+  if (zoom <= 12) return lerp(2.4, 1.2, (zoom - 7) / 5);
+  return 1.2;
+}
+
+/**
+ * A "world rectangle with every country punched out as a hole" polygon — i.e.
+ * the oceans. Drawn as a flat dark fill above the hillshade so the sea stays a
+ * smooth dark surface (hiding the DEM's seafloor bathymetry) while the land
+ * holes let the 3D land relief + hillshade show through.
+ */
+function buildOceanMask(features: GeoFeature[]): GeoJSON.Feature<GeoJSON.Polygon> {
+  const world: number[][] = [
+    [-180, -89], [180, -89], [180, 89], [-180, 89], [-180, -89],
+  ];
+  const holes: number[][][] = [];
+  for (const f of features) {
+    if (f.geometry.type === "Polygon") {
+      holes.push((f.geometry.coordinates as number[][][])[0]);
+    } else {
+      for (const poly of f.geometry.coordinates as number[][][][]) holes.push(poly[0]);
+    }
+  }
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: { type: "Polygon", coordinates: [world, ...holes] },
+  };
+}
+
 /** True when both the left (1) and right (2) mouse buttons are held. */
 function bothMouseButtons(e: MouseEvent): boolean {
   return (e.buttons & 1) !== 0 && (e.buttons & 2) !== 0;
@@ -291,6 +348,12 @@ function attachDualButtonRotate(map: MlMap): () => void {
       resumePan();
       return;
     }
+    // Rotation is only unlocked in the tilted (3D) state — flat view is locked
+    // to north. Below the tilt threshold, ignore the dual-button drag.
+    if (map.getPitch() <= TILT_EXIT_DEG) {
+      resumePan();
+      return;
+    }
     suspendPan();
     if (!rotating) {
       rotating = true;
@@ -312,6 +375,208 @@ function attachDualButtonRotate(map: MlMap): () => void {
     window.removeEventListener("mouseup", resumePan);
     canvas.removeEventListener("contextmenu", onContextMenu);
     resumePan();
+  };
+}
+
+/**
+ * Cinematic 2D⇄3D: realistic LAND topography + free rotation appear ONLY while
+ * the map is tilted. Flat view stays rigid and fast (no DEM fetched, bearing
+ * locked to north, rotation gestures off). The moment the user pitches up
+ * (two-finger swipe-down), the DEM terrain morphs in, the flat country fill is
+ * hidden so the land relief shows through, and 360° rotation unlocks; pitch back
+ * to flat and it smoothly flattens, removes the terrain, restores the fill, and
+ * relocks to north. A hysteresis band avoids flicker around the threshold.
+ *
+ * Land vs water: a hillshade gives the land its visible "pop" (raised geometry
+ * alone is nearly invisible on the flat dark basemap). But hillshade would also
+ * shade the DEM's seafloor bathymetry and make the ocean look like high-contrast
+ * underwater terrain — so a flat dark "ocean mask" (a world polygon with every
+ * country cut out) is drawn above the hillshade to keep the sea smooth and dark
+ * while the land holes show the relief.
+ */
+function attachTiltTerrain(map: MlMap, getCountries: () => GeoFeature[]): () => void {
+  let tilted = false;
+  let raf = 0;
+  // 0 → 1 tilt morph factor. Actual terrain exaggeration = morph × the
+  // zoom-dependent curve, so it ramps in on tilt AND tracks zoom while tilted.
+  let morph = 0;
+  // One-shot "initial style is ready" flag. We must NOT use isStyleLoaded() per
+  // event: once terrain is active its DEM tiles stream continuously and
+  // isStyleLoaded() stays false, which would freeze the flatten transition.
+  let ready = map.isStyleLoaded();
+  const onLoad = () => {
+    ready = true;
+  };
+  map.on("load", onLoad);
+
+  // Lazily create the DEM source, the land hillshade, and the flat ocean mask
+  // the first time the user tilts, so the flat view never fetches elevation tiles
+  // or builds the mask geometry.
+  const beforeId = () => (map.getLayer(FILL_LAYER) ? FILL_LAYER : undefined);
+  const ensureTerrainLayers = () => {
+    if (!map.getSource(TERRAIN_SOURCE)) {
+      map.addSource(TERRAIN_SOURCE, {
+        type: "raster-dem",
+        tiles: TERRAIN_DEM_TILES,
+        encoding: "terrarium",
+        tileSize: 256,
+        maxzoom: 14,
+        attribution:
+          '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">Tilezen Joerd</a>',
+      });
+    }
+    // Shaded relief gives the land its visible depth (below the country layers).
+    if (!map.getLayer(HILLSHADE_LAYER)) {
+      map.addLayer(
+        {
+          id: HILLSHADE_LAYER,
+          type: "hillshade",
+          source: TERRAIN_SOURCE,
+          layout: { visibility: "none" },
+          paint: {
+            "hillshade-exaggeration": 0.55,
+            "hillshade-shadow-color": "#0b1220",
+            "hillshade-highlight-color": "#b8c6dc",
+            "hillshade-accent-color": "#334155",
+          },
+        },
+        beforeId(),
+      );
+    }
+    // Flat dark ocean over the seafloor relief (above hillshade, below countries).
+    if (!map.getSource(OCEAN_MASK_SOURCE)) {
+      const countries = getCountries();
+      if (countries.length) {
+        map.addSource(OCEAN_MASK_SOURCE, { type: "geojson", data: buildOceanMask(countries) });
+        map.addLayer(
+          {
+            id: OCEAN_MASK_LAYER,
+            type: "fill",
+            source: OCEAN_MASK_SOURCE,
+            layout: { visibility: "none" },
+            paint: { "fill-color": OCEAN_COLOR, "fill-opacity": 1 },
+          },
+          beforeId(),
+        );
+      }
+    }
+  };
+
+  const setTerrainLayersVisible = (visible: boolean) => {
+    const v = visible ? "visible" : "none";
+    if (map.getLayer(HILLSHADE_LAYER)) map.setLayoutProperty(HILLSHADE_LAYER, "visibility", v);
+    if (map.getLayer(OCEAN_MASK_LAYER)) map.setLayoutProperty(OCEAN_MASK_LAYER, "visibility", v);
+  };
+
+  // While tilted, hide the flat country fill so the land's 3D relief (the draped
+  // basemap on the DEM) shows through. Opacity 0 — not visibility:none — so the
+  // fill stays query-able and country clicks keep working in 3D. We snapshot the
+  // live value so it restores exactly when flattening.
+  let savedFillOpacity: unknown;
+  const hideLandFill = () => {
+    if (!map.getLayer(FILL_LAYER)) return;
+    if (savedFillOpacity === undefined) {
+      savedFillOpacity = map.getPaintProperty(FILL_LAYER, "fill-opacity");
+    }
+    map.setPaintProperty(FILL_LAYER, "fill-opacity", 0);
+  };
+  const restoreLandFill = () => {
+    if (map.getLayer(FILL_LAYER) && savedFillOpacity !== undefined) {
+      map.setPaintProperty(FILL_LAYER, "fill-opacity", savedFillOpacity as never);
+      savedFillOpacity = undefined;
+    }
+  };
+
+  // Apply the current exaggeration = morph × zoom curve. Called every frame of
+  // the tilt morph AND on every zoom change while tilted, so ranges stay big
+  // when zoomed out and normalize smoothly as you zoom in.
+  const applyTerrain = () => {
+    if (morph <= 0) return;
+    map.setTerrain({
+      source: TERRAIN_SOURCE,
+      exaggeration: morph * exaggerationForZoom(map.getZoom()),
+    });
+  };
+
+  // Ramp the morph factor so the relief grows/shrinks instead of popping.
+  const animateMorph = (target: number, onDone?: () => void) => {
+    cancelAnimationFrame(raf);
+    const from = morph;
+    const start = performance.now();
+    const duration = 600;
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      morph = from + (target - from) * easeOutCubic(t);
+      applyTerrain();
+      if (t < 1) {
+        raf = requestAnimationFrame(step);
+      } else {
+        morph = target;
+        onDone?.();
+      }
+    };
+    raf = requestAnimationFrame(step);
+  };
+
+  const enterTilt = () => {
+    ensureTerrainLayers();
+    setTerrainLayersVisible(true); // shaded land relief + flat dark ocean
+    hideLandFill(); // reveal the land terrain by dropping the flat country tint
+    // Unlock 360° rotation: touch twist + the dual-button drag (gated on pitch).
+    map.touchZoomRotate.enableRotation();
+    animateMorph(1);
+  };
+
+  const exitTilt = () => {
+    // Relock to north and disable rotation gestures.
+    map.touchZoomRotate.disableRotation();
+    // Animate the bearing back to north on the next frame — starting an easeTo
+    // synchronously from inside a pitch event handler is re-entrant and throws.
+    if (Math.abs(map.getBearing()) > 0.01) {
+      requestAnimationFrame(() => {
+        if (!tilted && Math.abs(map.getBearing()) > 0.01) {
+          map.easeTo({ bearing: 0, duration: 500, easing: (t) => 1 - Math.pow(1 - t, 3) });
+        }
+      });
+    }
+    animateMorph(0, () => {
+      cancelAnimationFrame(raf);
+      morph = 0;
+      map.setTerrain(null);
+      setTerrainLayersVisible(false); // hide hillshade + ocean mask in 2D
+      restoreLandFill(); // bring the flat country tint back for 2D view
+    });
+  };
+
+  const onPitch = () => {
+    if (!ready) return;
+    const pitch = map.getPitch();
+    if (!tilted && pitch > TILT_ENTER_DEG) {
+      tilted = true;
+      enterTilt();
+    } else if (tilted && pitch < TILT_EXIT_DEG) {
+      tilted = false;
+      exitTilt();
+    }
+  };
+
+  // While tilted, re-apply the zoom-dependent exaggeration as the user zooms so
+  // the mountains scale smoothly (the 'zoom' event fires per frame during zoom).
+  const onZoom = () => {
+    if (morph > 0) applyTerrain();
+  };
+
+  map.on("pitch", onPitch);
+  map.on("pitchend", onPitch);
+  map.on("zoom", onZoom);
+
+  return () => {
+    cancelAnimationFrame(raf);
+    map.off("pitch", onPitch);
+    map.off("pitchend", onPitch);
+    map.off("zoom", onZoom);
+    map.off("load", onLoad);
   };
 }
 
@@ -481,6 +746,10 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     });
     mapRef.current = map;
     const detachDualRotate = attachDualButtonRotate(map);
+    // Flat view starts rotation-locked (touch twist off); the tilt engine
+    // unlocks it on pitch. Two-finger pitch (touchPitch) stays enabled.
+    map.touchZoomRotate.disableRotation();
+    const detachTiltTerrain = attachTiltTerrain(map, () => countriesRef.current);
     if (process.env.NODE_ENV !== "production") {
       (window as unknown as { __map?: MlMap }).__map = map;
     }
@@ -708,6 +977,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
 
     return () => {
       detachDualRotate();
+      detachTiltTerrain();
       cancelAnimationFrame(pulseRafRef.current);
       Object.values(dimRafsRef.current).forEach(cancelAnimationFrame);
       map.remove();

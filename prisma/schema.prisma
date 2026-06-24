@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // app runtime (Neon: the pooled "-pooler" URL)
+  directUrl = env("DIRECT_URL") // migrations (Neon: the direct, non-pooled URL)
 }
 
 enum VisitStatus {
@@ -29,6 +30,16 @@ enum MapTheme {
   FLAG
 }
 
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+}
+
+enum NotificationType {
+  FRIEND_REQUEST
+  FRIEND_ACCEPTED
+}
+
 model User {
   id           String     @id @default(cuid())
   username     String     @unique
@@ -39,7 +50,44 @@ model User {
   usaAsStates  Boolean    @default(false) /// show US states as independent map units
   locations    Location[]
   drafts       Draft[]
+  sentFriendRequests     Friendship[]   @relation("SentFriendRequests")
+  receivedFriendRequests Friendship[]   @relation("ReceivedFriendRequests")
+  notifications          Notification[] @relation("RecipientNotifications")
+  actorNotifications     Notification[] @relation("ActorNotifications")
   createdAt    DateTime   @default(now())
+}
+
+/// A friend link between two users. One row per (requester, addressee) pair;
+/// starts PENDING when requested, flips to ACCEPTED once the addressee accepts.
+model Friendship {
+  id          String       @id @default(cuid())
+  requester   User         @relation("SentFriendRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+  requesterId String
+  addressee   User         @relation("ReceivedFriendRequests", fields: [addresseeId], references: [id], onDelete: Cascade)
+  addresseeId String
+  status      FriendStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+  respondedAt DateTime?
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+  @@index([requesterId, status])
+}
+
+/// Inbox notification (friend request received / request accepted). `user` is
+/// the recipient; `actor` is whoever triggered it.
+model Notification {
+  id           String           @id @default(cuid())
+  user         User             @relation("RecipientNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  type         NotificationType
+  actor        User?            @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: SetNull)
+  actorId      String?
+  friendshipId String?
+  read         Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+
+  @@index([userId, read, createdAt])
 }
 
 /// One wishlist/journal entry

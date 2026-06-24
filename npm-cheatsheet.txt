@@ -1,0 +1,42 @@
+TravelBoard — npm / dev cheatsheet
+==================================
+
+DEV SERVERS
+  npm run dev                 Start dev on :3000 (frees the port first via predev)
+  npx next dev -p 3001 -H 0.0.0.0   Stable instance from ../TravelBoard-stable
+                                    (NO --turbopack on the stable worktree — it
+                                    crashes compiling globals.css; webpack is fine)
+  npm run start:all           PowerShell launcher for both servers
+
+BUILD / LINT
+  npm run build               Production build (next build --turbopack)
+  npm run start               Serve the production build on :3000
+  npm run lint                ESLint
+  npx tsc --noEmit            Type-check only
+  npx eslint <files...>       Lint specific files
+
+DATABASE (Prisma)  — local Postgres on localhost:5432, DB "travelboard"
+  npx prisma migrate deploy   Apply pending migrations (ALWAYS use this, never
+                              `migrate dev` — it triggers mapTheme drift / data loss)
+  npx prisma migrate status   Show applied vs pending migrations
+  npx prisma generate         Regenerate the client  (STOP :3000 first — the
+                              running server locks the query engine DLL → EPERM)
+  npx prisma validate         Validate schema.prisma
+  npm run db:seed             Seed (tsx prisma/seed.ts)
+  Schema changes hit BOTH :3000 and the shared stable :3001 DB — keep additive.
+  After ANY dependency change: run `npm install` in ../TravelBoard-stable too.
+
+WHATSAPP BOT (Claude remote-control relay)
+  npm run whatsapp-bot        Start the bot (node --env-file=.env)
+  npm run whatsapp-bot:setup  Install the Puppeteer Chrome it needs
+  npm run whatsapp-bot:stop   Stop the bot
+
+ESP32 (touch display firmware)
+  npm run esp32:build-idf54   Build the idf54 env
+  npm run esp32:upload-idf54  Build + flash over COM4
+  npm run esp32:monitor       Serial monitor on COM4
+
+HANDY ONE-OFFS
+  node --env-file=.env --import tsx <file.mts>   Run a TS script with .env loaded
+  npx tsx prisma/seed.ts                          Run any tsx script
+  Use 127.0.0.1 (not localhost) when curling :3000 — localhost may resolve to ::1.

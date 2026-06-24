@@ -73,6 +73,52 @@ export interface UserProfile {
   username: string;
 }
 
+/** A user as shown in the friends list / inbox. */
+export interface FriendUser {
+  id: string;
+  username: string;
+}
+
+/** An accepted friend. */
+export interface FriendItem {
+  friendshipId: string;
+  user: FriendUser;
+  /** When the friendship was accepted (or created, if older rows). */
+  since: string;
+}
+
+/** A pending friend request (incoming = to me, outgoing = from me). */
+export interface PendingRequest {
+  friendshipId: string;
+  user: FriendUser;
+  createdAt: string;
+}
+
+export interface FriendsData {
+  friends: FriendItem[];
+  incoming: PendingRequest[];
+  outgoing: PendingRequest[];
+}
+
+/** Aggregated board stats shown in a friend's profile preview card. */
+export interface ProfileStats {
+  total: number;
+  visited: number;
+  toVisit: number;
+  countries: number;
+}
+
+export type NotificationType = "FRIEND_REQUEST" | "FRIEND_ACCEPTED";
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  actor: FriendUser | null;
+  friendshipId: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
 export interface GeocodeResult {
   displayName: string;
   latitude: number;

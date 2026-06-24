@@ -5,9 +5,10 @@ import { isInSeason, sortBySeason } from "@/lib/season";
 import type { LocationItem, UserProfile } from "@/lib/types";
 import type { UserSettings } from "@/lib/settings";
 import SettingsPanel from "./SettingsPanel";
+import FriendsTab from "./FriendsTab";
 
 /** "world" is a one-shot action (reset the map), not a persistent view. */
-export type SidebarView = "world" | "wishes" | "visited" | "settings";
+export type SidebarView = "world" | "wishes" | "visited" | "friends" | "settings";
 
 interface SidebarProps {
   locations: LocationItem[];
@@ -19,10 +20,12 @@ interface SidebarProps {
   open: boolean;
   settings: UserSettings;
   settingsSaving: boolean;
-  /** Other accounts you can view, and which one (if any) you're viewing now. */
-  profiles: UserProfile[];
+  /** The friend's board you're viewing now (null = your own). */
   viewedUser: UserProfile | null;
-  currentUserId: string | null;
+  /** Bumped by the parent to force the Friends tab to refetch (e.g. after an inbox accept). */
+  friendsRefresh: number;
+  /** Friends list changed in the tab — let the parent refresh the inbox badge. */
+  onFriendsChanged: () => void;
   onSelectProfile: (profile: UserProfile | null) => void;
   onClose: () => void;
   onAddPlace: () => void;
@@ -82,9 +85,9 @@ export default function Sidebar({
   open,
   settings,
   settingsSaving,
-  profiles,
   viewedUser,
-  currentUserId,
+  friendsRefresh,
+  onFriendsChanged,
   onSelectProfile,
   onClose,
   onAddPlace,
@@ -99,10 +102,6 @@ export default function Sidebar({
   // (otherwise picking the same one-shot again fires no onChange).
   const [, bumpSelect] = useState(0);
   const sorted = useMemo(() => sortBySeason(locations), [locations]);
-  const otherProfiles = useMemo(
-    () => profiles.filter((p) => p.id !== currentUserId),
-    [profiles, currentUserId],
-  );
 
   // The list shown depends on the dropdown: Wishes = to-visit, Visited = visited,
   // Select = everything.
@@ -114,17 +113,6 @@ export default function Sidebar({
   const starredCount = listed.filter((l) => l.starred).length;
 
   const handleViewChange = (value: string) => {
-    if (value.startsWith("profile:")) {
-      // One-shot: switch the board we're viewing; the <select> snaps back to `view`.
-      const id = value.slice("profile:".length);
-      if (id === "self") onSelectProfile(null);
-      else {
-        const picked = profiles.find((p) => p.id === id);
-        if (picked) onSelectProfile(picked);
-      }
-      bumpSelect((n) => n + 1);
-      return;
-    }
     if (value === "world") {
       // One-shot action: reset the map, leave the list view as-is.
       onResetWorld();
@@ -180,18 +168,9 @@ export default function Sidebar({
               <option value="world">World</option>
               <option value="wishes">Wishes</option>
               <option value="visited">Visited</option>
+              <option value="friends">Friends</option>
               <option value="settings">Settings</option>
             </optgroup>
-            {(otherProfiles.length > 0 || viewedUser) && (
-              <optgroup label="Profiles">
-                <option value="profile:self">{viewedUser ? "← Your board" : "You"}</option>
-                {otherProfiles.map((p) => (
-                  <option key={p.id} value={`profile:${p.id}`}>
-                    {p.username}
-                  </option>
-                ))}
-              </optgroup>
-            )}
           </select>
         </div>
 
@@ -209,7 +188,22 @@ export default function Sidebar({
           </div>
         )}
 
-        {view !== "settings" ? (
+        {view === "friends" ? (
+          loggedIn ? (
+            <FriendsTab
+              refreshKey={friendsRefresh}
+              onChanged={onFriendsChanged}
+              onSelectProfile={(friend) => {
+                onSelectProfile(friend);
+                onClose();
+              }}
+            />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+              <p className="text-sm text-slate-400">Log in to add friends.</p>
+            </div>
+          )
+        ) : view !== "settings" ? (
           <>
             {editor && (
               <div className="p-3">
@@ -245,9 +239,19 @@ export default function Sidebar({
                   const due = reminderDueSoon(loc);
                   return (
                     <li key={loc.id}>
-                      <button
+                      {/* A div (not a button) so the inner StarButton isn't an
+                          invalid nested <button> — that caused a hydration error. */}
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() => onSelectWish(loc)}
-                        className={`group flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-slate-800/70 ${
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onSelectWish(loc);
+                          }
+                        }}
+                        className={`group flex w-full cursor-pointer items-start gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-slate-800/70 ${
                           loc.starred ? "bg-amber-500/5" : ""
                         }`}
                       >
@@ -292,7 +296,7 @@ export default function Sidebar({
                             </span>
                           )}
                         </span>
-                      </button>
+                      </div>
                     </li>
                   );
                 })}

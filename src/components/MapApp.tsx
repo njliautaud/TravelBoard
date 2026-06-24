@@ -7,12 +7,26 @@ import SidePanel, { type PanelSelection } from "./SidePanel";
 import GeoBanner from "./GeoBanner";
 import EntryForm, { type PinDropResult } from "./EntryForm";
 import AuthModal from "./AuthModal";
-import DraftInbox from "./DraftInbox";
+import InboxOverlay from "./InboxOverlay";
 import LocationDetailsModal from "./LocationDetailsModal";
-import type { DraftItem, DraftPrefill, LocationItem, SessionUser, StatusFilter, UserProfile } from "@/lib/types";
+import type {
+  DraftItem,
+  DraftPrefill,
+  LocationItem,
+  NotificationItem,
+  SessionUser,
+  StatusFilter,
+  UserProfile,
+} from "@/lib/types";
 import { DEFAULT_SETTINGS, type UserSettings } from "@/lib/settings";
 import { loadUsStates, type UsStateFeature } from "@/lib/usStates";
 import { unitForLocation } from "@/lib/geoUnits";
+import {
+  readCachedLocations,
+  readLastBoardId,
+  writeCachedLocations,
+  writeLastBoardId,
+} from "@/lib/localCache";
 
 interface MapAppProps {
   initialLocations: LocationItem[];
@@ -23,6 +37,9 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [locations, setLocations] = useState<LocationItem[]>(initialLocations);
   const [drafts, setDrafts] = useState<DraftItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  // Bumped to make the sidebar Friends tab refetch after an inbox action.
+  const [friendsRefresh, setFriendsRefresh] = useState(0);
   const [selection, setSelection] = useState<PanelSelection>(null);
   const [focusPoint, setFocusPoint] = useState<FocusPoint | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -49,13 +66,13 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [usStates, setUsStates] = useState<UsStateFeature[] | null>(null);
 
-  // Profile switcher: other accounts you can view, and which board you're on now
-  // (null = your own). Viewing another board is read-only.
-  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  // Which friend's board you're viewing now (null = your own). Viewing is read-only.
   const [viewedUser, setViewedUser] = useState<UserProfile | null>(null);
 
   const loggedIn = user !== null;
   const canEdit = loggedIn && viewedUser === null;
+  // Inbox badge: shared-link drafts + unread friend notifications.
+  const inboxBadge = drafts.length + notifications.filter((n) => !n.read).length;
 
   // userId omitted ⇒ your own board; otherwise a friend's board (read-only).
   const refreshLocations = useCallback(async (userId?: string) => {
@@ -63,19 +80,10 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       const qs = userId ? `?userId=${encodeURIComponent(userId)}` : "";
       const res = await fetch(`/api/locations${qs}`);
       const data = await res.json();
+      // Stale-while-revalidate: patch the (already cache-painted) UI with fresh data.
       if (Array.isArray(data.locations)) setLocations(data.locations);
     } catch {
-      // keep stale
-    }
-  }, []);
-
-  const refreshProfiles = useCallback(async () => {
-    try {
-      const res = await fetch("/api/users");
-      const data = await res.json();
-      if (Array.isArray(data.users)) setProfiles(data.users);
-    } catch {
-      // keep stale
+      // Offline / error: keep whatever is shown (the local cache, usually).
     }
   }, []);
 
@@ -84,6 +92,16 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       const res = await fetch("/api/drafts");
       const data = await res.json();
       if (Array.isArray(data.drafts)) setDrafts(data.drafts);
+    } catch {
+      // keep stale
+    }
+  }, []);
+
+  const refreshNotifications = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications");
+      const data = await res.json();
+      if (Array.isArray(data.notifications)) setNotifications(data.notifications);
     } catch {
       // keep stale
     }
@@ -100,14 +118,43 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   }, []);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([refreshLocations(), refreshDrafts(), refreshSettings(), refreshProfiles()]);
-  }, [refreshLocations, refreshDrafts, refreshSettings, refreshProfiles]);
+    await Promise.all([
+      refreshLocations(),
+      refreshDrafts(),
+      refreshNotifications(),
+      refreshSettings(),
+    ]);
+  }, [refreshLocations, refreshDrafts, refreshNotifications, refreshSettings]);
 
-  // Re-fetch the board whenever you switch which profile you're viewing.
+  // Whenever the viewed board changes (incl. first login), paint instantly from
+  // the local cache, then revalidate from the server in the background.
   useEffect(() => {
     if (!loggedIn) return;
+    const boardId = viewedUser?.id ?? user?.id;
+    if (boardId) {
+      const cached = readCachedLocations(boardId);
+      if (cached) setLocations(cached); // instant first paint
+    }
     refreshLocations(viewedUser?.id);
-  }, [viewedUser, loggedIn, refreshLocations]);
+  }, [viewedUser, loggedIn, user?.id, refreshLocations]);
+
+  // Instant boot paint: before /api/auth/me even resolves, render the last
+  // own-board straight from cache — but only if a session cookie is present, so a
+  // logged-out visitor never sees stale wishes. Runs once on mount.
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.cookie.includes("tb_session=")) return;
+    const lastId = readLastBoardId();
+    const cached = lastId ? readCachedLocations(lastId) : null;
+    if (cached && cached.length) setLocations(cached);
+  }, []);
+
+  // Mirror the visible board into the local cache on every change (instant, local).
+  useEffect(() => {
+    if (!loggedIn || !user) return;
+    const boardId = viewedUser?.id ?? user.id;
+    writeCachedLocations(boardId, locations);
+    if (!viewedUser) writeLastBoardId(user.id); // your own board is the boot paint
+  }, [locations, loggedIn, user, viewedUser]);
 
   // Switch the viewed board (null = back to your own) and reset the map context.
   const selectProfile = useCallback((profile: UserProfile | null) => {
@@ -130,10 +177,13 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       .catch(() => {});
   }, [refreshAll]);
 
-  // Poll for new drafts in the inbox while logged in
+  // Poll for new inbox items (shared links + friend notifications) while logged in
   useEffect(() => {
     if (!loggedIn) return;
-    const tick = () => refreshDrafts();
+    const tick = () => {
+      refreshDrafts();
+      refreshNotifications();
+    };
     const id = window.setInterval(tick, 15000);
     const onFocus = () => tick();
     window.addEventListener("focus", onFocus);
@@ -141,7 +191,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
     };
-  }, [loggedIn, refreshDrafts]);
+  }, [loggedIn, refreshDrafts, refreshNotifications]);
 
   // Lazy-load US-state polygons the first time states mode is turned on.
   useEffect(() => {
@@ -359,6 +409,40 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     refreshDrafts();
   };
 
+  // Friend request acted on from the inbox — sync the badge, profile list, and
+  // the sidebar Friends tab.
+  const respondToRequest = async (friendshipId: string, action: "accept" | "decline") => {
+    try {
+      await fetch(`/api/friends/${friendshipId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+    } finally {
+      await refreshNotifications();
+      setFriendsRefresh((n) => n + 1);
+    }
+  };
+
+  // Friends tab changed something — keep the inbox badge in sync.
+  const handleFriendsChanged = useCallback(() => {
+    refreshNotifications();
+  }, [refreshNotifications]);
+
+  // Opening the inbox clears the informational "X accepted you" badges, but
+  // leaves pending friend requests actionable.
+  const openInbox = async () => {
+    setInboxOpen(true);
+    if (notifications.some((n) => !n.read && n.type === "FRIEND_ACCEPTED")) {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "FRIEND_ACCEPTED" }),
+      });
+      refreshNotifications();
+    }
+  };
+
   const handleSaved = async (opts?: { draftId?: string }) => {
     setFormOpen(false);
     setPinDropResult(null);
@@ -375,8 +459,8 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     setUser(null);
     setLocations([]);
     setDrafts([]);
+    setNotifications([]);
     setSettings(DEFAULT_SETTINGS);
-    setProfiles([]);
     setViewedUser(null);
     setSelection(null);
     setZoomedIn(false);
@@ -392,9 +476,9 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         open={sidebarOpen}
         settings={settings}
         settingsSaving={settingsSaving}
-        profiles={profiles}
         viewedUser={viewedUser}
-        currentUserId={user?.id ?? null}
+        friendsRefresh={friendsRefresh}
+        onFriendsChanged={handleFriendsChanged}
         onSelectProfile={selectProfile}
         onClose={() => setSidebarOpen(false)}
         onAddPlace={handleAddPlace}
@@ -470,13 +554,13 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           <div className="pointer-events-auto flex items-center gap-2">
             {loggedIn && (
               <button
-                onClick={() => setInboxOpen(true)}
+                onClick={openInbox}
                 className="relative rounded-full border border-violet-500/50 bg-violet-500/15 px-3 py-1.5 text-sm text-violet-200 backdrop-blur hover:bg-violet-500/25"
               >
                 Inbox
-                {drafts.length > 0 && (
+                {inboxBadge > 0 && (
                   <span className="ml-1.5 rounded-full bg-violet-400 px-1.5 text-[10px] font-bold text-slate-950">
-                    {drafts.length}
+                    {inboxBadge}
                   </span>
                 )}
               </button>
@@ -633,10 +717,13 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         }}
       />
 
-      <DraftInbox
+      <InboxOverlay
         open={inboxOpen}
+        notifications={notifications}
         drafts={drafts}
         onClose={() => setInboxOpen(false)}
+        onAcceptRequest={(friendshipId) => respondToRequest(friendshipId, "accept")}
+        onDeclineRequest={(friendshipId) => respondToRequest(friendshipId, "decline")}
         onOpenDraft={openDraft}
         onDeleteDraft={handleDeleteDraft}
       />
