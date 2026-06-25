@@ -42,7 +42,7 @@ npm run dev                 # http://localhost:3000 (port 3000 pinned)
 
 ## Using the app
 
-- **Accounts**: register / log in with username + password. Each user has their own map and wishlist.
+- **Accounts**: sign up / log in with email + password or **Continue with Google** (via Supabase Auth). Log in with your email **or** username; "Forgot password?" emails a reset link. Each user has their own map and wishlist.
 - **Profiles**: switch the sidebar dropdown to any other account to view their board **read-only** — your own editing and settings are unaffected.
 - **Navigation**: a permanent **left edge-dock** (desktop) / **bottom nav bar** (mobile) with pillars — **Travel Journal**, **Passport**, **Travel Mates**, **Flight Tracker**, **Settings**. The Journal has a World / Wished / Visited toggle (synced with the bottom-center map toggle).
 - **Passport ("been there")**: mark the countries and US states you've already visited — they glow a soft teal, separate from your wishes (logging them creates no wish and doesn't change wish brightness). In Passport view, **single-click a country/state** on the map to toggle it, or use the searchable checklist. A one-time "map where you've been" prompt greets new (and existing) accounts.
@@ -70,7 +70,7 @@ npm run dev                 # http://localhost:3000 (port 3000 pinned)
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
-| `/api/auth/login`, `/register`, `/logout`, `/me` | — | Username/password sessions |
+| `/api/auth/login`, `/logout`, `/me`, `/username` | — | Supabase Auth (login by email or username; signup/Google/reset run client-side). `/auth/callback` exchanges OAuth/recovery codes |
 | `/api/users` | session | List accounts for the profile switcher |
 | `/api/locations` | session for writes | CRUD wishlist entries; `GET ?userId=` views another user's board (read-only) |
 | `/api/locations/:id/star` | session | Star / unstar a wish |
