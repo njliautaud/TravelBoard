@@ -7,9 +7,9 @@ import type { UserSettings } from "@/lib/settings";
 import SettingsPanel from "./SettingsPanel";
 import FriendsTab from "./FriendsTab";
 
-/** Which area the sidebar body shows. The list's wished/visited/all filter is
- *  NOT a panel — it's the shared `statusFilter` (synced with the map toggle). */
-type Panel = "list" | "friends" | "settings";
+/** Top-level sidebar section. The journal's wished/visited/all filter is NOT a
+ *  panel — it's the shared `statusFilter` (synced with the map toggle). */
+type Panel = "journal" | "friends" | "flights" | "settings";
 
 interface SidebarProps {
   locations: LocationItem[];
@@ -36,8 +36,6 @@ interface SidebarProps {
   onSelectWish: (loc: LocationItem) => void;
   onToggleStar: (loc: LocationItem) => void;
   onSettingsChange: (patch: Partial<UserSettings>) => void;
-  /** Reset the map to the world view (the "World" dropdown option). */
-  onResetWorld: () => void;
 }
 
 function reminderDueSoon(loc: LocationItem): boolean {
@@ -100,45 +98,17 @@ export default function Sidebar({
   onSelectWish,
   onToggleStar,
   onSettingsChange,
-  onResetWorld,
 }: SidebarProps) {
-  const [panel, setPanel] = useState<Panel>("list");
-  // Bumped on the one-shot "World" pick so the component re-renders and the
-  // controlled <select> snaps back (otherwise picking it again fires no onChange).
-  const [, bumpSelect] = useState(0);
+  const [panel, setPanel] = useState<Panel>("journal");
   const sorted = useMemo(() => sortBySeason(locations), [locations]);
 
-  // The list mirrors the shared filter: Wished = to-visit, Visited = visited, All = everything.
+  // The list mirrors the shared filter: Wished = to-visit, Visited = visited, World = everything.
   const listed = useMemo(() => {
     if (statusFilter === "wished") return sorted.filter((l) => l.status === "TO_VISIT");
     if (statusFilter === "visited") return sorted.filter((l) => l.status === "VISITED");
     return sorted;
   }, [sorted, statusFilter]);
   const starredCount = listed.filter((l) => l.starred).length;
-
-  // The <select> shows the panel when on Friends/Settings, else the shared filter.
-  // "World" doubles as the all-places state here (it also recenters the map), so
-  // there's no separate "All" option — show World whenever the filter is "all".
-  const dropdownValue =
-    panel !== "list" ? panel : statusFilter === "all" ? "world" : statusFilter;
-
-  const handleViewChange = (value: string) => {
-    if (value === "world") {
-      // One-shot: reset the map (also resets the shared filter to "all" in the parent).
-      onResetWorld();
-      onClose();
-      setPanel("list");
-      bumpSelect((n) => n + 1);
-      return;
-    }
-    if (value === "friends" || value === "settings") {
-      setPanel(value);
-      return;
-    }
-    // all | wished | visited — the shared filter (and back to the list panel).
-    setPanel("list");
-    onStatusFilterChange(value as StatusFilter);
-  };
 
   const ownHeading =
     statusFilter === "wished" ? "Wishes" : statusFilter === "visited" ? "Visited" : "All places";
@@ -174,21 +144,18 @@ export default function Sidebar({
 
         <div className="border-b border-slate-800 px-3 py-2">
           <label htmlFor="sidebar-view" className="sr-only">
-            Sidebar section
+            Section
           </label>
           <select
             id="sidebar-view"
-            value={dropdownValue}
-            onChange={(e) => handleViewChange(e.target.value)}
+            value={panel}
+            onChange={(e) => setPanel(e.target.value as Panel)}
             className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm font-medium text-slate-200 focus:border-amber-500/60 focus:outline-none"
           >
-            <optgroup label="View">
-              <option value="world">World</option>
-              <option value="wished">Wishes</option>
-              <option value="visited">Visited</option>
-              <option value="friends">Friends</option>
-              <option value="settings">Settings</option>
-            </optgroup>
+            <option value="journal">Travel Journal</option>
+            <option value="friends">Travel Mates</option>
+            <option value="flights">Flight Tracker</option>
+            <option value="settings">Settings</option>
           </select>
         </div>
 
@@ -221,7 +188,22 @@ export default function Sidebar({
               <p className="text-sm text-slate-400">Log in to add friends.</p>
             </div>
           )
-        ) : panel !== "settings" ? (
+        ) : panel === "flights" ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+            <p className="text-sm font-medium text-slate-300">Flight Tracker</p>
+            <p className="text-xs text-slate-500">
+              Price tracking and deal alerts for your wishes are coming here soon.
+            </p>
+          </div>
+        ) : panel === "settings" ? (
+          loggedIn ? (
+            <SettingsPanel settings={settings} saving={settingsSaving} onChange={onSettingsChange} />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+              <p className="text-sm text-slate-400">Log in to change theme and home airports.</p>
+            </div>
+          )
+        ) : (
           <>
             {editor && (
               <div className="p-3">
@@ -233,6 +215,36 @@ export default function Sidebar({
                 </button>
               </div>
             )}
+
+            {/* World / Wished / Visited — the journal's sub-categories, synced with
+                the bottom-center map toggle. */}
+            <div className="px-3 pb-2">
+              <div className="flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900/80 p-1 text-xs">
+                {([
+                  ["world", "World"],
+                  ["wished", "Wished"],
+                  ["visited", "Visited"],
+                ] as const).map(([key, label]) => {
+                  const active = key === "world" ? statusFilter === "all" : statusFilter === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => onStatusFilterChange(key === "world" ? "all" : key)}
+                      className={`flex-1 rounded-full px-2 py-1 font-medium transition ${
+                        active
+                          ? key === "visited"
+                            ? "bg-emerald-500/90 text-slate-950"
+                            : "bg-amber-500/90 text-slate-950"
+                          : "text-slate-300 hover:text-amber-200"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <p className="px-4 pb-1 text-[11px] font-medium uppercase tracking-wider text-slate-500">
               {listHeading}{" "}
@@ -321,12 +333,6 @@ export default function Sidebar({
               </ul>
             </nav>
           </>
-        ) : loggedIn ? (
-          <SettingsPanel settings={settings} saving={settingsSaving} onChange={onSettingsChange} />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
-            <p className="text-sm text-slate-400">Log in to change theme and home airports.</p>
-          </div>
         )}
       </aside>
     </>

@@ -503,10 +503,6 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         onSelectWish={handleSelectWish}
         onToggleStar={handleToggleStar}
         onSettingsChange={handleSettingsChange}
-        onResetWorld={() => {
-          mapRef.current?.resetWorldView();
-          setStatusFilter("all");
-        }}
       />
 
       <div className="relative flex-1 overflow-hidden">
@@ -641,7 +637,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
             {/* Wished / Visited / All map filter */}
             <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-slate-600/80 bg-slate-900/90 p-1 text-sm shadow-lg backdrop-blur">
               {([
-                ["all", "All", "bg-amber-500/90 text-slate-950"],
+                ["all", "World", "bg-amber-500/90 text-slate-950"],
                 ["wished", "Wished", "bg-amber-500/90 text-slate-950"],
                 ["visited", "Visited", "bg-emerald-500/90 text-slate-950"],
               ] as const).map(([value, label, activeCls]) => {
