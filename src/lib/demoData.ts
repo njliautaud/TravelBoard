@@ -5,7 +5,13 @@
  */
 
 import type { LocationItem } from "./types";
-import type { CountryDeal, JournalCountry, DealRoute } from "@/components/TravelMap";
+import type { CountryDeal, DealRoute } from "@/components/DealsMapPanel";
+
+/** Journal country entry for map display */
+export interface JournalCountry {
+  countryCode: string;
+  name?: string;
+}
 
 export const DEMO_LOCATIONS: LocationItem[] = [];
 export const DEMO_COUNTRY_DEALS: CountryDeal[] = [];

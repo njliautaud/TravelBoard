@@ -35,11 +35,7 @@ export async function GET(req: NextRequest) {
           select: { homeAirports: true, onboarded: true },
         });
         if (user?.onboarded) {
-          let airports: string[] = [];
-          try { airports = JSON.parse(user.homeAirports as unknown as string || "[]"); } catch {
-            // homeAirports might already be a string[] from Prisma
-            if (Array.isArray(user.homeAirports)) airports = user.homeAirports;
-          }
+          const airports: string[] = user.homeAirports ?? [];
           if (airports.length > 0) {
             origin = airports[0]; // Use first home airport for single-origin endpoint
           }

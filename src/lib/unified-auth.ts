@@ -49,8 +49,8 @@ async function getSupabaseUser(): Promise<AuthUser | null> {
     // Find or create user in our DB linked to Supabase ID
     // externalAuthId stores the Supabase user ID
     let dbUser = await prisma.user.findFirst({
-      where: { externalAuthId: supabaseId },
-      select: { id: true, username: true, externalAuthId: true, imageUrl: true, role: true },
+      where: { authId: supabaseId },
+      select: { id: true, username: true, authId: true, imageUrl: true, role: true },
     });
 
     if (!dbUser) {
@@ -65,11 +65,11 @@ async function getSupabaseUser(): Promise<AuthUser | null> {
         data: {
           username,
           passwordHash: "", // Not used with Supabase auth
-          externalAuthId: supabaseId,
+          authId: supabaseId,
           email,
           imageUrl: supaUser.user_metadata?.avatar_url ?? null,
         },
-        select: { id: true, username: true, externalAuthId: true, imageUrl: true, role: true },
+        select: { id: true, username: true, authId: true, imageUrl: true, role: true },
       });
     }
 

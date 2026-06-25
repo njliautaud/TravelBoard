@@ -45,12 +45,7 @@ export async function GET() {
       }),
     ]);
 
-  let homeAirports: string[] = [];
-  try {
-    homeAirports = JSON.parse(user.homeAirports || "[]");
-  } catch {
-    homeAirports = [];
-  }
+  const homeAirports: string[] = user.homeAirports ?? [];
 
   let badges: string[] = [];
   try {

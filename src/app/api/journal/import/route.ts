@@ -251,14 +251,11 @@ export async function POST(req: NextRequest) {
         select: { tripStyles: true },
       });
       if (dbUser) {
-        const existing: string[] = (() => {
-          try { return JSON.parse(dbUser.tripStyles || "[]"); }
-          catch { return []; }
-        })();
+        const existing: string[] = dbUser.tripStyles ?? [];
         const merged = [...new Set([...existing, ...vibes])].slice(0, 20);
         await prisma.user.update({
           where: { id: user.id },
-          data: { tripStyles: JSON.stringify(merged) },
+          data: { tripStyles: merged },
         });
       }
     } catch {

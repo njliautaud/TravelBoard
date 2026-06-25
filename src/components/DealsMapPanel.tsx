@@ -4,11 +4,21 @@ import { useCallback, useEffect, useState } from "react";
 import { HOME_AIRPORTS, type AirportOption } from "@/lib/airports";
 import { alpha3ToCountryName } from "@/lib/countryCodes";
 import { trackDealClick, trackDealSave } from "@/lib/tracker";
-import type { CountryDeal, DealRoute } from "./TravelMap";
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export interface CountryDeal {
+  countryCode: string;
+  tier: string;
+  price?: number;
+}
+
+export interface DealRoute {
+  origin: string;
+  destination: string;
+  price?: number;
+}
 
 interface DealItem {
   id: string;

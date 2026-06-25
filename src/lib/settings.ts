@@ -8,8 +8,6 @@ export interface UserSettings {
   /** Treat each US state as its own map unit (clickable, counted separately). */
   usaAsStates: boolean;
   homeAirports: string[];
-  /** Treat each US state as its own map unit (clickable, counted separately). */
-  usaAsStates: boolean;
   /** Distance preference for deal filtering. */
   distancePref: DistancePref;
   /** Flight type preference (international / domestic / both). */
@@ -26,7 +24,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   mapTheme: "classic",
   usaAsStates: false,
   homeAirports: [],
-  usaAsStates: false,
   distancePref: "no_preference",
   flightPref: "both",
   visitedRegions: [],

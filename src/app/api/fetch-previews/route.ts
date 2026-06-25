@@ -56,7 +56,7 @@ async function handle(
         cached: true,
         match: "exact",
         source: exact.source,
-        images: (JSON.parse(exact.images) as PreviewImage[]).slice(0, limit),
+        images: (JSON.parse(exact.images as string) as PreviewImage[]).slice(0, limit),
       });
     }
 
@@ -75,7 +75,7 @@ async function handle(
       }
     }
     if (best && bestScore >= SIMILAR_THRESHOLD) {
-      const images = (JSON.parse(best.images) as PreviewImage[]).slice(0, limit);
+      const images = (JSON.parse(best.images as string) as PreviewImage[]).slice(0, limit);
       // Cache under this query too so the next exact lookup is instant.
       await prisma.imageCache.upsert({
         where: { searchQuery },

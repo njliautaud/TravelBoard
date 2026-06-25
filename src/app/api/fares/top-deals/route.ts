@@ -68,10 +68,10 @@ export async function GET(req: NextRequest) {
         },
       });
       if (user?.onboarded) {
-        try { userAirports = JSON.parse(user.homeAirports || "[]"); } catch {}
+        userAirports = user.homeAirports ?? [];
         flightPref = user.flightPref || "both";
         distancePref = user.distancePref || "no_preference";
-        try { loyaltyPrograms = JSON.parse(user.loyaltyPrograms || "[]"); } catch {}
+        loyaltyPrograms = user.loyaltyPrograms ?? [];
       }
     }
   } catch {
