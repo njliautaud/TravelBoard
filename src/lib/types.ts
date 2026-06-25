@@ -42,6 +42,7 @@ export interface LocationItem {
   priceThreshold: number | null;
   starred: boolean;
   sortOrder: number;
+  isPublic: boolean;
   coverImageUrl: string | null;
   seasonSpring: boolean;
   seasonSummer: boolean;

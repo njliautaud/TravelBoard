@@ -106,6 +106,7 @@ model Location {
   priceThreshold Decimal?
   starred        Boolean       @default(false)
   sortOrder      Int           @default(0) /// manual order within a country list (lower = higher up)
+  isPublic       Boolean       @default(false) /// published to the public feed (the rest of the board stays private)
   coverImageUrl  String?
   seasonSpring   Boolean       @default(false)
   seasonSummer   Boolean       @default(false)
@@ -120,6 +121,7 @@ model Location {
 
   @@index([countryCode])
   @@index([userId])
+  @@index([isPublic, createdAt])
 }
 
 model Media {

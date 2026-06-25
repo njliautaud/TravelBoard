@@ -42,6 +42,7 @@ interface FormState {
   seasonSummer: boolean;
   seasonFall: boolean;
   seasonWinter: boolean;
+  isPublic: boolean;
   coverImageUrl: string;
   media: MediaItem[];
 }
@@ -62,6 +63,7 @@ const EMPTY: FormState = {
   seasonSummer: false,
   seasonFall: false,
   seasonWinter: false,
+  isPublic: false,
   coverImageUrl: "",
   media: [],
 };
@@ -83,6 +85,7 @@ function fromLocation(loc: LocationItem): FormState {
     seasonSummer: loc.seasonSummer,
     seasonFall: loc.seasonFall,
     seasonWinter: loc.seasonWinter,
+    isPublic: loc.isPublic,
     coverImageUrl: loc.coverImageUrl ?? "",
     media: loc.media.map((m) => ({ ...m })),
   };
@@ -497,6 +500,7 @@ export default function EntryForm({
         seasonSummer: form.seasonSummer,
         seasonFall: form.seasonFall,
         seasonWinter: form.seasonWinter,
+        isPublic: form.isPublic,
         coverImageUrl: form.coverImageUrl.trim() || null,
         media: form.media.map((m, i) => ({ type: m.type, url: m.url, caption: m.caption, sortOrder: i })),
       };
@@ -889,6 +893,37 @@ export default function EntryForm({
             />
           </div>
         </div>
+
+        {/* Public feed toggle — per-spot publishing; the rest of the board stays private */}
+        <button
+          type="button"
+          onClick={() => set("isPublic", !form.isPublic)}
+          aria-pressed={form.isPublic}
+          className={`mt-4 flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition ${
+            form.isPublic
+              ? "border-emerald-500/60 bg-emerald-500/10"
+              : "border-slate-700 bg-slate-900/60 hover:border-slate-600"
+          }`}
+        >
+          <span
+            className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition ${
+              form.isPublic ? "bg-emerald-500/80" : "bg-slate-700"
+            }`}
+          >
+            <span
+              className={`h-4 w-4 rounded-full bg-white transition ${form.isPublic ? "translate-x-4" : ""}`}
+            />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-slate-100">
+              {form.isPublic ? "Published to the public feed" : "Publish to the public feed"}
+            </span>
+            <span className="block text-xs text-slate-400">
+              Shares only this spot (name, place, photo) with everyone — your notes, reminders, and the
+              rest of your board stay private.
+            </span>
+          </span>
+        </button>
 
         {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
 

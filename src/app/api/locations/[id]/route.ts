@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { locationInclude, serializeLocation } from "@/lib/serialize";
 import { validateLocationBody, type LocationBody } from "@/lib/validate";
 import { captureInstagramCover, isInstagramCdnUrl } from "@/lib/instagramCover";
+import { areFriends } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -18,9 +19,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
   const location = await prisma.location.findUnique({ where: { id }, include: locationInclude });
   if (!location) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (user && location.userId !== user.id) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  // Visible to: the owner, an accepted friend, or anyone if the spot is public.
+  const isOwner = user?.id === location.userId;
+  const allowed =
+    isOwner || location.isPublic || (user ? await areFriends(user.id, location.userId) : false);
+  if (!allowed) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ location: serializeLocation(location) });
 }
 
@@ -69,6 +72,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       seasonSummer: body.seasonSummer ?? false,
       seasonFall: body.seasonFall ?? false,
       seasonWinter: body.seasonWinter ?? false,
+      isPublic: body.isPublic ?? existing.isPublic,
       media: {
         deleteMany: {},
         create: (body.media ?? []).map((m, i) => ({

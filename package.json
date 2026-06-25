@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "predev": "node scripts/free-port.mjs 3000",
+    "postinstall": "prisma generate",
     "dev": "next dev --turbopack -p 3000 -H 0.0.0.0",
     "start:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-all.ps1",
     "build": "next build --turbopack",

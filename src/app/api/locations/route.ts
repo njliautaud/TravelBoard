@@ -5,6 +5,7 @@ import { locationInclude, serializeLocation } from "@/lib/serialize";
 import { validateLocationBody, type LocationBody } from "@/lib/validate";
 import { resolveCoverImage } from "@/lib/coverImage";
 import { captureInstagramCover, isInstagramCdnUrl } from "@/lib/instagramCover";
+import { canViewBoard } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +37,14 @@ async function resolveCover(body: LocationBody): Promise<string | null> {
 export async function GET(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ locations: [] });
-  // Any logged-in user may view another user's board read-only (?userId=...).
-  // Omitted ⇒ your own board. Editing stays owner-only on the mutating routes.
+  // A user's full board is private: viewable only by the owner or an accepted
+  // friend (?userId=... = whose board; omitted ⇒ your own). Public sharing is
+  // per-spot via the public feed, not the whole board. Edits stay owner-only.
   const requested = req.nextUrl.searchParams.get("userId")?.trim();
   const targetUserId = requested || user.id;
+  if (targetUserId !== user.id && !(await canViewBoard(user.id, targetUserId))) {
+    return NextResponse.json({ error: "You can only view your own or a friend's board." }, { status: 403 });
+  }
   const locations = await prisma.location.findMany({
     where: { userId: targetUserId },
     include: locationInclude,
@@ -78,6 +83,7 @@ export async function POST(req: NextRequest) {
       seasonSummer: body.seasonSummer ?? false,
       seasonFall: body.seasonFall ?? false,
       seasonWinter: body.seasonWinter ?? false,
+      isPublic: body.isPublic ?? false,
       media: {
         create: (body.media ?? []).map((m, i) => ({
           type: m.type,
