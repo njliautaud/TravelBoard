@@ -4,6 +4,9 @@ export type VisitStatus = "TO_VISIT" | "VISITED";
 /** Map/list view filter: everything, only to-visit ("wished"), or only visited. */
 export type StatusFilter = "all" | "wished" | "visited";
 
+/** Primary navigation section (left edge-dock on desktop, bottom nav on mobile). */
+export type Panel = "journal" | "passport" | "friends" | "flights" | "settings";
+
 /** True when a wish passes the given status filter. */
 export function matchesStatusFilter(status: VisitStatus, filter: StatusFilter): boolean {
   if (filter === "wished") return status === "TO_VISIT";

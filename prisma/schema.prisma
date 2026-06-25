@@ -48,6 +48,8 @@ model User {
   mapTheme     MapTheme   @default(CLASSIC)
   homeAirports String[]   @default([])
   usaAsStates  Boolean    @default(false) /// show US states as independent map units
+  visitedRegions String[] @default([]) /// Passport: visited country (ISO-3) / US-state (US-XX) codes; independent of Location, no effect on wish glow
+  passportOnboardedAt DateTime? /// when the user finished/dismissed the "map where you've been" onboarding (null = show it once)
   locations    Location[]
   drafts       Draft[]
   sentFriendRequests     Friendship[]   @relation("SentFriendRequests")

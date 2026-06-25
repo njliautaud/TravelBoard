@@ -31,6 +31,13 @@ interface TravelMapProps {
   statusFilter: StatusFilter;
   /** Treat each US state as its own map unit. */
   usaAsStates: boolean;
+  /** Passport: visited country (ISO-3) / US-state (US-XX) codes — static "been there" glow. */
+  visitedRegions: string[];
+  /** Show the static "been there" glow (hidden while filtering to wishes). */
+  showVisitedGlow: boolean;
+  /** Passport editing mode: double-click a country/state toggles it (no zoom). */
+  passportMode: boolean;
+  onPassportToggle: (code: string) => void;
   /** US-state polygons (loaded by the parent); null until available. */
   states: UsStateFeature[] | null;
   onCountryClick: (code: string, name: string) => void;
@@ -257,6 +264,49 @@ const FILL_LAYER = "country-fill";
 const GLOW_LINE_LAYER = "country-glow-line";
 const ACCENT_GLOW_LAYER = "country-accent-glow";
 const BORDER_LAYER = "country-border";
+// Passport "been there" glow — static, binary, independent of the wish heatmap.
+const VISITED_FILL_LAYER = "country-visited-fill";
+const VISITED_GLOW_LAYER = "country-visited-glow";
+const VISITED_COLOR = "#5eead4"; // soft teal — distinct from amber wishes / emerald wish-dots
+
+/**
+ * Which rendered feature ids should carry the static "visited" glow, given the
+ * passport codes and whether the map currently splits the USA into states.
+ * - country ISO-3 → that country (when its polygon is rendered)
+ * - "US-XX" + states mode → that state; otherwise it lights the whole USA
+ * - "USA" + states mode → all rendered US states
+ */
+function visitedFeatureIds(
+  codes: string[],
+  usaAsStates: boolean,
+  displayIds: Set<string>,
+): Set<string> {
+  const out = new Set<string>();
+  let lightWholeUsa = false;
+  for (const raw of codes) {
+    const c = raw.toUpperCase();
+    if (c.startsWith("US-")) {
+      if (usaAsStates && displayIds.has(c)) out.add(c);
+      else lightWholeUsa = true;
+    } else if (c === "USA") {
+      if (usaAsStates) {
+        for (const id of displayIds) if (id.startsWith("US-")) out.add(id);
+      } else if (displayIds.has("USA")) {
+        out.add("USA");
+      }
+    } else if (displayIds.has(c)) {
+      out.add(c);
+    }
+  }
+  if (lightWholeUsa) {
+    if (usaAsStates) {
+      for (const id of displayIds) if (id.startsWith("US-")) out.add(id);
+    } else if (displayIds.has("USA")) {
+      out.add("USA");
+    }
+  }
+  return out;
+}
 const DOTS_GLOW = "dots-glow";
 const DOTS_CORE = "dots-core";
 const DOTS_DEAL = "dots-deal";
@@ -591,6 +641,10 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     mapTheme,
     statusFilter,
     usaAsStates,
+    visitedRegions,
+    showVisitedGlow,
+    passportMode,
+    onPassportToggle,
     states,
     onCountryClick,
     onDotClick,
@@ -611,10 +665,22 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   const locationsRef = useRef(locations);
   const statusFilterRef = useRef(statusFilter);
   const usaAsStatesRef = useRef(usaAsStates);
+  const visitedRegionsRef = useRef(visitedRegions);
+  // Feature ids currently carrying the "visited" feature-state, so we can diff.
+  const litVisitedRef = useRef<Set<string>>(new Set());
   const statesRef = useRef(states);
   const pinDropRef = useRef(pinDropMode);
   const canAddWishRef = useRef(canAddWish);
-  const callbacksRef = useRef({ onCountryClick, onDotClick, onPinDrop, onZoomStateChange, onAddWishHere });
+  const passportModeRef = useRef(passportMode);
+  const showVisitedGlowRef = useRef(showVisitedGlow);
+  const callbacksRef = useRef({
+    onCountryClick,
+    onDotClick,
+    onPinDrop,
+    onZoomStateChange,
+    onAddWishHere,
+    onPassportToggle,
+  });
   const pulseRafRef = useRef<number>(0);
   const selectedIsoRef = useRef<string | null>(null);
   const hoveredIsoRef = useRef<string | null>(null);
@@ -645,10 +711,20 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   locationsRef.current = locations;
   statusFilterRef.current = statusFilter;
   usaAsStatesRef.current = usaAsStates;
+  visitedRegionsRef.current = visitedRegions;
   statesRef.current = states;
   pinDropRef.current = pinDropMode;
   canAddWishRef.current = canAddWish;
-  callbacksRef.current = { onCountryClick, onDotClick, onPinDrop, onZoomStateChange, onAddWishHere };
+  passportModeRef.current = passportMode;
+  showVisitedGlowRef.current = showVisitedGlow;
+  callbacksRef.current = {
+    onCountryClick,
+    onDotClick,
+    onPinDrop,
+    onZoomStateChange,
+    onAddWishHere,
+    onPassportToggle,
+  };
 
   // Rebuild the country/state heatmap + dots from the current locations, status
   // filter, and states-mode setting. Single source of truth for all of them.
@@ -658,9 +734,11 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
 
     const usaAsStates = usaAsStatesRef.current;
     const states = statesRef.current;
-    const filtered = locationsRef.current.filter((l) =>
-      matchesStatusFilter(l.status, statusFilterRef.current),
-    );
+    // Passport view: hide wishes (to-visit) and show only visited places — the
+    // same set as the "Visited" filter — beneath the static "been there" glow.
+    const filtered = passportModeRef.current
+      ? locationsRef.current.filter((l) => l.status === "VISITED")
+      : locationsRef.current.filter((l) => matchesStatusFilter(l.status, statusFilterRef.current));
 
     const feats: GeoFeature[] =
       usaAsStates && states?.length
@@ -684,6 +762,30 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
 
     const dotsSource = map.getSource("dots") as maplibregl.GeoJSONSource | undefined;
     dotsSource?.setData(dotsGeoJson(filtered));
+
+    applyVisited();
+  }, []);
+
+  // Recompute the static "been there" glow: diff the desired lit set against the
+  // currently-lit set and flip only the feature-states that changed.
+  const applyVisited = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !map.getSource("countries")) return;
+    const displayIds = new Set(displayFeaturesRef.current.map((f) => f.id));
+    const next = visitedFeatureIds(visitedRegionsRef.current, usaAsStatesRef.current, displayIds);
+    const prev = litVisitedRef.current;
+    for (const id of prev) {
+      if (!next.has(id)) map.removeFeatureState({ source: "countries", id }, "visited");
+    }
+    for (const id of next) {
+      if (!prev.has(id)) map.setFeatureState({ source: "countries", id }, { visited: true });
+    }
+    litVisitedRef.current = next;
+
+    // Apply current glow visibility (covers the initial load before the effect runs).
+    const vis = showVisitedGlowRef.current ? "visible" : "none";
+    if (map.getLayer(VISITED_FILL_LAYER)) map.setLayoutProperty(VISITED_FILL_LAYER, "visibility", vis);
+    if (map.getLayer(VISITED_GLOW_LAYER)) map.setLayoutProperty(VISITED_GLOW_LAYER, "visibility", vis);
   }, []);
 
   const hideHover = () => setHover(null);
@@ -757,7 +859,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       minZoom: 1,
       maxZoom: 17,
       dragRotate: false,
-      attributionControl: { compact: true },
+      // Attribution is shown at the bottom of the Settings panel instead of on the map.
+      attributionControl: false,
     });
     mapRef.current = map;
     const detachDualRotate = attachDualButtonRotate(map);
@@ -768,7 +871,6 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     if (process.env.NODE_ENV !== "production") {
       (window as unknown as { __map?: MlMap }).__map = map;
     }
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 
     map.on("load", async () => {
       const res = await fetch("/data/countries.geo.json");
@@ -835,6 +937,47 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
           "line-blur": accentGlowBlurExpr() as number,
         },
       });
+
+      // Passport "been there" glow — binary, static, driven only by the
+      // `visited` feature-state (no `count`), so it never tracks wish density.
+      // Faint fill sits beneath the wish heatmap fill; the soft outline beneath
+      // the wish glow line so wishes stay the brighter signal.
+      map.addLayer(
+        {
+          id: VISITED_FILL_LAYER,
+          type: "fill",
+          source: "countries",
+          paint: {
+            "fill-color": VISITED_COLOR,
+            "fill-opacity": [
+              "case",
+              ["boolean", ["feature-state", "visited"], false],
+              0.1,
+              0,
+            ] as unknown as number,
+          },
+        },
+        FILL_LAYER,
+      );
+      map.addLayer(
+        {
+          id: VISITED_GLOW_LAYER,
+          type: "line",
+          source: "countries",
+          paint: {
+            "line-color": VISITED_COLOR,
+            "line-opacity": [
+              "case",
+              ["boolean", ["feature-state", "visited"], false],
+              0.7,
+              0,
+            ] as unknown as number,
+            "line-width": ["interpolate", ["linear"], ["zoom"], 1, 1.2, 4, 2, 8, 3.5, 14, 5] as unknown as number,
+            "line-blur": ["interpolate", ["linear"], ["zoom"], 1, 1.5, 8, 4, 14, 6] as unknown as number,
+          },
+        },
+        GLOW_LINE_LAYER,
+      );
 
       map.addSource("dots", { type: "geojson", data: dotsGeoJson(locationsRef.current) });
       map.addLayer({
@@ -908,6 +1051,14 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         setCtxMenu(null);
         if (pinDropRef.current) {
           callbacksRef.current.onPinDrop(e.lngLat.lat, e.lngLat.lng);
+          return;
+        }
+        // Passport mode: a single click on a country/state toggles "been there"
+        // (no zoom, no wish selection).
+        if (passportModeRef.current) {
+          const hits = map.queryRenderedFeatures(e.point, { layers: [FILL_LAYER] });
+          const iso = hits[0]?.properties?.iso as string | undefined;
+          if (iso) callbacksRef.current.onPassportToggle(iso);
           return;
         }
         const dots = map.queryRenderedFeatures(e.point, { layers: [DOTS_CORE, DOTS_GLOW] });
@@ -1019,10 +1170,11 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep heatmap + dots in sync with locations, theme, status filter, and states mode.
+  // Keep heatmap + dots + visited glow in sync with locations, theme, status
+  // filter, states mode, and the passport.
   useEffect(() => {
     rebuildGeo();
-  }, [locations, mapTheme, statusFilter, usaAsStates, states, rebuildGeo]);
+  }, [locations, mapTheme, statusFilter, usaAsStates, visitedRegions, passportMode, states, rebuildGeo]);
 
   // Fly to a wish selected in the sidebar
   useEffect(() => {
@@ -1071,6 +1223,24 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     map.getCanvas().style.cursor = pinDropMode ? "crosshair" : "";
     if (pinDropMode) hideHover();
   }, [pinDropMode]);
+
+  // Passport mode: disable double-click zoom (single click toggles "been there",
+  // so a quick double-tap must not zoom the map).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (passportMode) map.doubleClickZoom.disable();
+    else map.doubleClickZoom.enable();
+  }, [passportMode]);
+
+  // Show/hide the static "been there" glow (off while filtering to wishes).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const v = showVisitedGlow ? "visible" : "none";
+    if (map.getLayer(VISITED_FILL_LAYER)) map.setLayoutProperty(VISITED_FILL_LAYER, "visibility", v);
+    if (map.getLayer(VISITED_GLOW_LAYER)) map.setLayoutProperty(VISITED_GLOW_LAYER, "visibility", v);
+  }, [showVisitedGlow]);
 
   return (
     <div className="absolute inset-0 h-full w-full">

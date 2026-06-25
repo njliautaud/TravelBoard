@@ -44,7 +44,8 @@ npm run dev                 # http://localhost:3000 (port 3000 pinned)
 
 - **Accounts**: register / log in with username + password. Each user has their own map and wishlist.
 - **Profiles**: switch the sidebar dropdown to any other account to view their board **read-only** — your own editing and settings are unaffected.
-- **Left sidebar**: dropdown to show **Wishes** / **Visited** (sorted by season / starred), reset to **World**, open **Settings** (map theme, USA-as-states, home airports), or pick a friend's **Profile**.
+- **Navigation**: a permanent **left edge-dock** (desktop) / **bottom nav bar** (mobile) with pillars — **Travel Journal**, **Passport**, **Travel Mates**, **Flight Tracker**, **Settings**. The Journal has a World / Wished / Visited toggle (synced with the bottom-center map toggle).
+- **Passport ("been there")**: mark the countries and US states you've already visited — they glow a soft teal, separate from your wishes (logging them creates no wish and doesn't change wish brightness). In Passport view, **single-click a country/state** on the map to toggle it, or use the searchable checklist. A one-time "map where you've been" prompt greets new (and existing) accounts.
 - **Map themes** (Settings): **Classic** (amber glow) or **Flag colors** (each country uses its flag accent color). Hover/click borders also use flag colors.
 - **Add places**: search OpenStreetMap, drop a pin, send an Instagram/TikTok link to yourself on WhatsApp, or share a link to the Android app.
 - **Cover photos**: **Generate image** searches Google Images (Serper.dev), cached in Postgres so repeat/similar searches cost 0 API credits; **Regenerate** forces a fresh pull. Results route through `/api/cover-proxy` so they load reliably; play-button overlays on social thumbnails are stripped server-side.

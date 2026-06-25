@@ -45,12 +45,23 @@ export async function GET(req: NextRequest) {
   if (targetUserId !== user.id && !(await canViewBoard(user.id, targetUserId))) {
     return NextResponse.json({ error: "You can only view your own or a friend's board." }, { status: 403 });
   }
-  const locations = await prisma.location.findMany({
-    where: { userId: targetUserId },
-    include: locationInclude,
-    orderBy: { createdAt: "desc" },
+  const [locations, owner] = await Promise.all([
+    prisma.location.findMany({
+      where: { userId: targetUserId },
+      include: locationInclude,
+      orderBy: { createdAt: "desc" },
+    }),
+    // The board owner's passport drives the static "been there" glow for whoever
+    // is viewing (your own, or a friend's fully-visible board).
+    prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { visitedRegions: true },
+    }),
+  ]);
+  return NextResponse.json({
+    locations: locations.map(serializeLocation),
+    visitedRegions: owner?.visitedRegions ?? [],
   });
-  return NextResponse.json({ locations: locations.map(serializeLocation) });
 }
 
 export async function POST(req: NextRequest) {

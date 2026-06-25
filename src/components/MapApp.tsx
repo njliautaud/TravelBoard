@@ -3,22 +3,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import TravelMap, { type FocusPoint, type TravelMapHandle } from "./TravelMap";
 import Sidebar from "./Sidebar";
+import BottomNav from "./BottomNav";
 import SidePanel, { type PanelSelection } from "./SidePanel";
 import GeoBanner from "./GeoBanner";
 import EntryForm, { type PinDropResult } from "./EntryForm";
 import AuthModal from "./AuthModal";
 import InboxOverlay from "./InboxOverlay";
 import LocationDetailsModal from "./LocationDetailsModal";
+import PassportOnboarding from "./PassportOnboarding";
 import type {
   DraftItem,
   DraftPrefill,
   LocationItem,
   NotificationItem,
+  Panel,
   SessionUser,
   StatusFilter,
   UserProfile,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS, type UserSettings } from "@/lib/settings";
+import { passportTogglePatch } from "@/lib/regions";
 import { loadUsStates, type UsStateFeature } from "@/lib/usStates";
 import { unitForLocation } from "@/lib/geoUnits";
 import {
@@ -65,12 +69,26 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   // Map view filter (bottom-center toggle) + US-state geometry for states mode.
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [usStates, setUsStates] = useState<UsStateFeature[] | null>(null);
+  // Active sidebar section, lifted so the bottom-center selector drives it too.
+  const [panel, setPanel] = useState<Panel>("journal");
 
   // Which friend's board you're viewing now (null = your own). Viewing is read-only.
   const [viewedUser, setViewedUser] = useState<UserProfile | null>(null);
+  // The viewed friend's passport (their visited regions) for the glow on their board.
+  const [viewedVisitedRegions, setViewedVisitedRegions] = useState<string[]>([]);
+  // Whether to show the one-time "map where you've been" onboarding.
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [passportOpen, setPassportOpen] = useState(false);
 
   const loggedIn = user !== null;
   const canEdit = loggedIn && viewedUser === null;
+  // Passport editing mode (own board only). While active the map temporarily
+  // shows US states (so each is clickable) and the "been there" glow is on.
+  const passportMode = canEdit && panel === "passport";
+  const showStates = settings.usaAsStates || passportMode;
+  // Hide the passport glow while filtering to wishes; show it in World/Visited
+  // and always in passport mode.
+  const showVisitedGlow = passportMode || statusFilter !== "wished";
   // Inbox badge: shared-link drafts + unread friend notifications.
   const inboxBadge = drafts.length + notifications.filter((n) => !n.read).length;
 
@@ -82,6 +100,10 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       const data = await res.json();
       // Stale-while-revalidate: patch the (already cache-painted) UI with fresh data.
       if (Array.isArray(data.locations)) setLocations(data.locations);
+      // When viewing a friend's board, capture their passport for the glow.
+      if (userId && Array.isArray(data.visitedRegions)) {
+        setViewedVisitedRegions(data.visitedRegions);
+      }
     } catch {
       // Offline / error: keep whatever is shown (the local cache, usually).
     }
@@ -112,6 +134,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
       const res = await fetch("/api/settings");
       const data = await res.json();
       if (data.settings) setSettings(data.settings);
+      setNeedsOnboarding(Boolean(data.needsPassportOnboarding));
     } catch {
       // keep defaults
     }
@@ -159,10 +182,25 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   // Switch the viewed board (null = back to your own) and reset the map context.
   const selectProfile = useCallback((profile: UserProfile | null) => {
     setViewedUser(profile);
+    setViewedVisitedRegions([]); // cleared until the friend's board loads
     setSelection(null);
     setStatusFilter("all");
     setSidebarOpen(false);
     mapRef.current?.resetWorldView();
+  }, []);
+
+  // Mark the "map where you've been" onboarding finished/dismissed (one-shot).
+  const finishOnboarding = useCallback(async () => {
+    setNeedsOnboarding(false);
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passportOnboarded: true }),
+      });
+    } catch {
+      // best-effort; the flag re-shows next load if this failed
+    }
   }, []);
 
   useEffect(() => {
@@ -193,14 +231,15 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     };
   }, [loggedIn, refreshDrafts, refreshNotifications]);
 
-  // Lazy-load US-state polygons the first time states mode is turned on.
+  // Lazy-load US-state polygons the first time states mode is needed (real
+  // setting, or temporarily while in passport mode).
   useEffect(() => {
-    if (settings.usaAsStates && !usStates) {
+    if (showStates && !usStates) {
       loadUsStates()
         .then(setUsStates)
         .catch(() => {});
     }
-  }, [settings.usaAsStates, usStates]);
+  }, [showStates, usStates]);
 
   // Which map unit (country, or US state in states mode) a wish belongs to.
   // Shared with the map so the SidePanel shows the same grouping.
@@ -420,6 +459,14 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     });
   }, []);
 
+  // Double-click a country/state on the map (in passport mode) to add/remove it.
+  const handlePassportToggle = useCallback(
+    (code: string) => {
+      handleSettingsChange(passportTogglePatch(settings.visitedRegions, code, settings.usaAsStates));
+    },
+    [handleSettingsChange, settings.visitedRegions, settings.usaAsStates],
+  );
+
   const handleDeleteDraft = async (draft: DraftItem) => {
     await fetch(`/api/drafts/${draft.id}`, { method: "DELETE" });
     refreshDrafts();
@@ -478,6 +525,8 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     setNotifications([]);
     setSettings(DEFAULT_SETTINGS);
     setViewedUser(null);
+    setViewedVisitedRegions([]);
+    setNeedsOnboarding(false);
     setSelection(null);
     setZoomedIn(false);
     mapRef.current?.resetWorldView();
@@ -494,6 +543,8 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         settingsSaving={settingsSaving}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
+        panel={panel}
+        onPanelChange={setPanel}
         viewedUser={viewedUser}
         friendsRefresh={friendsRefresh}
         onFriendsChanged={handleFriendsChanged}
@@ -505,6 +556,22 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         onSettingsChange={handleSettingsChange}
       />
 
+      {loggedIn && (
+        <BottomNav
+          panel={panel}
+          sheetOpen={sidebarOpen}
+          canEdit={canEdit}
+          onSelect={(p) => {
+            // Tap the active section again to dismiss its sheet; otherwise switch + open.
+            if (p === panel && sidebarOpen) setSidebarOpen(false);
+            else {
+              setPanel(p);
+              setSidebarOpen(true);
+            }
+          }}
+        />
+      )}
+
       <div className="relative flex-1 overflow-hidden">
         <TravelMap
           ref={mapRef}
@@ -513,7 +580,11 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           focusPoint={focusPoint}
           mapTheme={settings.mapTheme}
           statusFilter={statusFilter}
-          usaAsStates={settings.usaAsStates}
+          usaAsStates={showStates}
+          visitedRegions={viewedUser ? viewedVisitedRegions : settings.visitedRegions}
+          showVisitedGlow={showVisitedGlow}
+          passportMode={passportMode}
+          onPassportToggle={handlePassportToggle}
           states={usStates}
           onCountryClick={handleCountryClick}
           onDotClick={handleDotClick}
@@ -550,19 +621,9 @@ export default function MapApp({ initialLocations }: MapAppProps) {
 
         <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col items-center gap-2 p-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="pointer-events-auto flex w-full items-center justify-between gap-2 sm:w-auto">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              aria-label="Open wish list"
-              className="rounded-full border border-slate-700/60 bg-slate-900/80 p-2 text-slate-300 backdrop-blur hover:text-white sm:hidden"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 6h18M3 12h18M3 18h18" />
-              </svg>
-            </button>
             <h1 className="rounded-full border border-slate-700/60 bg-slate-900/80 px-4 py-1.5 text-sm font-bold tracking-wide text-amber-300 backdrop-blur glow-text sm:hidden">
               TravelBoard
             </h1>
-            <span className="w-8 sm:hidden" />
           </div>
           <div className="pointer-events-auto sm:absolute sm:left-1/2 sm:top-3 sm:-translate-x-1/2">
             <GeoBanner locations={locations} />
@@ -613,7 +674,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         {loggedIn && (
           <div
             className={[
-              "pointer-events-none absolute bottom-6 z-20 flex flex-col items-center gap-2",
+              "pointer-events-none absolute bottom-20 z-20 flex flex-col items-center gap-2 sm:bottom-6",
               "left-0 transition-[left,right] duration-300 ease-out",
               sidebarOpen ? "max-sm:left-72" : "",
               selection ? "right-0 sm:right-[400px]" : "right-0",
@@ -634,18 +695,21 @@ export default function MapApp({ initialLocations }: MapAppProps) {
               </button>
             )}
 
-            {/* Wished / Visited / All map filter */}
+            {/* World / Wished / Visited map filter + Passport mode (own board) */}
             <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-slate-600/80 bg-slate-900/90 p-1 text-sm shadow-lg backdrop-blur">
               {([
                 ["all", "World", "bg-amber-500/90 text-slate-950"],
                 ["wished", "Wished", "bg-amber-500/90 text-slate-950"],
                 ["visited", "Visited", "bg-emerald-500/90 text-slate-950"],
               ] as const).map(([value, label, activeCls]) => {
-                const active = statusFilter === value;
+                const active = !passportMode && statusFilter === value;
                 return (
                   <button
                     key={value}
-                    onClick={() => setStatusFilter(value)}
+                    onClick={() => {
+                      setStatusFilter(value);
+                      if (panel === "passport") setPanel("journal");
+                    }}
                     className={`rounded-full px-4 py-1.5 font-medium transition ${
                       active ? activeCls : "text-slate-300 hover:text-amber-200"
                     }`}
@@ -654,6 +718,16 @@ export default function MapApp({ initialLocations }: MapAppProps) {
                   </button>
                 );
               })}
+              {canEdit && (
+                <button
+                  onClick={() => setPanel("passport")}
+                  className={`rounded-full px-4 py-1.5 font-medium transition ${
+                    passportMode ? "bg-teal-500/90 text-slate-950" : "text-slate-300 hover:text-teal-200"
+                  }`}
+                >
+                  Passport
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -671,6 +745,13 @@ export default function MapApp({ initialLocations }: MapAppProps) {
             </div>
           </div>
         )}
+
+        <PassportOnboarding
+          open={loggedIn && viewedUser === null && needsOnboarding}
+          settings={settings}
+          onSettingsChange={handleSettingsChange}
+          onFinish={finishOnboarding}
+        />
       </div>
 
       <SidePanel

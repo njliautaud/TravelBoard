@@ -1,15 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { isInSeason, sortBySeason } from "@/lib/season";
-import type { LocationItem, StatusFilter, UserProfile } from "@/lib/types";
+import type { LocationItem, Panel, StatusFilter, UserProfile } from "@/lib/types";
 import type { UserSettings } from "@/lib/settings";
 import SettingsPanel from "./SettingsPanel";
 import FriendsTab from "./FriendsTab";
-
-/** Top-level sidebar section. The journal's wished/visited/all filter is NOT a
- *  panel — it's the shared `statusFilter` (synced with the map toggle). */
-type Panel = "journal" | "friends" | "flights" | "settings";
+import PassportPanel from "./PassportPanel";
+import { NAV_PILLARS, NavIcon } from "./navConfig";
 
 interface SidebarProps {
   locations: LocationItem[];
@@ -24,6 +22,9 @@ interface SidebarProps {
   /** Shared wished/visited/all filter (single source of truth with the map toggle). */
   statusFilter: StatusFilter;
   onStatusFilterChange: (filter: StatusFilter) => void;
+  /** Active section, lifted so the bottom-center selector can drive it too. */
+  panel: Panel;
+  onPanelChange: (panel: Panel) => void;
   /** The friend's board you're viewing now (null = your own). */
   viewedUser: UserProfile | null;
   /** Bumped by the parent to force the Friends tab to refetch (e.g. after an inbox accept). */
@@ -89,6 +90,8 @@ export default function Sidebar({
   settingsSaving,
   statusFilter,
   onStatusFilterChange,
+  panel,
+  onPanelChange,
   viewedUser,
   friendsRefresh,
   onFriendsChanged,
@@ -99,7 +102,6 @@ export default function Sidebar({
   onToggleStar,
   onSettingsChange,
 }: SidebarProps) {
-  const [panel, setPanel] = useState<Panel>("journal");
   const sorted = useMemo(() => sortBySeason(locations), [locations]);
 
   // The list mirrors the shared filter: Wished = to-visit, Visited = visited, World = everything.
@@ -120,20 +122,23 @@ export default function Sidebar({
     <>
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm sm:hidden"
+          className="fixed inset-0 z-30 bg-black/30 sm:hidden"
           onClick={onClose}
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-950/95 backdrop-blur transition-transform duration-300
-          sm:static sm:z-auto sm:translate-x-0 sm:bg-slate-950 sm:backdrop-blur-none
-          ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-x-0 bottom-16 z-40 flex h-[70vh] w-full flex-col rounded-t-2xl border-t border-slate-800 bg-slate-950/97 backdrop-blur transition-transform duration-300
+          sm:static sm:inset-auto sm:bottom-auto sm:h-auto sm:w-72 sm:shrink-0 sm:rounded-none sm:border-r sm:border-t-0 sm:bg-slate-950 sm:backdrop-blur-none
+          ${open ? "translate-y-0" : "translate-y-full"} sm:translate-y-0`}
       >
+        {/* Grab handle (mobile bottom sheet) */}
+        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-700 sm:hidden" />
+
         <div className="flex items-center justify-between border-b border-slate-800 p-4">
           <h1 className="text-base font-bold tracking-wide text-amber-300 glow-text">TravelBoard</h1>
           <button
             onClick={onClose}
-            aria-label="Close sidebar"
+            aria-label="Close"
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 sm:hidden"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -142,22 +147,35 @@ export default function Sidebar({
           </button>
         </div>
 
-        <div className="border-b border-slate-800 px-3 py-2">
-          <label htmlFor="sidebar-view" className="sr-only">
-            Section
-          </label>
-          <select
-            id="sidebar-view"
-            value={panel}
-            onChange={(e) => setPanel(e.target.value as Panel)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm font-medium text-slate-200 focus:border-amber-500/60 focus:outline-none"
-          >
-            <option value="journal">Travel Journal</option>
-            <option value="friends">Travel Mates</option>
-            <option value="flights">Flight Tracker</option>
-            <option value="settings">Settings</option>
-          </select>
-        </div>
+        {/* Edge-dock nav — always-visible pillars (desktop). Mobile uses BottomNav. */}
+        <nav className="hidden border-b border-slate-800 py-2 sm:block">
+          {NAV_PILLARS.filter((p) => editor || p.panel !== "passport").map((item) => {
+            const active = panel === item.panel;
+            const isTeal = item.accent === "teal";
+            return (
+              <button
+                key={item.panel}
+                onClick={() => onPanelChange(item.panel)}
+                aria-current={active ? "page" : undefined}
+                className={`relative flex w-full items-center gap-3 px-4 py-2.5 text-sm font-medium transition ${
+                  active
+                    ? isTeal
+                      ? "bg-teal-500/10 text-teal-200"
+                      : "bg-amber-500/10 text-amber-200"
+                    : "text-slate-400 hover:bg-slate-900/60 hover:text-slate-200"
+                }`}
+              >
+                {active && (
+                  <span
+                    className={`absolute left-0 top-0 h-full w-0.5 ${isTeal ? "bg-teal-400" : "bg-amber-400"}`}
+                  />
+                )}
+                <NavIcon panel={item.panel} size={18} />
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
 
         {viewedUser && (
           <div className="flex items-center justify-between gap-2 border-b border-slate-800 bg-amber-500/5 px-4 py-2 text-xs">
@@ -173,7 +191,31 @@ export default function Sidebar({
           </div>
         )}
 
-        {panel === "friends" ? (
+        {panel === "passport" ? (
+          !loggedIn ? (
+            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+              <p className="text-sm text-slate-400">Log in to build your passport.</p>
+            </div>
+          ) : !editor ? (
+            <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+              <p className="text-sm text-slate-400">
+                You can only edit your own passport. Switch back to your board to add visited
+                countries and states.
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="px-4 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                Passport <span className="text-slate-600">— where you&apos;ve been</span>
+              </p>
+              <PassportPanel
+                visitedRegions={settings.visitedRegions}
+                usaAsStates={settings.usaAsStates}
+                onSettingsChange={onSettingsChange}
+              />
+            </>
+          )
+        ) : panel === "friends" ? (
           loggedIn ? (
             <FriendsTab
               refreshKey={friendsRefresh}

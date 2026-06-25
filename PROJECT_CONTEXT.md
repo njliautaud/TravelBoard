@@ -1,7 +1,7 @@
 # TravelBoard — AI Context & Handoff Document
 
 > Purpose: lets a fresh AI session pick up where the last one left off. Read fully before editing.
-> Last updated: 2026-06-22.
+> Last updated: 2026-06-25.
 
 ---
 
@@ -10,6 +10,7 @@
 TravelBoard is a **personal travel bucket list & journal** for William and his partner:
 
 - **Visual wishlist**: countries glow by wish density (choropleth heatmap).
+- **Passport ("been there")**: a per-user list of visited countries / US states (`User.visitedRegions`, **independent of wishes** — no empty wish rows, no effect on wish glow) draws a separate static teal glow. A "Passport" nav section + a one-time "map where you've been" onboarding let users light up their history; click (or search-pick) a country/state to toggle it. See §3.
 - **Journal**: pins hold notes, photos, links, seasons, reminders, flight-deal thresholds.
 - **Draft inbox**: `POST /api/drafts/ingest` → drafts inbox → smart-fill from caption/location/Wikimedia cover. Reserved for future producers (notifications, flight deals); links are now added via the Android share form.
 - **Android app**: native share target → always opens the prefilled form; reaches the server from anywhere via **Tailscale** with a saved-servers switcher. See `android/`.
@@ -45,17 +46,29 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 
 ```
 src/app/page.tsx
-  └─ MapApp.tsx              — owns the shared wished/visited/all filter (`statusFilter`, the single
-       │                       source of truth) reflected by BOTH the bottom-center map toggle
-       │                       (World/Wished/Visited) and the sidebar; lazy-loads US-state polygons
-       ├─ Sidebar.tsx        — section dropdown: Travel Journal | Travel Mates | Flight Tracker
-       │                       (placeholder) | Settings. The Journal panel = Add place button + a
-       │                       World/Wished/Visited toggle (synced with the map toggle) + the list
-       ├─ SettingsPanel.tsx  — map theme, USA one-country-vs-by-state, home airports
+  └─ MapApp.tsx              — owns the shared wished/visited/all filter (`statusFilter`) AND the active
+       │                       nav section (`panel`, lifted here). `passportMode = canEdit && panel ==
+       │                       "passport"`: while active the map temporarily shows US states, hides
+       │                       to-visit wishes (shows only Visited), and turns on the "been there" glow.
+       │                       Lazy-loads US-state polygons (real setting OR passport mode).
+       ├─ Sidebar.tsx        — content container. Desktop: a permanent left **edge-dock nav** (icon+text
+       │                       pillars Travel Journal | Passport | Travel Mates | Flight Tracker | Settings,
+       │                       active = left accent bar + bg glow) — the old <select> dropdown is GONE.
+       │                       On mobile it's a bottom sheet (grab handle); the dropdown/nav is replaced by:
+       ├─ BottomNav.tsx      — mobile-only fixed bottom navigation bar (the 5 pillars, thumb-reachable);
+       │                       tapping a pillar switches `panel` + opens its sheet, tap-again dismisses
+       ├─ navConfig.tsx      — shared pillar list + icons (`NAV_PILLARS`, `NavIcon`) used by both navs
+       ├─ PassportPanel.tsx  — searchable Countries / US-States checklist (two collapsible groups);
+       │                       toggling patches `settings.visitedRegions` (+ auto state-split rules)
+       ├─ PassportOnboarding.tsx — one-time "Welcome → Map out where you've been" modal (welcome card →
+       │                       docked picker; map glows live behind). Shown when `passportOnboardedAt` null
+       ├─ SettingsPanel.tsx  — map theme, USA one-country-vs-by-state, home airports, + OSM/CARTO credit footer
        ├─ TravelMap.tsx      — heatmap, flag borders, Alaska/Hawaii zoom, world-view zoom threshold.
-       │                       Right-click a country → floating "Add wish in <country>" (own board only)
-       │                       `rebuildGeo()` is the single source of truth for glow + dots:
-       │                       applies statusFilter and swaps USA→state features in states mode
+       │                       Right-click a country → floating "Add wish in <country>" (own board only).
+       │                       Static "been there" glow layers (`country-visited-fill/-glow`) driven by a
+       │                       `visited` feature-state, independent of wish `count`. In passport mode a
+       │                       single click on a country/state toggles it (dbl-click-zoom disabled).
+       │                       `rebuildGeo()` is the single source of truth for glow + dots.
        ├─ SidePanel.tsx      — right panel / mobile bottom sheet (auto-closes on world view).
        │                       Country with >1 wish = condensed cards (big left photo) with
        │                       pointer-based drag-to-reorder (→ /api/locations/reorder); 1 wish = full card
@@ -66,6 +79,11 @@ src/app/page.tsx
        ├─ DraftInbox.tsx
        └─ AuthModal.tsx
 ```
+
+The bottom-center map toggle is **World / Wished / Visited / Passport** (Passport on own board only),
+synced with `panel`. The map's +/- zoom control and on-map attribution were removed (credit lives in
+Settings; zoom via scroll/pinch). `Panel` type + `StatusFilter` live in `src/lib/types.ts`;
+passport region options + the toggle rule (`passportTogglePatch`) live in `src/lib/regions.ts`.
 
 `MapApp` also reads a `?share=<url>&text=` query param (Android share target) and opens
 the prefilled `EntryForm` once logged in.
@@ -124,7 +142,7 @@ the prefilled `EntryForm` once logged in.
 
 Key models:
 
-- **User**: `username`, `passwordHash`, `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes), `usaAsStates` (Boolean). Plus `Friendship` (accepted/pending) + `Notification` for the social layer.
+- **User**: `username`, `passwordHash`, `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes), `usaAsStates` (Boolean), **`visitedRegions`** (string[] of ISO-3 country / `US-XX` state codes — the passport, independent of `Location`), **`passportOnboardedAt`** (DateTime? — null ⇒ show the one-time onboarding once). Plus `Friendship` (accepted/pending) + `Notification` for the social layer.
 - **Location**: per-user wishes; `starred`, `sortOrder`, seasons, `coverImageUrl`, `priceThreshold`, media, flight prices, **`isPublic`** (publish a single spot to the public feed).
 - **Draft**: inbox items (`rawText`, `extractedUrl`, `source`); fed by `POST /api/drafts/ingest`.
 - **FlightPrice**: ingested via API key; latest price drives `isDeal` in serialize.
@@ -133,7 +151,7 @@ Key models:
 
 **Access control** lives in `src/lib/access.ts`: `areFriends(a,b)` (accepted friendship, true for self) and `canViewBoard(viewerId|null, targetId)` (owner or accepted friend). A full board is owner/friend-only; a single spot is public only when `isPublic` (served by `/api/public/feed`, never exposing notes/reminders/prices).
 
-Migrations now also include: `…friends_inbox`, `…location_backup` + `…drop_location_backup`, `20260624120000_stored_image`, `20260625000000_maptheme_enum_repair`, `20260625100000_location_public`.
+Migrations now also include: `…friends_inbox`, `…location_backup` + `…drop_location_backup`, `20260624120000_stored_image`, `20260625000000_maptheme_enum_repair`, `20260625100000_location_public`, `20260625120000_user_visited_regions` (passport: `visitedRegions` + `passportOnboardedAt`, additive/idempotent).
 
 > **DB = Supabase** (migrated from Neon 2026-06-24). Local dev `.env` uses the **direct** host
 > `db.<ref>.supabase.co:5432` (IPv6); Vercel uses the **transaction pooler :6543** (see §14).
@@ -158,11 +176,11 @@ Migrations now also include: `…friends_inbox`, `…location_backup` + `…drop
 | `/api/auth/login`, `/register`, `/logout`, `/me` | — | Session auth |
 | `/api/users`, `/api/users/[id]/stats` | session | Account list + per-profile stats (friend-gated) |
 | `/api/friends`, `/api/friends/[id]`, `/api/notifications` | session | Friend requests + inbox |
-| `/api/locations`, `/api/locations/[id]`, `/api/locations/[id]/star` | session writes | Owner-scoped; `GET ?userId=` views a board **only if owner or accepted friend** (else 403) — see `access.ts` |
+| `/api/locations`, `/api/locations/[id]`, `/api/locations/[id]/star` | session writes | Owner-scoped; `GET ?userId=` views a board **only if owner or accepted friend** (else 403) — see `access.ts`. GET also returns the board owner's `visitedRegions` (passport glow on a friend's board) |
 | `/api/public/feed` | **none** | Public feed of published spots (`isPublic`), read-only, safe fields only |
 | `/api/stored-image/[id]` | none | Serves bytes from `StoredImage` |
 | `/api/locations/reorder` | session | Body `{ ids: string[] }` → writes `sortOrder` = index (per-country order) |
-| `/api/settings` | session | `mapTheme`, `homeAirports` |
+| `/api/settings` | session | GET/PATCH `mapTheme`, `homeAirports`, `usaAsStates`, `visitedRegions`; GET also returns `needsPassportOnboarding`; PATCH `passportOnboarded:true` stamps `passportOnboardedAt` |
 | `/api/drafts`, `/api/drafts/[id]`, `/api/drafts/ingest`, `/api/drafts/enrich` | session / ingest key | Draft inbox + enrichment |
 | `/api/cover-image` | public | Multi-candidate Wikimedia search |
 | `/api/fetch-previews` | public | Serper Google Images, cache-first (exact → fuzzy → pull); `refresh=1` forces pull |
@@ -203,6 +221,13 @@ Migrations now also include: `…friends_inbox`, `…location_backup` + `…drop
 ## 8. Current Status (2026-06-25)
 
 ### Done
+
+**2026-06-25 — Passport ("been there") + navigation refactor:**
+- **Passport feature**: `User.visitedRegions` (ISO-3 / `US-XX`, independent of `Location`) drives a static teal glow (`country-visited-fill/-glow`, feature-state `visited`, never tied to wish `count`). Whole-USA lights when "USA as states" is off and any state is logged; per-state when on. Logging >5 states — or selecting whole-USA **and** individual states — permanently flips to per-state mode (no overlap). Migration `20260625120000_user_visited_regions`.
+- **Passport view** (sidebar nav + bottom-center toggle): shows only Visited places under the glow; **single-click a country/state on the map toggles it** (dbl-click-zoom disabled in this mode); also a searchable two-group (Countries / US States) checklist in the panel.
+- **One-time onboarding** (`PassportOnboarding`): "Welcome → Map out where you've been" auto-shows for new signups **and** existing users once (`passportOnboardedAt` null). Entering passport mode temporarily turns on per-state view.
+- **Navigation refactor**: removed the section **dropdown**; desktop now has a permanent **left edge-dock** (icon+text pillars, active = accent bar + bg glow), mobile a **bottom navigation bar** (`BottomNav`). Section state (`panel`) lifted to `MapApp` → switching never remounts the map. Shared `navConfig.tsx`; `Panel` type moved to `lib/types.ts`.
+- **Map chrome**: removed the +/- zoom control and moved the OpenStreetMap/CARTO attribution to the bottom of the Settings panel.
 
 **2026-06-24 → 25 — Supabase migration + public soft-launch on Vercel:**
 - **DB + media storage moved Neon → Supabase** (cloud, shared by local dev AND the live site). Data migrated + verified. The long-standing `mapTheme` drift is now captured as migration `20260625000000_maptheme_enum_repair` (guarded, data-preserving). Version-independent backup/restore: `scripts/export-db-backup.mjs` + `import-db-backup.mjs` (JSON — the local pg_dump 16 can't dump the PG17 server). See `SUPABASE_MIGRATION.md`.

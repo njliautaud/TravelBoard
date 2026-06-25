@@ -158,6 +158,27 @@ export default function SettingsPanel({ settings, saving, onChange }: SettingsPa
       </section>
 
       {saving && <p className="mt-3 text-center text-[11px] text-slate-500">Saving…</p>}
+
+      <p className="mt-6 border-t border-slate-800 pt-3 text-[11px] leading-relaxed text-slate-500">
+        Map data &copy;{" "}
+        <a
+          href="https://www.openstreetmap.org/copyright"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-slate-600 underline-offset-2 hover:text-slate-300"
+        >
+          OpenStreetMap
+        </a>{" "}
+        contributors &copy;{" "}
+        <a
+          href="https://carto.com/attributions"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-slate-600 underline-offset-2 hover:text-slate-300"
+        >
+          CARTO
+        </a>
+      </p>
     </div>
   );
 }
