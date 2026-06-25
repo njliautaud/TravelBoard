@@ -3,7 +3,7 @@
 /**
  * Phase 3 — User Profile panel.
  * Shows travel stats, trip count, badges, saved deals count.
- * Integrates with Clerk auth for identity and Prisma for travel data.
+ * Integrates with Supabase auth for identity and Prisma for travel data.
  */
 
 import { useEffect, useState } from "react";

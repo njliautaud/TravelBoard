@@ -1,10 +1,10 @@
 /**
- * Unified auth layer: uses Clerk when CLERK keys are configured,
- * falls back to the legacy bcrypt/cookie auth otherwise.
+ * Unified auth layer: uses Supabase when configured, falls back to
+ * the legacy bcrypt/cookie auth otherwise.
  *
  * All API routes should use `getAuthUser()` instead of directly
- * calling getSessionUser or Clerk's auth() — this module picks
- * the right provider automatically.
+ * calling getSessionUser — this module picks the right provider
+ * automatically.
  */
 
 import { prisma } from "./prisma";
@@ -12,66 +12,71 @@ import { prisma } from "./prisma";
 export interface AuthUser {
   id: string;        // DB user id
   username: string;
-  clerkId?: string;  // Only set when using Clerk
-  imageUrl?: string | null; // Clerk profile image
+  supabaseId?: string;  // Only set when using Supabase
+  imageUrl?: string | null;
   role?: string;     // UserRole from DB (OWNER, EDITOR, VIEWER)
 }
 
-const isClerkEnabled = !!(
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
-  process.env.CLERK_SECRET_KEY
+const isSupabaseEnabled = !!(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export function useClerk(): boolean {
-  return isClerkEnabled;
+export function useSupabase(): boolean {
+  return isSupabaseEnabled;
 }
 
 /**
  * Get the authenticated user for the current request.
- * Works with both Clerk and legacy auth.
+ * Works with both Supabase and legacy auth.
  */
 export async function getAuthUser(): Promise<AuthUser | null> {
-  if (isClerkEnabled) {
-    return getClerkUser();
+  if (isSupabaseEnabled) {
+    return getSupabaseUser();
   }
   return getLegacyUser();
 }
 
-async function getClerkUser(): Promise<AuthUser | null> {
+async function getSupabaseUser(): Promise<AuthUser | null> {
   try {
-    const { auth, currentUser } = await import("@clerk/nextjs/server");
-    const { userId } = await auth();
-    if (!userId) return null;
+    const { createServerSupabaseClient } = await import("./supabase");
+    const supabase = await createServerSupabaseClient();
+    const { data: { user: supaUser } } = await supabase.auth.getUser();
+    if (!supaUser) return null;
 
-    // Find or create user in our DB linked to Clerk ID
+    const supabaseId = supaUser.id;
+
+    // Find or create user in our DB linked to Supabase ID
+    // externalAuthId stores the Supabase user ID
     let dbUser = await prisma.user.findFirst({
-      where: { clerkId: userId },
-      select: { id: true, username: true, clerkId: true, imageUrl: true, role: true },
+      where: { externalAuthId: supabaseId },
+      select: { id: true, username: true, externalAuthId: true, imageUrl: true, role: true },
     });
 
     if (!dbUser) {
-      const clerkUser = await currentUser();
+      const email = supaUser.email;
       const username =
-        clerkUser?.username ||
-        clerkUser?.firstName ||
-        clerkUser?.emailAddresses?.[0]?.emailAddress?.split("@")[0] ||
-        `user_${userId.slice(-6)}`;
+        supaUser.user_metadata?.username ||
+        supaUser.user_metadata?.full_name ||
+        email?.split("@")[0] ||
+        `user_${supabaseId.slice(-6)}`;
 
       dbUser = await prisma.user.create({
         data: {
           username,
-          passwordHash: "", // Not used with Clerk
-          clerkId: userId,
-          imageUrl: clerkUser?.imageUrl,
+          passwordHash: "", // Not used with Supabase auth
+          externalAuthId: supabaseId,
+          email,
+          imageUrl: supaUser.user_metadata?.avatar_url ?? null,
         },
-        select: { id: true, username: true, clerkId: true, imageUrl: true, role: true },
+        select: { id: true, username: true, externalAuthId: true, imageUrl: true, role: true },
       });
     }
 
     return {
       id: dbUser.id,
       username: dbUser.username,
-      clerkId: userId,
+      supabaseId,
       imageUrl: dbUser.imageUrl,
       role: dbUser.role,
     };

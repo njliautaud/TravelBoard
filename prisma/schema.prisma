@@ -44,7 +44,7 @@ model User {
   id           String     @id @default(cuid())
   username     String     @unique
   passwordHash String     @default("")
-  clerkId      String?    @unique
+  externalAuthId String?  @unique
   imageUrl     String?
   email        String?
   role         UserRole   @default(EDITOR)
@@ -134,7 +134,7 @@ model Location {
   status         VisitStatus   @default(TO_VISIT)
   notes          String?
   reminderAt     DateTime?
-  priceThreshold Float?
+  priceThreshold Decimal?
   starred        Boolean       @default(false)
   sortOrder      Int           @default(0) /// manual order within a country list (lower = higher up)
   isPublic       Boolean       @default(false) /// published to the public feed (the rest of the board stays private)
@@ -169,7 +169,7 @@ model FlightPrice {
   id          String   @id @default(cuid())
   location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
   locationId  String
-  price       Float
+  price       Decimal
   currency    String   @default("USD")
   origin      String?
   destination String?

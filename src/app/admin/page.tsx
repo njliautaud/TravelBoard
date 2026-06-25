@@ -507,9 +507,9 @@ function ContentTab({ stats }: { stats: AdminStats }) {
 // ---------------------------------------------------------------------------
 
 function SystemTab({ stats }: { stats: AdminStats }) {
-  const clerkConfigured = !!(
-    typeof window !== "undefined" &&
-    document.querySelector('script[src*="clerk"]')
+  const authConfigured = !!(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   );
 
   return (
@@ -547,8 +547,8 @@ function SystemTab({ stats }: { stats: AdminStats }) {
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 divide-y divide-slate-800">
           {[
             {
-              name: "Clerk (Auth)",
-              ok: clerkConfigured || stats.providers.flightApi, // approximate -- Clerk is configured if page loads
+              name: "Supabase (Auth)",
+              ok: authConfigured,
               description: "User authentication and session management",
             },
             {
@@ -609,7 +609,7 @@ function SystemTab({ stats }: { stats: AdminStats }) {
             </div>
             <div>
               <p className="text-xs text-slate-500 uppercase">Auth Provider</p>
-              <p className="text-sm text-slate-300">Clerk + Legacy Fallback</p>
+              <p className="text-sm text-slate-300">Supabase + Legacy Fallback</p>
             </div>
             <div>
               <p className="text-xs text-slate-500 uppercase">Cache Origins</p>

@@ -6,9 +6,9 @@ import { prisma } from "./prisma";
 const SESSION_COOKIE = "tb_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-const isClerkEnabled = !!(
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
-  process.env.CLERK_SECRET_KEY
+const isSupabaseEnabled = !!(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
 function secret(): string {
@@ -42,37 +42,39 @@ export function parseSessionToken(token: string | undefined): string | null {
 }
 
 /**
- * Get the authenticated user. Supports both Clerk and legacy cookie auth.
- * When Clerk is enabled, it auto-creates/links a DB user for the Clerk identity.
+ * Get the authenticated user. Supports both Supabase and legacy cookie auth.
+ * When Supabase is enabled, it auto-creates/links a DB user for the Supabase identity.
  */
 export async function getSessionUser(): Promise<{ id: string; username: string } | null> {
-  // Try Clerk first when enabled
-  if (isClerkEnabled) {
+  // Try Supabase first when enabled
+  if (isSupabaseEnabled) {
     try {
-      const { auth, currentUser } = await import("@clerk/nextjs/server");
-      const { userId } = await auth();
-      if (userId) {
-        // Find or create user linked to Clerk
+      const { createServerSupabaseClient } = await import("./supabase");
+      const supabase = await createServerSupabaseClient();
+      const { data: { user: supaUser } } = await supabase.auth.getUser();
+      if (supaUser) {
+        const supabaseId = supaUser.id;
+        // Find or create user linked to Supabase
         let dbUser = await prisma.user.findFirst({
-          where: { clerkId: userId },
+          where: { externalAuthId: supabaseId },
           select: { id: true, username: true },
         });
 
         if (!dbUser) {
-          const clerkUser = await currentUser();
+          const email = supaUser.email;
           const username =
-            clerkUser?.username ||
-            clerkUser?.firstName ||
-            clerkUser?.emailAddresses?.[0]?.emailAddress?.split("@")[0] ||
-            `user_${userId.slice(-6)}`;
+            supaUser.user_metadata?.username ||
+            supaUser.user_metadata?.full_name ||
+            email?.split("@")[0] ||
+            `user_${supabaseId.slice(-6)}`;
 
           dbUser = await prisma.user.create({
             data: {
               username,
               passwordHash: "",
-              clerkId: userId,
-              email: clerkUser?.emailAddresses?.[0]?.emailAddress,
-              imageUrl: clerkUser?.imageUrl,
+              externalAuthId: supabaseId,
+              email,
+              imageUrl: supaUser.user_metadata?.avatar_url ?? null,
             },
             select: { id: true, username: true },
           });

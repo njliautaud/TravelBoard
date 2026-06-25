@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useClerkUser, useClerkAuth, CLERK_ENABLED } from "@/lib/useClerkSafe";
-import ClerkUserButton from "./ClerkUserButton";
+import { useSupabaseUser, useSupabaseAuthActions } from "@/lib/useSupabaseAuth";
+import UserButton from "./UserButton";
 import MapApp from "./MapApp";
 import JournalView from "./JournalView";
 import SettingsView from "./SettingsView";
@@ -21,7 +21,10 @@ import type { LocationItem, SessionUser } from "@/lib/types";
 import { getDemoMode } from "@/lib/demoData";
 import { trackPageView, trackSignIn, trackOnboardingComplete, trackFeatureUse } from "@/lib/tracker";
 
-// CLERK_ENABLED is imported from @/lib/useClerkSafe
+const SUPABASE_ENABLED = !!(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 type Tab = "map" | "search" | "alerts" | "journal" | "tools" | "community" | "settings";
 
@@ -108,9 +111,9 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 export default function AppShell({ initialLocations }: AppShellProps) {
   const router = useRouter();
 
-  // Clerk hooks — safe wrappers return defaults when Clerk is not enabled
-  const { isLoaded: clerkLoaded, isSignedIn: clerkSignedIn, user: clerkUser } = useClerkUser();
-  const { signOut } = useClerkAuth();
+  // Supabase auth hooks
+  const { isLoaded: authLoaded, isSignedIn: authSignedIn, user: supaUser } = useSupabaseUser();
+  const { signOut } = useSupabaseAuthActions();
 
   const [activeTab, setActiveTab] = useState<Tab>("map");
   const [alertCount, setAlertCount] = useState(0);
@@ -128,7 +131,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   // Map always shows deals — unified experience, no separate deals tab
   const dealsMode = activeTab === "map";
 
-  // Auth check — Clerk path vs legacy path
+  // Auth check — Supabase path vs legacy path
   useEffect(() => {
     const { prefs: loadedPrefs } = loadLocalPrefs();
     setPrefs(loadedPrefs);
@@ -169,15 +172,15 @@ export default function AppShell({ initialLocations }: AppShellProps) {
         });
     };
 
-    if (CLERK_ENABLED) {
-      // Wait for Clerk to load
-      if (!clerkLoaded) return;
+    if (SUPABASE_ENABLED) {
+      // Wait for Supabase to load session
+      if (!authLoaded) return;
 
-      if (clerkSignedIn && clerkUser) {
-        // Map Clerk user to SessionUser shape for downstream compatibility
+      if (authSignedIn && supaUser) {
+        // Map Supabase user to SessionUser shape for downstream compatibility
         const sessionUser: SessionUser = {
-          id: clerkUser.id,
-          username: clerkUser.username ?? clerkUser.firstName ?? clerkUser.primaryEmailAddress?.emailAddress ?? "user",
+          id: supaUser.id,
+          username: supaUser.user_metadata?.username ?? supaUser.user_metadata?.full_name ?? supaUser.email?.split("@")[0] ?? "user",
         };
         setCurrentUser(sessionUser);
         checkOnboarding();
@@ -197,7 +200,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
           // API unavailable — stay on landing, require login
         });
     }
-  }, [clerkLoaded, clerkSignedIn, clerkUser]);
+  }, [authLoaded, authSignedIn, supaUser]);
 
   // Track page views on tab change
   useEffect(() => {
@@ -206,7 +209,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
 
   // Track sign-in when user first authenticates
   useEffect(() => {
-    if (currentUser) trackSignIn(CLERK_ENABLED ? "clerk" : "legacy");
+    if (currentUser) trackSignIn(SUPABASE_ENABLED ? "supabase" : "legacy");
   }, [currentUser]);
 
   // Poll unread alert count periodically (skip in demo mode and when not logged in)
@@ -278,7 +281,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             </div>
             <button
               onClick={() => {
-                if (CLERK_ENABLED) {
+                if (SUPABASE_ENABLED) {
                   router.push("/sign-up");
                 } else {
                   setShowAuth(true);
@@ -290,7 +293,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             </button>
             <button
               onClick={() => {
-                if (CLERK_ENABLED) {
+                if (SUPABASE_ENABLED) {
                   router.push("/sign-in");
                 } else {
                   setShowAuth(true);
@@ -415,9 +418,9 @@ export default function AppShell({ initialLocations }: AppShellProps) {
         {/* Profile / Activity / Changelog */}
         {(
           <>
-            {CLERK_ENABLED && clerkSignedIn ? (
+            {SUPABASE_ENABLED && authSignedIn ? (
               <div className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2">
-                <ClerkUserButton
+                <UserButton
                   appearance={{
                     elements: {
                       avatarBox: "w-7 h-7",

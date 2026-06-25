@@ -53,7 +53,7 @@ export default function PrivacyPolicy() {
             <h2 className="mb-3 text-lg font-semibold text-amber-400/90">3. Third-Party Services</h2>
             <p className="mb-2">TravelBoard integrates with the following third-party services:</p>
             <ul className="list-disc space-y-1 pl-5 text-slate-400">
-              <li><span className="text-slate-300">Clerk</span> — handles authentication and account management. Clerk processes your email, name, and login credentials. See <a href="https://clerk.com/privacy" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline decoration-amber-400/30 hover:decoration-amber-400">Clerk&apos;s Privacy Policy</a>.</li>
+              <li><span className="text-slate-300">Supabase</span> — handles authentication and account management. Supabase processes your email and login credentials. See <a href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline decoration-amber-400/30 hover:decoration-amber-400">Supabase&apos;s Privacy Policy</a>.</li>
               <li><span className="text-slate-300">Flight data APIs</span> — when you search for flights, your search parameters (origin, destination, dates) are sent to third-party flight data providers to retrieve pricing and availability.</li>
               <li><span className="text-slate-300">Map services</span> — map tiles and geocoding are provided by third-party mapping services.</li>
             </ul>
@@ -84,7 +84,7 @@ export default function PrivacyPolicy() {
             <h2 className="mb-3 text-lg font-semibold text-amber-400/90">6. Cookies & Local Storage</h2>
             <p className="text-slate-400">
               TravelBoard uses cookies and browser local storage to maintain your session, remember your preferences, and
-              provide a smooth user experience. Authentication tokens are stored securely via Clerk. We do not use
+              provide a smooth user experience. Authentication tokens are stored securely via Supabase. We do not use
               third-party advertising or tracking cookies.
             </p>
           </section>
@@ -93,7 +93,7 @@ export default function PrivacyPolicy() {
             <h2 className="mb-3 text-lg font-semibold text-amber-400/90">7. Security</h2>
             <p className="text-slate-400">
               We implement industry-standard security measures to protect your data, including encrypted connections (HTTPS),
-              secure authentication via Clerk, and access controls on our infrastructure. However, no method of
+              secure authentication via Supabase, and access controls on our infrastructure. However, no method of
               transmission over the Internet is 100% secure, and we cannot guarantee absolute security.
             </p>
           </section>

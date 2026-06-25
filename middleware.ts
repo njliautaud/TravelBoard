@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { createServerClient } from "@supabase/ssr";
 
-/* ── CORS ─────────────────────────────────────────────── */
+/* -- CORS ------------------------------------------------ */
 const ALLOWED_ORIGINS = [
   "https://travelboard-9q0.pages.dev",
   "http://localhost:3000",
@@ -23,66 +23,50 @@ function corsHeaders(origin: string | null) {
   };
 }
 
-/* ── Public routes (no auth required) ─────────────────── */
-const isPublicRoute = createRouteMatcher([
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/forgot-password(.*)",
-  // Public API routes: auth endpoints, public data, webhook ingestion, hardware sync
-  "/api/auth(.*)",
-  "/api/onboarding(.*)",
-  "/api/analytics(.*)",
-  "/api/awards/availability(.*)",
-  "/api/cover-image(.*)",
-  "/api/deals(.*)",
-  "/api/destinations(.*)",
-  "/api/drafts/ingest(.*)",
-  "/api/fares(.*)",
-  "/api/fare-prediction(.*)",
-  "/api/flight-prices(.*)",
-  "/api/gamification/badges(.*)",
-  "/api/geocode(.*)",
-  "/api/hardware-sync(.*)",
-  "/api/image-proxy(.*)",
-  "/api/journal/:id/public(.*)",
-  "/api/lounges(.*)",
-  "/api/loyalty/programs(.*)",
-  "/api/loyalty/transfers(.*)",
-  "/api/packing(.*)",
-  "/api/points/calculator(.*)",
-  "/api/points/sweet-spots(.*)",
-  "/api/search(.*)",
-  "/api/track(.*)",
-  "/",
-]);
+/* -- Public routes (no auth required) --------------------- */
+const PUBLIC_PATTERNS = [
+  /^\/sign-in/,
+  /^\/sign-up/,
+  /^\/forgot-password/,
+  /^\/api\/auth/,
+  /^\/api\/onboarding/,
+  /^\/api\/analytics/,
+  /^\/api\/awards\/availability/,
+  /^\/api\/cover-image/,
+  /^\/api\/deals/,
+  /^\/api\/destinations/,
+  /^\/api\/drafts\/ingest/,
+  /^\/api\/fares/,
+  /^\/api\/fare-prediction/,
+  /^\/api\/flight-prices/,
+  /^\/api\/gamification\/badges/,
+  /^\/api\/geocode/,
+  /^\/api\/hardware-sync/,
+  /^\/api\/image-proxy/,
+  /^\/api\/journal\/[^/]+\/public/,
+  /^\/api\/lounges/,
+  /^\/api\/loyalty\/programs/,
+  /^\/api\/loyalty\/transfers/,
+  /^\/api\/packing/,
+  /^\/api\/points\/calculator/,
+  /^\/api\/points\/sweet-spots/,
+  /^\/api\/search/,
+  /^\/api\/track/,
+  /^\/$/,
+];
 
-/* ── Clerk enabled check ──────────────────────────────── */
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
-/* ── Combined middleware ──────────────────────────────── */
-function corsFallback(req: NextRequest) {
-  const origin = req.headers.get("origin");
-
-  if (req.method === "OPTIONS") {
-    return new NextResponse(null, {
-      status: 204,
-      headers: corsHeaders(origin),
-    });
-  }
-
-  const res = NextResponse.next();
-
-  if (req.nextUrl.pathname.startsWith("/api/")) {
-    const headers = corsHeaders(origin);
-    for (const [key, value] of Object.entries(headers)) {
-      res.headers.set(key, value);
-    }
-  }
-
-  return res;
+function isPublicRoute(pathname: string): boolean {
+  return PUBLIC_PATTERNS.some((p) => p.test(pathname));
 }
 
-const clerkMw = clerkMiddleware(async (auth, req) => {
+/* -- Supabase enabled check ------------------------------- */
+const supabaseEnabled = !!(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
+/* -- Combined middleware ---------------------------------- */
+export default async function middleware(req: NextRequest) {
   const origin = req.headers.get("origin");
 
   // Handle preflight OPTIONS
@@ -93,12 +77,9 @@ const clerkMw = clerkMiddleware(async (auth, req) => {
     });
   }
 
-  // Protect non-public routes
-  if (!isPublicRoute(req)) {
-    await auth.protect();
-  }
-
-  const res = NextResponse.next();
+  let res = NextResponse.next({
+    request: { headers: req.headers },
+  });
 
   // CORS headers for API routes
   if (req.nextUrl.pathname.startsWith("/api/")) {
@@ -108,15 +89,51 @@ const clerkMw = clerkMiddleware(async (auth, req) => {
     }
   }
 
-  return res;
-});
-
-export default function middleware(req: NextRequest) {
-  if (!clerkEnabled) {
-    return corsFallback(req);
+  if (!supabaseEnabled) {
+    return res;
   }
-  // clerkMiddleware returns a function that takes (req, event)
-  return (clerkMw as (req: NextRequest) => Response | Promise<Response>)(req);
+
+  // Create Supabase client that can refresh tokens via middleware cookies
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          // Update request cookies (for downstream server components)
+          cookiesToSet.forEach(({ name, value }) =>
+            req.cookies.set(name, value),
+          );
+          // Re-create response so it carries the updated request headers
+          res = NextResponse.next({
+            request: { headers: req.headers },
+          });
+          // Set cookies on the response (for the browser)
+          cookiesToSet.forEach(({ name, value, options }) =>
+            res.cookies.set(name, value, options),
+          );
+        },
+      },
+    },
+  );
+
+  // Refresh the session (important: keeps tokens alive)
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Protect non-public routes: redirect unauthenticated users to /sign-in
+  if (!user && !isPublicRoute(req.nextUrl.pathname)) {
+    const signInUrl = req.nextUrl.clone();
+    signInUrl.pathname = "/sign-in";
+    signInUrl.searchParams.set("redirect", req.nextUrl.pathname);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  return res;
 }
 
 export const config = {
