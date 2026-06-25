@@ -36,7 +36,7 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 | Map | MapLibre GL JS v5, Carto `dark_all`, `public/data/countries.geo.json` (ISO alpha-3 ids) |
 | DB | **Supabase Postgres** (cloud, shared by dev + prod) + **Prisma 6** (do not upgrade to v7). Migrated from Neon 2026-06-24 — see `SUPABASE_MIGRATION.md` + [[supabase-migration]] |
 | Hosting | **Vercel** (prod). Prod build is **webpack** (`next build`, not turbopack — see §9 sharp gotcha). See §14 |
-| Auth | Username/password (bcrypt), HMAC httpOnly cookie `tb_session`. Access control in `src/lib/access.ts` (private boards + accepted-friend viewing + per-spot public) |
+| Auth | **Supabase Auth** (email/password + Google OAuth; Apple deferred). Session cookies via `@supabase/ssr` (browser/server clients in `src/lib/supabase/`, refreshed in `src/middleware.ts`). `getSessionUser()` (`src/lib/auth.ts`) maps the Supabase identity → the Prisma `User` row (`authId`/`email`, lazy provision + claim-by-email) keeping its `{id,username}` shape so routes are unchanged. Access control in `src/lib/access.ts`. See [[supabase-auth-migration]] |
 | Images | `sharp` declutter/resize; Wikimedia/Wikipedia in `coverImage.ts`; Google Images via `serperImages.ts`; reliability proxy `coverProxy.ts` + `/api/cover-proxy`. Uploads via `src/lib/storage.ts` (local fs in dev, Supabase Storage bucket `TravelBoard` in prod) |
 | Android | Kotlin WebView wrapper + share target in `android/` (Gradle, minSdk 26, targetSdk 34 — temporary, see §10) |
 
@@ -142,7 +142,7 @@ the prefilled `EntryForm` once logged in.
 
 Key models:
 
-- **User**: `username`, `passwordHash`, `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes), `usaAsStates` (Boolean), **`visitedRegions`** (string[] of ISO-3 country / `US-XX` state codes — the passport, independent of `Location`), **`passportOnboardedAt`** (DateTime? — null ⇒ show the one-time onboarding once). Plus `Friendship` (accepted/pending) + `Notification` for the social layer.
+- **User**: `username`, `email`? + `authId`? (Supabase Auth link), `usernameSet` (false until an OAuth signup picks a username), legacy `passwordHash`? (unused since Supabase Auth), `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes), `usaAsStates` (Boolean), **`visitedRegions`** (string[] of ISO-3 country / `US-XX` state codes — the passport, independent of `Location`), **`passportOnboardedAt`** (DateTime? — null ⇒ show the one-time onboarding once). Plus `Friendship` (accepted/pending) + `Notification` for the social layer.
 - **Location**: per-user wishes; `starred`, `sortOrder`, seasons, `coverImageUrl`, `priceThreshold`, media, flight prices, **`isPublic`** (publish a single spot to the public feed).
 - **Draft**: inbox items (`rawText`, `extractedUrl`, `source`); fed by `POST /api/drafts/ingest`.
 - **FlightPrice**: ingested via API key; latest price drives `isDeal` in serialize.
@@ -173,7 +173,7 @@ Migrations now also include: `…friends_inbox`, `…location_backup` + `…drop
 
 | Route | Auth | Notes |
 | --- | --- | --- |
-| `/api/auth/login`, `/register`, `/logout`, `/me` | — | Session auth |
+| `/api/auth/login`, `/logout`, `/me`, `/username` | — | Supabase Auth. `login` accepts email **or** username (resolves username→email server-side); `username` finalizes an OAuth signup's name. Signup/Google/reset run client-side via `@supabase/ssr`. `/auth/callback` (route) exchanges the OAuth/recovery code; `/reset-password` (page) sets a new password |
 | `/api/users`, `/api/users/[id]/stats` | session | Account list + per-profile stats (friend-gated) |
 | `/api/friends`, `/api/friends/[id]`, `/api/notifications` | session | Friend requests + inbox |
 | `/api/locations`, `/api/locations/[id]`, `/api/locations/[id]/star` | session writes | Owner-scoped; `GET ?userId=` views a board **only if owner or accepted friend** (else 403) — see `access.ts`. GET also returns the board owner's `visitedRegions` (passport glow on a friend's board) |
@@ -221,6 +221,11 @@ Migrations now also include: `…friends_inbox`, `…location_backup` + `…drop
 ## 8. Current Status (2026-06-25)
 
 ### Done
+
+**2026-06-25 — Auth migrated to Supabase Auth + Clerk-style login card:**
+- **Replaced the custom bcrypt/`tb_session` auth with Supabase Auth** (email/password + Google OAuth; Apple deferred until the Apple Developer membership). `@supabase/ssr` clients in `src/lib/supabase/`; `src/middleware.ts` refreshes the session each request. `getSessionUser()` now reads the Supabase session and lazily provisions/claims the Prisma `User` (new `authId`/`email`/`usernameSet`; `passwordHash` nullable) — its `{id,username}` shape is unchanged so all routes were untouched. Migrations `20260625190000_supabase_auth` + `20260625200000_username_set`.
+- **Clerk-style auth card** (`AuthModal`, dark-themed to match the app): icon header, Continue with Google, "or" divider, email/password, sign-in/up toggle. Login accepts **email or username** (`/api/auth/login` resolves username→email server-side). New Google users get a **"choose a username"** popup (`UsernameModal` + `/api/auth/username`). **Forgot-password** flow → `/reset-password` page. `/auth/callback` exchanges OAuth/recovery codes (uses the Host header, not `request.url`, so the 0.0.0.0 dev bind doesn't break redirects).
+- **Data**: kept `swann` (→ OWNER, legoewokninja@gmail.com) + `billyisgay` (masonpace1@gmail.com) with all spots; wiped william/nick/devingator (backup first via `export-db-backup.mjs`). `scripts/migrate-to-supabase-auth.mjs`. **Dashboard setup is manual** (anon key, Google provider, redirect URLs) — see [[supabase-auth-migration]].
 
 **2026-06-25 — Passport ("been there") + navigation refactor:**
 - **Passport feature**: `User.visitedRegions` (ISO-3 / `US-XX`, independent of `Location`) drives a static teal glow (`country-visited-fill/-glow`, feature-state `visited`, never tied to wish `count`). Whole-USA lights when "USA as states" is off and any state is logged; per-state when on. Logging >5 states — or selecting whole-USA **and** individual states — permanently flips to per-state mode (no overlap). Migration `20260625120000_user_visited_regions`.

@@ -72,6 +72,8 @@ export interface SessionUser {
   id: string;
   username: string;
   role?: "OWNER" | "EDITOR" | "VIEWER";
+  /** false for an OAuth signup that hasn't picked a username yet. */
+  usernameSet?: boolean;
 }
 
 /** A selectable account in the sidebar profile switcher. */

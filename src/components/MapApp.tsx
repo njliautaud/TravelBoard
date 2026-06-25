@@ -8,6 +8,7 @@ import SidePanel, { type PanelSelection } from "./SidePanel";
 import GeoBanner from "./GeoBanner";
 import EntryForm, { type PinDropResult } from "./EntryForm";
 import AuthModal from "./AuthModal";
+import UsernameModal from "./UsernameModal";
 import InboxOverlay from "./InboxOverlay";
 import LocationDetailsModal from "./LocationDetailsModal";
 import PassportOnboarding from "./PassportOnboarding";
@@ -814,6 +815,17 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           }
         }}
       />
+
+      {/* OAuth signups land here logged-in but without a username — make them pick one. */}
+      {user && user.usernameSet === false && (
+        <UsernameModal
+          suggested={user.username}
+          onDone={(updated) => {
+            setUser(updated);
+            refreshAll();
+          }}
+        />
+      )}
 
       <InboxOverlay
         open={inboxOpen}

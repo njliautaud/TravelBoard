@@ -43,10 +43,11 @@ enum NotificationType {
 model User {
   id           String     @id @default(cuid())
   username     String     @unique
-  passwordHash String     @default("")
-  externalAuthId String?  @unique
+  email        String?    @unique /// Supabase Auth login email; null for never-migrated legacy rows
+  authId       String?    @unique /// Supabase auth.users.id (UUID) once this row is linked to an Auth identity
+  usernameSet  Boolean    @default(true) /// false for OAuth signups until they pick a username (prompts the UI)
+  passwordHash String?    /// legacy custom-auth bcrypt hash; unused since the Supabase Auth migration
   imageUrl     String?
-  email        String?
   role         UserRole   @default(EDITOR)
   mapTheme     MapTheme   @default(CLASSIC)
   homeAirports String[]   @default([])

@@ -1,41 +1,34 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
 
-/**
- * GET /auth/callback
- *
- * Supabase redirects here after email confirmation (and OAuth if configured).
- * Exchanges the auth code for a session and redirects to the app.
- */
-export async function GET(req: NextRequest) {
-  const { searchParams, origin } = req.nextUrl;
-  const code = searchParams.get("code");
-  const redirectTo = searchParams.get("redirect") ?? "/";
+// OAuth / email-confirmation landing. Supabase redirects here with a `code`
+// which we exchange for a session (cookies set via the server client). We then
+// provision/claim the Prisma row eagerly so the app is fully ready on first load.
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  // `next` lets a caller redirect somewhere specific; default to the app root.
+  const next = url.searchParams.get("next") ?? "/";
+
+  // Build the redirect target from the Host the browser actually used — NOT from
+  // request.url. The dev server binds 0.0.0.0, so request.url would yield an
+  // unreachable http://0.0.0.0:3000; the Host header reflects localhost / the
+  // Tailscale IP / the Vercel domain correctly. Honors proxy headers on Vercel.
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? url.host;
+  const proto = request.headers.get("x-forwarded-proto") ?? "http";
+  const base = `${proto}://${host}`;
 
   if (code) {
-    const res = NextResponse.redirect(new URL(redirectTo, origin));
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return req.cookies.getAll();
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              res.cookies.set(name, value, options),
-            );
-          },
-        },
-      },
-    );
-
-    await supabase.auth.exchangeCodeForSession(code);
-    return res;
+    const supabase = await createClient();
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) {
+      await getSessionUser(); // create/claim the Prisma user now, not lazily
+      return NextResponse.redirect(`${base}${next}`);
+    }
   }
 
-  // No code — redirect to sign-in
-  return NextResponse.redirect(new URL("/sign-in", origin));
+  // Something went wrong (expired/invalid code) — bounce home with a flag the
+  // client can surface as an error toast.
+  return NextResponse.redirect(`${base}/?auth_error=1`);
 }
