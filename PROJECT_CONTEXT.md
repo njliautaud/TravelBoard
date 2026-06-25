@@ -340,8 +340,9 @@ Setup notes / gotchas:
   A symlinked/junctioned `node_modules` does **not** work — Turbopack rejects it ("points out of the
   filesystem root"). After install, run `npx prisma generate` in the worktree (the `@prisma/client`
   postinstall does not always run it → `@prisma/client did not initialize`).
-- A production build (`next build` + `next start`) currently fails on pre-existing type errors in
-  `src/app/api/hardware-cover/route.ts`, so the stable instance runs `next dev` (frozen folder = stable).
+- The production build (`next build`) passes as of 2026-06-24 (fixed the `hardware-cover` type
+  errors — Buffer typing + a `body` shadowing bug — for the Vercel deploy). The stable instance
+  still runs `next dev` for hot-reload convenience, but `next build`/`next start` now work too.
 - **Promote new code to the friend:** in the worktree, `git merge master` (or `git reset --hard
   master`) then restart :3001. Re-run `npm install` there if deps changed; schema changes hit both
   (shared DB).

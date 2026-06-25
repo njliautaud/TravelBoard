@@ -25,7 +25,7 @@ async function fetchImageBytes(url: string): Promise<Buffer> {
   if (!upstream.ok) {
     throw new Error(`upstream ${upstream.status}`);
   }
-  let buf = Buffer.from(await upstream.arrayBuffer());
+  let buf: Buffer = Buffer.from(await upstream.arrayBuffer());
   if (buf.length === 0) {
     throw new Error("upstream empty");
   }
@@ -72,11 +72,11 @@ async function encodeCover(input: Buffer, format: string): Promise<{ body: Buffe
       const b = body[i + 2];
       pixels[p] = ((r & 0xf8) << 8) | ((g & 0xfc) << 3) | (b >> 3);
     }
-    const body = Buffer.allocUnsafe(pixels.length * 2);
+    const packed = Buffer.allocUnsafe(pixels.length * 2);
     for (let p = 0; p < pixels.length; p++) {
-      body.writeUInt16LE(pixels[p], p * 2);
+      packed.writeUInt16LE(pixels[p], p * 2);
     }
-    return { body, contentType: "application/octet-stream" };
+    return { body: packed, contentType: "application/octet-stream" };
   }
 
   return { body, contentType: "application/octet-stream" };
@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
     try {
       const input = await fetchImageBytes(coverUrl);
       const { body, contentType } = await encodeCover(input, format);
-      return new NextResponse(body, {
+      return new NextResponse(new Uint8Array(body), {
         status: 200,
         headers: {
           "Content-Type": contentType,
