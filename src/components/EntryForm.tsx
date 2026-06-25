@@ -20,6 +20,8 @@ interface EntryFormProps {
   draftId?: string | null;
   /** Existing wishes, used to warn before adding a likely duplicate. */
   existingLocations?: LocationItem[];
+  /** Status a NEW entry defaults to (synced with the current wished/visited filter). */
+  defaultStatus?: VisitStatus;
   pinDropResult: PinDropResult | null;
   onRequestPinDrop: () => void;
   onClose: () => void;
@@ -117,6 +119,7 @@ export default function EntryForm({
   draftPrefill,
   draftId,
   existingLocations,
+  defaultStatus = "TO_VISIT",
   pinDropResult,
   onRequestPinDrop,
   onClose,
@@ -146,6 +149,7 @@ export default function EntryForm({
       } else if (draftPrefill) {
         setForm({
           ...EMPTY,
+          status: defaultStatus,
           activityName: draftPrefill.activityName ?? "",
           notes: draftPrefill.notes ?? "",
           coverImageUrl: draftPrefill.coverImageUrl ?? "",
@@ -158,7 +162,7 @@ export default function EntryForm({
           media: (draftPrefill.media ?? []).map((m, i) => ({ ...m, sortOrder: i })),
         });
       } else {
-        setForm(EMPTY);
+        setForm({ ...EMPTY, status: defaultStatus });
       }
       setQuery("");
       setResults([]);
@@ -168,7 +172,7 @@ export default function EntryForm({
       setCoverOptions([]);
       setCoverNote(null);
     }
-  }, [open, editing, draftPrefill]);
+  }, [open, editing, draftPrefill, defaultStatus]);
 
   const coverSearchKey = () =>
     [form.activityName, form.city, form.region, form.countryName]

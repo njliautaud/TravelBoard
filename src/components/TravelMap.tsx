@@ -37,6 +37,9 @@ interface TravelMapProps {
   onDotClick: (id: string) => void;
   onPinDrop: (lat: number, lng: number) => void;
   onZoomStateChange?: (zoomedIn: boolean) => void;
+  /** Show the right-click "Add wish here" menu (only on your own editable board). */
+  canAddWish: boolean;
+  onAddWishHere: (lat: number, lng: number) => void;
 }
 
 type GeoFeature = {
@@ -593,6 +596,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     onDotClick,
     onPinDrop,
     onZoomStateChange,
+    canAddWish,
+    onAddWishHere,
   },
   ref
 ) {
@@ -608,7 +613,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   const usaAsStatesRef = useRef(usaAsStates);
   const statesRef = useRef(states);
   const pinDropRef = useRef(pinDropMode);
-  const callbacksRef = useRef({ onCountryClick, onDotClick, onPinDrop, onZoomStateChange });
+  const canAddWishRef = useRef(canAddWish);
+  const callbacksRef = useRef({ onCountryClick, onDotClick, onPinDrop, onZoomStateChange, onAddWishHere });
   const pulseRafRef = useRef<number>(0);
   const selectedIsoRef = useRef<string | null>(null);
   const hoveredIsoRef = useRef<string | null>(null);
@@ -625,6 +631,14 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     name: string;
     cover?: string;
   } | null>(null);
+  // Right-click "Add wish here" menu over a country.
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    name: string;
+    lat: number;
+    lng: number;
+  } | null>(null);
 
   const mapThemeRef = useRef(mapTheme);
   mapThemeRef.current = mapTheme;
@@ -633,7 +647,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   usaAsStatesRef.current = usaAsStates;
   statesRef.current = states;
   pinDropRef.current = pinDropMode;
-  callbacksRef.current = { onCountryClick, onDotClick, onPinDrop, onZoomStateChange };
+  canAddWishRef.current = canAddWish;
+  callbacksRef.current = { onCountryClick, onDotClick, onPinDrop, onZoomStateChange, onAddWishHere };
 
   // Rebuild the country/state heatmap + dots from the current locations, status
   // filter, and states-mode setting. Single source of truth for all of them.
@@ -874,7 +889,23 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       // Apply status filter + states-mode (if already set) now that sources exist.
       rebuildGeo();
 
+      // Right-click a country -> floating "Add wish here" button (own board only).
+      map.on("contextmenu", (e: MapMouseEvent) => {
+        if (pinDropRef.current || !canAddWishRef.current) {
+          setCtxMenu(null);
+          return;
+        }
+        const hits = map.queryRenderedFeatures(e.point, { layers: [FILL_LAYER] });
+        if (hits.length === 0) {
+          setCtxMenu(null);
+          return;
+        }
+        const { name } = hits[0].properties as { name: string };
+        setCtxMenu({ x: e.point.x, y: e.point.y, name, lat: e.lngLat.lat, lng: e.lngLat.lng });
+      });
+
       map.on("click", (e: MapMouseEvent) => {
+        setCtxMenu(null);
         if (pinDropRef.current) {
           callbacksRef.current.onPinDrop(e.lngLat.lat, e.lngLat.lng);
           return;
@@ -972,6 +1003,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       map.on("movestart", () => {
         setCountryHover(null);
         hideHover();
+        setCtxMenu(null);
       });
     });
 
@@ -1053,6 +1085,24 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
             <img src={hover.cover} alt="" className="h-24 w-full object-cover" />
           )}
           <p className="px-2 py-1.5 text-xs font-medium text-slate-100">{hover.name}</p>
+        </div>
+      )}
+      {ctxMenu && (
+        <div
+          className="absolute z-20 overflow-hidden rounded-lg border border-slate-700 bg-slate-900/95 shadow-xl"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              callbacksRef.current.onAddWishHere(ctxMenu.lat, ctxMenu.lng);
+              setCtxMenu(null);
+            }}
+            className="flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-100 hover:bg-amber-500/15 hover:text-amber-200"
+          >
+            <span className="text-amber-400">＋</span>
+            Add wish in {ctxMenu.name}
+          </button>
         </div>
       )}
     </div>

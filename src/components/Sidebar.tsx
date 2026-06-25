@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { isInSeason, sortBySeason } from "@/lib/season";
-import type { LocationItem, UserProfile } from "@/lib/types";
+import type { LocationItem, StatusFilter, UserProfile } from "@/lib/types";
 import type { UserSettings } from "@/lib/settings";
 import SettingsPanel from "./SettingsPanel";
 import FriendsTab from "./FriendsTab";
 
-/** "world" is a one-shot action (reset the map), not a persistent view. */
-export type SidebarView = "world" | "wishes" | "visited" | "friends" | "settings";
+/** Which area the sidebar body shows. The list's wished/visited/all filter is
+ *  NOT a panel — it's the shared `statusFilter` (synced with the map toggle). */
+type Panel = "list" | "friends" | "settings";
 
 interface SidebarProps {
   locations: LocationItem[];
@@ -20,6 +21,9 @@ interface SidebarProps {
   open: boolean;
   settings: UserSettings;
   settingsSaving: boolean;
+  /** Shared wished/visited/all filter (single source of truth with the map toggle). */
+  statusFilter: StatusFilter;
+  onStatusFilterChange: (filter: StatusFilter) => void;
   /** The friend's board you're viewing now (null = your own). */
   viewedUser: UserProfile | null;
   /** Bumped by the parent to force the Friends tab to refetch (e.g. after an inbox accept). */
@@ -85,6 +89,8 @@ export default function Sidebar({
   open,
   settings,
   settingsSaving,
+  statusFilter,
+  onStatusFilterChange,
   viewedUser,
   friendsRefresh,
   onFriendsChanged,
@@ -96,36 +102,45 @@ export default function Sidebar({
   onSettingsChange,
   onResetWorld,
 }: SidebarProps) {
-  const [view, setView] = useState<SidebarView>("wishes");
-  // Bumped on one-shot dropdown picks (World / a profile) so the component re-renders
-  // and the controlled <select> snaps back to `view` instead of sticking on the pick
-  // (otherwise picking the same one-shot again fires no onChange).
+  const [panel, setPanel] = useState<Panel>("list");
+  // Bumped on the one-shot "World" pick so the component re-renders and the
+  // controlled <select> snaps back (otherwise picking it again fires no onChange).
   const [, bumpSelect] = useState(0);
   const sorted = useMemo(() => sortBySeason(locations), [locations]);
 
-  // The list shown depends on the dropdown: Wishes = to-visit, Visited = visited,
-  // Select = everything.
+  // The list mirrors the shared filter: Wished = to-visit, Visited = visited, All = everything.
   const listed = useMemo(() => {
-    if (view === "wishes") return sorted.filter((l) => l.status === "TO_VISIT");
-    if (view === "visited") return sorted.filter((l) => l.status === "VISITED");
+    if (statusFilter === "wished") return sorted.filter((l) => l.status === "TO_VISIT");
+    if (statusFilter === "visited") return sorted.filter((l) => l.status === "VISITED");
     return sorted;
-  }, [sorted, view]);
+  }, [sorted, statusFilter]);
   const starredCount = listed.filter((l) => l.starred).length;
+
+  // The <select> shows the panel when on Friends/Settings, else the shared filter.
+  const dropdownValue = panel === "list" ? statusFilter : panel;
 
   const handleViewChange = (value: string) => {
     if (value === "world") {
-      // One-shot action: reset the map, leave the list view as-is.
+      // One-shot: reset the map (also resets the shared filter to "all" in the parent).
       onResetWorld();
       onClose();
+      setPanel("list");
       bumpSelect((n) => n + 1);
       return;
     }
-    setView(value as SidebarView);
+    if (value === "friends" || value === "settings") {
+      setPanel(value);
+      return;
+    }
+    // all | wished | visited — the shared filter (and back to the list panel).
+    setPanel("list");
+    onStatusFilterChange(value as StatusFilter);
   };
 
   const ownHeading =
-    view === "wishes" ? "Wishes" : view === "visited" ? "Visited" : "Your wishes";
-  const friendNoun = view === "wishes" ? "wishes" : view === "visited" ? "visited" : "places";
+    statusFilter === "wished" ? "Wishes" : statusFilter === "visited" ? "Visited" : "All places";
+  const friendNoun =
+    statusFilter === "wished" ? "wishes" : statusFilter === "visited" ? "visited" : "places";
   const listHeading = viewedUser ? `${viewedUser.username}'s ${friendNoun}` : ownHeading;
 
   return (
@@ -160,13 +175,14 @@ export default function Sidebar({
           </label>
           <select
             id="sidebar-view"
-            value={view}
+            value={dropdownValue}
             onChange={(e) => handleViewChange(e.target.value)}
             className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm font-medium text-slate-200 focus:border-amber-500/60 focus:outline-none"
           >
             <optgroup label="View">
               <option value="world">World</option>
-              <option value="wishes">Wishes</option>
+              <option value="all">All</option>
+              <option value="wished">Wishes</option>
               <option value="visited">Visited</option>
               <option value="friends">Friends</option>
               <option value="settings">Settings</option>
@@ -188,7 +204,7 @@ export default function Sidebar({
           </div>
         )}
 
-        {view === "friends" ? (
+        {panel === "friends" ? (
           loggedIn ? (
             <FriendsTab
               refreshKey={friendsRefresh}
@@ -203,7 +219,7 @@ export default function Sidebar({
               <p className="text-sm text-slate-400">Log in to add friends.</p>
             </div>
           )
-        ) : view !== "settings" ? (
+        ) : panel !== "settings" ? (
           <>
             {editor && (
               <div className="p-3">
@@ -228,7 +244,7 @@ export default function Sidebar({
                 <p className="px-2 pt-2 text-sm text-slate-500">
                   {viewedUser
                     ? `${viewedUser.username} has no ${friendNoun} yet.`
-                    : view === "visited"
+                    : statusFilter === "visited"
                       ? "No visited places yet."
                       : "No places yet. Add your first wish!"}
                 </p>

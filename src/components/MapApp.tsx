@@ -256,6 +256,22 @@ export default function MapApp({ initialLocations }: MapAppProps) {
     else requireAuth("login", true);
   };
 
+  // Right-click "Add wish here" on the map: open a blank add form prefilled with
+  // the clicked country/region/city + coordinates (reuses the pin-drop geocode).
+  const handleAddWishHere = (lat: number, lng: number) => {
+    if (!loggedIn) {
+      requireAuth("login", true);
+      return;
+    }
+    setSidebarOpen(false);
+    setEditing(null);
+    setDraftPrefill(null);
+    setActiveDraftId(null);
+    setPinDropResult(null);
+    setFormOpen(true);
+    handlePinDrop(lat, lng);
+  };
+
   const handleSelectWish = (loc: LocationItem) => {
     setSidebarOpen(false);
     setSelection({ type: "location", id: loc.id });
@@ -476,6 +492,8 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         open={sidebarOpen}
         settings={settings}
         settingsSaving={settingsSaving}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
         viewedUser={viewedUser}
         friendsRefresh={friendsRefresh}
         onFriendsChanged={handleFriendsChanged}
@@ -505,6 +523,8 @@ export default function MapApp({ initialLocations }: MapAppProps) {
           onDotClick={handleDotClick}
           onPinDrop={handlePinDrop}
           onZoomStateChange={handleZoomStateChange}
+          canAddWish={canEdit}
+          onAddWishHere={handleAddWishHere}
         />
 
         {!loggedIn && !authOpen && (
@@ -688,6 +708,7 @@ export default function MapApp({ initialLocations }: MapAppProps) {
         draftPrefill={draftPrefill}
         draftId={activeDraftId}
         existingLocations={locations}
+        defaultStatus={statusFilter === "visited" ? "VISITED" : "TO_VISIT"}
         pinDropResult={pinDropResult}
         onRequestPinDrop={() => setPinDropMode(true)}
         onClose={() => {

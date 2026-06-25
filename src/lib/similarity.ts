@@ -11,9 +11,23 @@ const STOPWORDS = new Set([
   "it", "its", "be", "basic", "located", "location", "place", "spot", "trip",
   "visit", "see", "go", "going", "explore", "area", "tour", "where", "how",
   "best", "top", "guide",
+  // generic admin / geography words — non-distinctive, so they shouldn't make
+  // two different places look alike (e.g. a shared country "united states", or
+  // "<X> county"). Both singular + plural (stopword filter runs pre-singularize).
+  "state", "states", "county", "counties", "province", "provinces", "region",
+  "regions", "district", "districts", "city", "cities", "town", "towns",
+  "municipality", "republic", "national",
   // foreign articles / prepositions so "Salar de Gorbea" -> {salar, gorbea}
   "de", "del", "la", "el", "los", "las", "un", "una", "le", "les", "du", "des",
   "di", "da", "dos", "do", "der", "die",
+]);
+
+// Directional / qualifier words that DISTINGUISH otherwise-similar names:
+// "North Carolina" vs "South Carolina", "New York" vs "York". If one wish has
+// one of these and the other doesn't, they are different places.
+const DISTINGUISHERS = new Set([
+  "north", "south", "east", "west", "northern", "southern", "eastern", "western",
+  "new", "old", "upper", "lower", "central",
 ]);
 
 // Canonical term -> all the words/phrases (any language) that mean it.
@@ -122,5 +136,11 @@ export function isDuplicateWish(a: WishLike, b: WishLike, threshold = 0.5): bool
       ? a.countryCode.toUpperCase() === b.countryCode.toUpperCase()
       : Boolean(a.countryName) && fold(a.countryName ?? "") === fold(b.countryName ?? "");
   if (!sameCountry) return false;
-  return overlap(activityTokens(a), activityTokens(b)) >= threshold;
+  const ta = activityTokens(a);
+  const tb = activityTokens(b);
+  // A differing directional/qualifier word means distinct places even if the
+  // rest overlaps ("north carolina" vs "south carolina").
+  for (const t of ta) if (DISTINGUISHERS.has(t) && !tb.has(t)) return false;
+  for (const t of tb) if (DISTINGUISHERS.has(t) && !ta.has(t)) return false;
+  return overlap(ta, tb) >= threshold;
 }
