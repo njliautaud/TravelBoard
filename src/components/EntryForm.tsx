@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { DraftPrefill, GeocodeResult, LocationItem, MediaItem, MediaType, VisitStatus } from "@/lib/types";
-import { cleanThumb } from "@/lib/thumb";
+import { cleanThumb, coverImageSrc } from "@/lib/thumb";
+import { isDuplicateWish } from "@/lib/similarity";
 
 export interface PinDropResult {
   latitude: number;
@@ -16,6 +17,8 @@ interface EntryFormProps {
   editing: LocationItem | null;
   draftPrefill?: DraftPrefill | null;
   draftId?: string | null;
+  /** Existing wishes, used to warn before adding a likely duplicate. */
+  existingLocations?: LocationItem[];
   pinDropResult: PinDropResult | null;
   onRequestPinDrop: () => void;
   onClose: () => void;
@@ -90,12 +93,25 @@ const labelCls = "block text-xs font-medium text-slate-400 mb-1";
 const amberBtnCls =
   "rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300 hover:bg-amber-500/20 disabled:opacity-50";
 
+type CoverOption = {
+  url: string;
+  previewUrl: string;
+  source: "wikipedia" | "commons" | "google";
+};
+
+const SOURCE_LABEL: Record<CoverOption["source"], string> = {
+  wikipedia: "Wikipedia",
+  commons: "Wikimedia",
+  google: "Google",
+};
+
 export default function EntryForm({
   open,
   hidden,
   editing,
   draftPrefill,
   draftId,
+  existingLocations,
   pinDropResult,
   onRequestPinDrop,
   onClose,
@@ -111,11 +127,10 @@ export default function EntryForm({
   const [enriching, setEnriching] = useState(false);
   const [enrichHint, setEnrichHint] = useState<string | null>(null);
   const [generatingCover, setGeneratingCover] = useState(false);
-  const [coverIndex, setCoverIndex] = useState(-1);
-  const [coverCandidateCount, setCoverCandidateCount] = useState(0);
+  const [coverOptions, setCoverOptions] = useState<CoverOption[]>([]);
+  const [coverNote, setCoverNote] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const coverCandidatesRef = useRef<string[]>([]);
   const coverCandidateKeyRef = useRef("");
 
   // Reset when (re)opened
@@ -144,10 +159,9 @@ export default function EntryForm({
       setResults([]);
       setError(null);
       setEnrichHint(null);
-      coverCandidatesRef.current = [];
       coverCandidateKeyRef.current = "";
-      setCoverIndex(-1);
-      setCoverCandidateCount(0);
+      setCoverOptions([]);
+      setCoverNote(null);
     }
   }, [open, editing, draftPrefill]);
 
@@ -160,10 +174,8 @@ export default function EntryForm({
   useEffect(() => {
     const key = coverSearchKey();
     if (coverCandidateKeyRef.current && coverCandidateKeyRef.current !== key) {
-      coverCandidatesRef.current = [];
       coverCandidateKeyRef.current = "";
-      setCoverIndex(-1);
-      setCoverCandidateCount(0);
+      setCoverOptions([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.activityName, form.city, form.region, form.countryName]);
@@ -355,42 +367,61 @@ export default function EntryForm({
 
   const clearCover = () => {
     setForm((f) => ({ ...f, coverImageUrl: "" }));
-    setCoverIndex(-1);
+    setCoverOptions([]);
+    setCoverNote(null);
+    coverCandidateKeyRef.current = "";
   };
 
-  const generateCover = async () => {
-    if (!form.activityName.trim() && !form.city.trim() && !form.countryName.trim()) {
-      setError("Add an activity name or location to search for a cover image.");
+  const generateCover = async (forceRefresh = false) => {
+    if (!form.activityName.trim()) {
+      setError("Add an activity name before generating a cover image.");
       return;
     }
     setGeneratingCover(true);
     setError(null);
+    setCoverNote(null);
     const key = coverSearchKey();
     try {
-      let candidates = coverCandidatesRef.current;
-      if (coverCandidateKeyRef.current !== key || candidates.length === 0) {
-        const params = new URLSearchParams();
-        if (form.activityName.trim()) params.set("activityName", form.activityName.trim());
-        if (form.city.trim()) params.set("city", form.city.trim());
-        if (form.region.trim()) params.set("region", form.region.trim());
-        if (form.countryName.trim()) params.set("countryName", form.countryName.trim());
-        const res = await fetch(`/api/cover-image?${params}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Image search failed");
-        candidates = ((data.candidates ?? []) as string[]).filter(Boolean);
-        if (candidates.length === 0) {
-          setError("No images found — try a more specific activity or location name.");
-          return;
-        }
-        coverCandidatesRef.current = candidates;
-        coverCandidateKeyRef.current = key;
-        setCoverCandidateCount(candidates.length);
-        setCoverIndex(0);
-        setForm((f) => ({ ...f, coverImageUrl: candidates[0] }));
-      } else {
-        const next = (coverIndex + 1) % candidates.length;
-        setCoverIndex(next);
-        setForm((f) => ({ ...f, coverImageUrl: candidates[next] }));
+      // Google Images via Serper (cached server-side) — best for niche places.
+      const query = [form.activityName, form.city, form.region, form.countryName]
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join(" ");
+      const params = new URLSearchParams({ query, limit: "6" });
+      if (forceRefresh) params.set("refresh", "1"); // Regenerate = fresh API pull
+      const res = await fetch(`/api/fetch-previews?${params}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Image search failed");
+
+      const images = (data.images ?? []) as { imageUrl?: string; thumbnailUrl?: string | null }[];
+      const options: CoverOption[] = images
+        .filter((im): im is { imageUrl: string; thumbnailUrl?: string | null } =>
+          typeof im.imageUrl === "string" && im.imageUrl.startsWith("http"),
+        )
+        .map((im) => ({
+          url: im.imageUrl,
+          // Serper thumbnails are Google-hosted (gstatic) and proxy reliably for the picker.
+          previewUrl: coverImageSrc(im.thumbnailUrl || im.imageUrl, 240) || im.imageUrl,
+          source: "google" as const,
+        }));
+
+      if (options.length === 0) {
+        setCoverOptions([]);
+        setError("No images found — try a more specific activity or place name.");
+        return;
+      }
+      coverCandidateKeyRef.current = key;
+      setCoverOptions(options);
+      setForm((f) => ({ ...f, coverImageUrl: options[0].url }));
+
+      if (data.source === "placeholder") {
+        setCoverNote("Showing placeholders — set SERPER_API_KEY in .env (line 20) for real Google Images.");
+      } else if (data.match === "similar") {
+        setCoverNote(
+          `Reused images from a similar saved search (“${data.similarTo}”). Click Regenerate for a fresh Google search.`,
+        );
+      } else if (data.match === "exact") {
+        setCoverNote("From cache (no API credit used). Click Regenerate for a fresh search.");
       }
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
@@ -398,6 +429,8 @@ export default function EntryForm({
       setGeneratingCover(false);
     }
   };
+
+  const pickCoverOption = (url: string) => setForm((f) => ({ ...f, coverImageUrl: url }));
 
   const setCaption = (idx: number, caption: string) =>
     setForm((f) => ({
@@ -416,6 +449,26 @@ export default function EntryForm({
       return setError("Country is required - use search or drop a pin.");
     if (Number.isNaN(lat) || Number.isNaN(lng))
       return setError("Coordinates are required - use search or drop a pin.");
+
+    // Warn before adding what looks like a duplicate of an existing wish.
+    if (!editing && existingLocations?.length) {
+      const candidate = {
+        activityName: form.activityName,
+        city: form.city,
+        region: form.region,
+        countryName: form.countryName,
+        countryCode: form.countryCode,
+      };
+      const dupe = existingLocations.find((l) => isDuplicateWish(candidate, l));
+      if (dupe) {
+        const proceed = window.confirm(
+          `This looks like the same wish as one you already have:\n\n` +
+            `“${dupe.activityName}” — ${[dupe.city, dupe.countryName].filter(Boolean).join(", ")}\n\n` +
+            `Add it as a separate wish anyway?`,
+        );
+        if (!proceed) return;
+      }
+    }
 
     setSaving(true);
     try {
@@ -476,32 +529,63 @@ export default function EntryForm({
         <div className="mb-4">
           <label className={labelCls}>Cover photo</label>
           {form.coverImageUrl ? (
-            <div className="overflow-hidden rounded-xl border border-slate-700/70">
+            <div className="flex items-center justify-center overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/60">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={cleanThumb(form.coverImageUrl)} alt="" className="h-36 w-full object-cover" />
+              <img
+                src={coverImageSrc(form.coverImageUrl, 480)}
+                alt=""
+                className="mx-auto block h-auto max-h-96 w-auto max-w-full object-contain"
+              />
             </div>
           ) : (
             <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-slate-700/70 bg-slate-900/40 text-xs text-slate-500">
-              No cover yet — generate one from Wikipedia
+              No cover yet — generate options from Wikipedia &amp; Google (CC)
             </div>
           )}
+          {coverOptions.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-2 text-xs text-slate-500">Pick a cover (tap to select):</p>
+              <div className="grid grid-cols-3 gap-2">
+                {coverOptions.map((opt) => {
+                  const selected = form.coverImageUrl === opt.url;
+                  const preview = opt.previewUrl || coverImageSrc(opt.url, 240) || opt.url;
+                  return (
+                    <button
+                      key={opt.url}
+                      type="button"
+                      onClick={() => pickCoverOption(opt.url)}
+                      className={`overflow-hidden rounded-lg border bg-slate-900/60 transition ${
+                        selected
+                          ? "border-amber-500 ring-2 ring-amber-500/40"
+                          : "border-slate-700/70 hover:border-slate-500"
+                      }`}
+                    >
+                      <div className="aspect-[4/3] bg-slate-800/80">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={preview} alt="" className="h-full w-full object-cover" />
+                      </div>
+                      <span className="block truncate px-1 py-1 text-[10px] text-slate-500">
+                        {SOURCE_LABEL[opt.source]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {coverNote && <p className="mt-2 text-xs text-violet-300">{coverNote}</p>}
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {coverIndex >= 0 && coverCandidateCount > 1 && (
-              <span className="text-xs text-slate-500">
-                {coverIndex + 1} of {coverCandidateCount}
-              </span>
-            )}
             <div className="ml-auto flex flex-wrap gap-2">
               <button
                 type="button"
                 disabled={generatingCover}
-                onClick={generateCover}
+                onClick={() => generateCover(coverOptions.length > 0)}
                 className={amberBtnCls}
               >
                 {generatingCover
                   ? "Searching…"
-                  : coverIndex >= 0 && coverCandidateCount > 1
-                    ? "Try another"
+                  : coverOptions.length > 0
+                    ? "Regenerate (new search)"
                     : "Generate image"}
               </button>
               {form.coverImageUrl && (

@@ -74,6 +74,39 @@ export default function SettingsPanel({ settings, saving, onChange }: SettingsPa
         </div>
       </section>
 
+      <section className="mb-6">
+        <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">United States</h2>
+        <p className="mb-3 text-xs text-slate-500">
+          How US wishes group on the map. Showing each state separately stops a busy USA
+          from clogging into one country — every state becomes its own clickable unit.
+        </p>
+        <div className="space-y-2">
+          {([
+            [false, "One country", "All US wishes group under the United States."],
+            [true, "By state", "Each state is its own map unit, with its own wishes."],
+          ] as const).map(([value, label, description]) => {
+            const active = settings.usaAsStates === value;
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => onChange({ usaAsStates: value })}
+                className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                  active
+                    ? "border-amber-500/60 bg-amber-500/15"
+                    : "border-slate-700 bg-slate-900/60 hover:border-slate-600"
+                }`}
+              >
+                <span className={`block text-sm font-medium ${active ? "text-amber-200" : "text-slate-200"}`}>
+                  {label}
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-500">{description}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       <section>
         <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Home airports</h2>
         <p className="mb-3 text-xs text-slate-500">

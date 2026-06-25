@@ -10,7 +10,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { Decimal } from "@prisma/client/runtime/library";
+
 
 // ---------------------------------------------------------------------------
 // Transfer Graph (static knowledge base)
@@ -389,7 +389,7 @@ export async function createCardProfile(
       cardName: data.cardName,
       issuer: data.issuer ?? null,
       pointsBalance: data.pointsBalance ?? 0,
-      annualFee: data.annualFee != null ? new Decimal(data.annualFee) : null,
+      annualFee: data.annualFee ?? null,
       category: data.category ?? null,
     },
   });
@@ -409,7 +409,7 @@ export async function updateCardProfile(
       ...(data.cardName != null && { cardName: data.cardName }),
       ...(data.issuer !== undefined && { issuer: data.issuer ?? null }),
       ...(data.pointsBalance != null && { pointsBalance: data.pointsBalance }),
-      ...(data.annualFee !== undefined && { annualFee: data.annualFee != null ? new Decimal(data.annualFee) : null }),
+      ...(data.annualFee !== undefined && { annualFee: data.annualFee ?? null }),
       ...(data.category !== undefined && { category: data.category ?? null }),
     },
   });
@@ -428,7 +428,7 @@ function toCardData(card: {
   cardName: string;
   issuer: string | null;
   pointsBalance: number;
-  annualFee: Decimal | null;
+  annualFee: number | null;
   category: string | null;
   createdAt: Date;
 }): CardProfileData {
@@ -437,7 +437,7 @@ function toCardData(card: {
     cardName: card.cardName,
     issuer: card.issuer,
     pointsBalance: card.pointsBalance,
-    annualFee: card.annualFee ? Number(card.annualFee) : null,
+    annualFee: card.annualFee,
     category: card.category,
     createdAt: card.createdAt.toISOString(),
   };

@@ -1,0 +1,49 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ESP32: Upload",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/../scripts/esp32-pio.ps1",
+        "run",
+        "-t",
+        "upload",
+        "--upload-port",
+        "COM4"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "ESP32: Serial Monitor",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/../scripts/esp32-pio.ps1",
+        "device",
+        "monitor"
+      ],
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "ESP32: Upload and Monitor",
+      "dependsOrder": "sequence",
+      "dependsOn": ["ESP32: Upload", "ESP32: Serial Monitor"],
+      "problemMatcher": []
+    }
+  ]
+}

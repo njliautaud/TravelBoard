@@ -12,8 +12,6 @@ import {
   type FareQuote,
   type FlightProvider,
 } from "@travelboard/core";
-import { Decimal } from "@prisma/client/runtime/library";
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -59,11 +57,6 @@ export interface TopDeal extends CachedFare {
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-function decimalToNumber(d: Decimal | null | undefined): number | null {
-  if (d == null) return null;
-  return Number(d);
-}
-
 function rowToCachedFare(r: {
   id: string;
   origin: string;
@@ -72,7 +65,7 @@ function rowToCachedFare(r: {
   month: number;
   outboundDate: Date | null;
   returnDate: Date | null;
-  price: Decimal;
+  price: number;
   currency: string;
   airline: string | null;
   source: string | null;
@@ -88,7 +81,7 @@ function rowToCachedFare(r: {
     month: r.month,
     outboundDate: r.outboundDate?.toISOString() ?? null,
     returnDate: r.returnDate?.toISOString() ?? null,
-    price: Number(r.price),
+    price: r.price,
     currency: r.currency,
     airline: r.airline,
     source: r.source,
@@ -189,7 +182,7 @@ export async function getRouteHistory(
   });
 
   return rows.map((r) => ({
-    price: Number(r.price),
+    price: r.price,
     source: r.source,
     recordedAt: r.recordedAt.toISOString(),
   }));
@@ -208,7 +201,7 @@ async function computeBaseline(
     select: { price: true },
   });
   if (rows.length < 5) return null;
-  return trimmedMedian(rows.map((r) => Number(r.price)));
+  return trimmedMedian(rows.map((r) => r.price));
 }
 
 /**

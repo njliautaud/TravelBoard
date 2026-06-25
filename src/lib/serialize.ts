@@ -32,6 +32,7 @@ export function serializeLocation(loc: LocationWithRelations): LocationItem {
     reminderAt: loc.reminderAt?.toISOString() ?? null,
     priceThreshold: threshold,
     starred: loc.starred,
+    sortOrder: loc.sortOrder ?? 0,
     coverImageUrl: loc.coverImageUrl,
     seasonSpring: loc.seasonSpring,
     seasonSummer: loc.seasonSummer,

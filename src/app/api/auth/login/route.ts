@@ -1,18 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSessionToken, SESSION_COOKIE, SESSION_TTL_MS, verifyPassword } from "@/lib/auth";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 /**
  * POST /api/auth/login
  *
  * Auth: none (public).
  * Authenticates a user with username/password and sets a session cookie.
+ * Rate limited: 5 attempts per 15 minutes per IP.
  *
  * Body: { username: string, password: string }
  * Response: { user: { id, username } }
  */
 export async function POST(req: NextRequest) {
   try {
+    // Rate limit check
+    const ip = getClientIp(req.headers);
+    const limit = checkRateLimit(`login:${ip}`);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: "Too many login attempts. Try again later.", status: 429 },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json().catch(() => null);
     const username = body?.username;
     const password = body?.password;

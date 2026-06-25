@@ -1,16 +1,17 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import maplibregl, { Map as MlMap, MapMouseEvent } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { LocationItem } from "@/lib/types";
-import { cleanThumb } from "@/lib/thumb";
+import type { LocationItem, StatusFilter } from "@/lib/types";
+import { matchesStatusFilter } from "@/lib/types";
+import { coverImageSrc } from "@/lib/thumb";
 import { countryFlagAccent } from "@/lib/countryFlagColors";
+import { countByUnit } from "@/lib/geoUnits";
+import type { UsStateFeature } from "@/lib/usStates";
 import type { MapTheme } from "@/lib/settings";
 
-export type MapOverlayMode = "wishes" | "deals";
-
-/** Deal fare data for the deals overlay. Keyed by country ISO code. */
+/** Country-level deal data for map heatmap overlay. */
 export interface CountryDeal {
   countryCode: string;
   cheapestPrice: number;
@@ -19,8 +20,8 @@ export interface CountryDeal {
 
 /** Journal country data for highlighting countries with memories. */
 export interface JournalCountry {
-  country: string;           // country name (e.g. "Japan")
-  countryCode?: string;      // ISO-3 code if available
+  country: string;
+  countryCode?: string;
   entryCount: number;
   lat: number | null;
   lon: number | null;
@@ -40,12 +41,6 @@ export interface DealRoute {
   destLon: number;
 }
 
-const DEAL_TIER_COLORS: Record<string, string> = {
-  cheap: "#2dd4bf",   // teal
-  fair: "#f59e0b",    // amber
-  splurge: "#fb7185", // coral
-};
-
 export interface FocusPoint {
   lng: number;
   lat: number;
@@ -62,10 +57,16 @@ interface TravelMapProps {
   pinDropMode: boolean;
   focusPoint: FocusPoint | null;
   mapTheme: MapTheme;
-  overlayMode?: MapOverlayMode;
-  countryDeals?: CountryDeal[];
-  journalCountries?: JournalCountry[];
+  /** Map view filter: all wishes, only to-visit, or only visited. */
+  statusFilter: StatusFilter;
+  /** Treat each US state as its own map unit. */
+  usaAsStates: boolean;
+  /** US-state polygons (loaded by the parent); null until available. */
+  states: UsStateFeature[] | null;
+  /** Flight deal routes to render as arcs on the map. */
   dealRoutes?: DealRoute[];
+  /** Key like "MCO-NRT" identifying the currently highlighted route. */
+  activeDealRoute?: string | null;
   onCountryClick: (code: string, name: string) => void;
   onDotClick: (id: string) => void;
   onPinDrop: (lat: number, lng: number) => void;
@@ -143,6 +144,24 @@ function countryBounds(feature: GeoFeature): [[number, number], [number, number]
   ];
 }
 
+/**
+ * Padding (px) for fitBounds/flyTo so the target lands in the *visible* map area,
+ * not under the SidePanel. The panel is a fixed overlay: 400px on the right on
+ * desktop (sm+), a bottom sheet (~half the height) on mobile. The left sidebar is
+ * part of the desktop flex layout (already excluded from the map box) so it needs
+ * no compensation here.
+ */
+function visibleAreaPadding(panelOpen: boolean): number | maplibregl.PaddingOptions {
+  const base = 60;
+  if (!panelOpen || typeof window === "undefined") return base;
+  const isDesktop = window.innerWidth >= 640;
+  if (isDesktop) {
+    return { top: base, bottom: base, left: base, right: base + 400 };
+  }
+  // Mobile bottom sheet: pad the bottom so the country sits above it.
+  return { top: base, left: base, right: base, bottom: base + Math.round(window.innerHeight * 0.45) };
+}
+
 /** Pick zoom bounds based on where within a country the user clicked. */
 function countryBoundsForClick(
   feature: GeoFeature,
@@ -175,10 +194,14 @@ function dotsGeoJson(locations: LocationItem[]) {
   };
 }
 
-function countryCounts(locations: LocationItem[]): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const l of locations) counts[l.countryCode] = (counts[l.countryCode] ?? 0) + 1;
-  return counts;
+/** Country features minus USA, plus per-state features (when states mode is on). */
+function statesToFeatures(states: UsStateFeature[]): GeoFeature[] {
+  return states.map((s) => ({
+    type: "Feature",
+    id: s.id,
+    properties: { name: s.properties.name },
+    geometry: s.geometry as GeoFeature["geometry"],
+  }));
 }
 
 /** fill/line opacity are multiplied by the per-country "dim" feature-state (1 = normal). */
@@ -264,100 +287,113 @@ const BORDER_LAYER = "country-border";
 const DOTS_GLOW = "dots-glow";
 const DOTS_CORE = "dots-core";
 const DOTS_DEAL = "dots-deal";
-const JOURNAL_FILL_LAYER = "journal-country-fill";
-const JOURNAL_GLOW_LAYER = "journal-country-glow";
-const JOURNAL_BADGE_LAYER = "journal-badge";
-const DEAL_ARC_LAYER = "deal-arcs";
-const DEAL_ARC_GLOW_LAYER = "deal-arcs-glow";
-const DEAL_ARC_ARROW_LAYER = "deal-arc-arrows";
-const DEAL_DOT_GLOW_LAYER = "deal-dot-glow";
-const DEAL_PRICE_LABEL = "deal-price-labels";
-const COMBO_PULSE_LAYER = "combo-pulse";
 
-/** Generate great-circle arc points between two coordinates. */
-function greatCircleArc(
-  lon1: number, lat1: number,
-  lon2: number, lat2: number,
-  steps = 48,
+// Deal route layer IDs
+const DEAL_ROUTES_LINE = "deal-routes-line";
+const DEAL_ROUTES_ACTIVE = "deal-routes-active";
+const DEAL_AIRPORTS_ORIGIN = "deal-airports-origin";
+const DEAL_AIRPORTS_DEST = "deal-airports-dest";
+const DEAL_ROUTE_PRICES = "deal-route-prices";
+
+/**
+ * Generate intermediate points along a great circle arc between two coordinates.
+ * This produces the curved flight-path look on the map.
+ */
+function generateArc(
+  originLon: number,
+  originLat: number,
+  destLon: number,
+  destLat: number,
+  numPoints = 50
 ): [number, number][] {
-  const DEG2RAD = Math.PI / 180;
-  const RAD2DEG = 180 / Math.PI;
-  const φ1 = lat1 * DEG2RAD, λ1 = lon1 * DEG2RAD;
-  const φ2 = lat2 * DEG2RAD, λ2 = lon2 * DEG2RAD;
-  const x1 = Math.cos(φ1) * Math.cos(λ1), y1 = Math.cos(φ1) * Math.sin(λ1), z1 = Math.sin(φ1);
-  const x2 = Math.cos(φ2) * Math.cos(λ2), y2 = Math.cos(φ2) * Math.sin(λ2), z2 = Math.sin(φ2);
-  const dot = Math.min(1, Math.max(-1, x1 * x2 + y1 * y2 + z1 * z2));
-  const ω = Math.acos(dot);
-  const sinω = Math.sin(ω);
-  const pts: [number, number][] = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    let xi: number, yi: number, zi: number;
-    if (sinω < 1e-9) { xi = x1; yi = y1; zi = z1; }
-    else {
-      const A = Math.sin((1 - t) * ω) / sinω;
-      const B = Math.sin(t * ω) / sinω;
-      xi = A * x1 + B * x2; yi = A * y1 + B * y2; zi = A * z1 + B * z2;
-    }
-    const lat = Math.atan2(zi, Math.sqrt(xi * xi + yi * yi)) * RAD2DEG;
-    const lon = Math.atan2(yi, xi) * RAD2DEG;
-    pts.push([lon, lat]);
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const toDeg = (r: number) => (r * 180) / Math.PI;
+
+  const lat1 = toRad(originLat);
+  const lon1 = toRad(originLon);
+  const lat2 = toRad(destLat);
+  const lon2 = toRad(destLon);
+
+  const d = 2 * Math.asin(
+    Math.sqrt(
+      Math.sin((lat2 - lat1) / 2) ** 2 +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2
+    )
+  );
+
+  if (d < 1e-10) return [[originLon, originLat], [destLon, destLat]];
+
+  const points: [number, number][] = [];
+  for (let i = 0; i <= numPoints; i++) {
+    const f = i / numPoints;
+    const a = Math.sin((1 - f) * d) / Math.sin(d);
+    const b = Math.sin(f * d) / Math.sin(d);
+    const x = a * Math.cos(lat1) * Math.cos(lon1) + b * Math.cos(lat2) * Math.cos(lon2);
+    const y = a * Math.cos(lat1) * Math.sin(lon1) + b * Math.cos(lat2) * Math.sin(lon2);
+    const z = a * Math.sin(lat1) + b * Math.sin(lat2);
+    const lat = toDeg(Math.atan2(z, Math.sqrt(x * x + y * y)));
+    const lon = toDeg(Math.atan2(y, x));
+    points.push([lon, lat]);
   }
-  return pts;
+  return points;
 }
 
-/** Build GeoJSON for deal flight arcs. Top 5 routes are marked as "hero" for emphasis. */
-function dealArcsGeoJson(routes: DealRoute[]) {
-  // Sort by dealScore desc to determine top 5
-  const ranked = [...routes].sort((a, b) => (b.dealScore ?? 0) - (a.dealScore ?? 0));
-  const heroIds = new Set(ranked.slice(0, 5).map((r) => `${r.origin}-${r.destination}`));
-
+/** Build GeoJSON FeatureCollection for route arc lines. */
+function routesGeoJson(routes: DealRoute[]) {
   return {
     type: "FeatureCollection" as const,
-    features: routes.map((r) => {
-      const id = `${r.origin}-${r.destination}`;
-      return {
-        type: "Feature" as const,
-        properties: {
-          id,
-          price: r.price,
-          tier: r.tier ?? "fair",
-          destCity: r.destCity,
-          dealScore: r.dealScore ?? 0,
-          isHero: heroIds.has(id) ? 1 : 0,
-        },
-        geometry: {
-          type: "LineString" as const,
-          coordinates: greatCircleArc(r.originLon, r.originLat, r.destLon, r.destLat),
-        },
-      };
-    }),
+    features: routes.map((r) => ({
+      type: "Feature" as const,
+      properties: {
+        key: `${r.origin}-${r.destination}`,
+        price: r.price,
+        tier: r.tier ?? "fair",
+        origin: r.origin,
+        destination: r.destination,
+        destCity: r.destCity,
+      },
+      geometry: {
+        type: "LineString" as const,
+        coordinates: generateArc(r.originLon, r.originLat, r.destLon, r.destLat, 50),
+      },
+    })),
   };
 }
 
-/** Build GeoJSON for deal destination endpoint dots (for price labels). Top 5 get hero treatment. */
-function dealEndpointsGeoJson(routes: DealRoute[]) {
-  const ranked = [...routes].sort((a, b) => (b.dealScore ?? 0) - (a.dealScore ?? 0));
-  const heroIds = new Set(ranked.slice(0, 5).map((r) => `${r.origin}-${r.destination}`));
+/** Build GeoJSON FeatureCollection for airport dots (origin + destination). */
+function airportsGeoJson(routes: DealRoute[]) {
+  const seen = new Map<string, { lon: number; lat: number; role: "origin" | "dest"; code: string }>();
+  for (const r of routes) {
+    if (!seen.has(`o-${r.origin}`)) {
+      seen.set(`o-${r.origin}`, { lon: r.originLon, lat: r.originLat, role: "origin", code: r.origin });
+    }
+    if (!seen.has(`d-${r.destination}`)) {
+      seen.set(`d-${r.destination}`, { lon: r.destLon, lat: r.destLat, role: "dest", code: r.destination });
+    }
+  }
+  return {
+    type: "FeatureCollection" as const,
+    features: [...seen.values()].map((a) => ({
+      type: "Feature" as const,
+      properties: { code: a.code, role: a.role },
+      geometry: { type: "Point" as const, coordinates: [a.lon, a.lat] },
+    })),
+  };
+}
 
+/** Build GeoJSON for price labels at arc midpoints. */
+function routePricesGeoJson(routes: DealRoute[]) {
   return {
     type: "FeatureCollection" as const,
     features: routes.map((r) => {
-      const id = `${r.origin}-${r.destination}`;
+      const mid = generateArc(r.originLon, r.originLat, r.destLon, r.destLat, 2)[1]!;
       return {
         type: "Feature" as const,
         properties: {
-          id,
-          price: r.price,
-          tier: r.tier ?? "fair",
-          destCity: r.destCity,
+          key: `${r.origin}-${r.destination}`,
           label: `$${r.price}`,
-          isHero: heroIds.has(id) ? 1 : 0,
         },
-        geometry: {
-          type: "Point" as const,
-          coordinates: [r.destLon, r.destLat],
-        },
+        geometry: { type: "Point" as const, coordinates: mid },
       };
     }),
   };
@@ -430,10 +466,11 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     pinDropMode,
     focusPoint,
     mapTheme,
-    overlayMode = "wishes",
-    countryDeals = [],
-    journalCountries = [],
+    statusFilter,
+    usaAsStates,
+    states,
     dealRoutes = [],
+    activeDealRoute = null,
     onCountryClick,
     onDotClick,
     onPinDrop,
@@ -445,17 +482,28 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   const mapRef = useRef<MlMap | null>(null);
   const loadedRef = useRef(false);
   const countriesRef = useRef<GeoFeature[]>([]);
+  // The feature set actually rendered (countries, with USA swapped for its
+  // states when "USA as states" is on). Used for click-to-fit bounds lookup.
+  const displayFeaturesRef = useRef<GeoFeature[]>([]);
   const locationsRef = useRef(locations);
+  const statusFilterRef = useRef(statusFilter);
+  const usaAsStatesRef = useRef(usaAsStates);
+  const statesRef = useRef(states);
   const pinDropRef = useRef(pinDropMode);
-  const overlayModeRef = useRef(overlayMode);
-  const countryDealsRef = useRef(countryDeals);
-  const journalCountriesRef = useRef(journalCountries);
-  const dealRoutesRef = useRef(dealRoutes);
   const callbacksRef = useRef({ onCountryClick, onDotClick, onPinDrop, onZoomStateChange });
   const pulseRafRef = useRef<number>(0);
+  const routePulseRafRef = useRef<number>(0);
+  const dealRoutesRef = useRef(dealRoutes);
+  const activeDealRouteRef = useRef(activeDealRoute);
+  dealRoutesRef.current = dealRoutes;
+  activeDealRouteRef.current = activeDealRoute;
   const selectedIsoRef = useRef<string | null>(null);
   const hoveredIsoRef = useRef<string | null>(null);
   const restoreBelowZoomRef = useRef(1.2);
+  // When we deliberately fly/fit to a country or wish, its settled zoom can land
+  // below WORLD_VIEW_ZOOM on small/portrait screens. Suppress the world-view
+  // close for the duration of that animation so the panel stays open.
+  const lastFocusAtRef = useRef(0);
   const dimValuesRef = useRef<Record<string, number>>({});
   const dimRafsRef = useRef<Record<string, number>>({});
   const [hover, setHover] = useState<{
@@ -467,12 +515,48 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
 
   const mapThemeRef = useRef(mapTheme);
   mapThemeRef.current = mapTheme;
+  locationsRef.current = locations;
+  statusFilterRef.current = statusFilter;
+  usaAsStatesRef.current = usaAsStates;
+  statesRef.current = states;
   pinDropRef.current = pinDropMode;
-  overlayModeRef.current = overlayMode;
-  countryDealsRef.current = countryDeals;
-  journalCountriesRef.current = journalCountries;
-  dealRoutesRef.current = dealRoutes;
   callbacksRef.current = { onCountryClick, onDotClick, onPinDrop, onZoomStateChange };
+
+  // Rebuild the country/state heatmap + dots from the current locations, status
+  // filter, and states-mode setting. Single source of truth for all of them.
+  const rebuildGeo = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !map.getSource("countries")) return;
+
+    const usaAsStates = usaAsStatesRef.current;
+    const states = statesRef.current;
+    const filtered = locationsRef.current.filter((l) =>
+      matchesStatusFilter(l.status, statusFilterRef.current),
+    );
+
+    const feats: GeoFeature[] =
+      usaAsStates && states?.length
+        ? [...countriesRef.current.filter((f) => f.id !== "USA"), ...statesToFeatures(states)]
+        : countriesRef.current;
+
+    const counts = countByUnit(filtered, { usaAsStates, states });
+    for (const f of feats) {
+      f.properties.count = counts[f.id] ?? 0;
+      f.properties.iso = f.id;
+      f.properties.accent = f.id.startsWith("US-")
+        ? countryFlagAccent("USA")
+        : countryFlagAccent(f.id);
+    }
+    displayFeaturesRef.current = feats;
+
+    const maxCount = Math.max(2, ...Object.values(counts), 0);
+    const countriesSource = map.getSource("countries") as maplibregl.GeoJSONSource | undefined;
+    countriesSource?.setData({ type: "FeatureCollection", features: feats } as GeoJSON.GeoJSON);
+    applyHeatmapTheme(map, mapThemeRef.current, maxCount);
+
+    const dotsSource = map.getSource("dots") as maplibregl.GeoJSONSource | undefined;
+    dotsSource?.setData(dotsGeoJson(filtered));
+  }, []);
 
   const hideHover = () => setHover(null);
 
@@ -556,11 +640,12 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
 
     map.on("load", async () => {
       const res = await fetch("/data/countries.geo.json");
-      if (!res.ok) { console.warn("Failed to load countries GeoJSON:", res.status); return; }
       const geo = await res.json();
       countriesRef.current = geo.features as GeoFeature[];
 
-      const counts = countryCounts(locationsRef.current);
+      // Initial counts by country for the first paint; rebuildGeo() below applies
+      // the status filter and states-mode swap once layers/sources exist.
+      const counts = countByUnit(locationsRef.current, { usaAsStates: false, states: null });
       for (const f of countriesRef.current) {
         f.properties.count = counts[f.id] ?? 0;
         f.properties.iso = f.id;
@@ -619,6 +704,114 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         },
       });
 
+      // ── Deal route layers (rendered below dots) ──────────────────────
+      const emptyFC = { type: "FeatureCollection" as const, features: [] as unknown[] };
+      map.addSource("deal-routes", { type: "geojson", data: emptyFC as GeoJSON.GeoJSON });
+      map.addSource("deal-airports", { type: "geojson", data: emptyFC as GeoJSON.GeoJSON });
+      map.addSource("deal-route-prices", { type: "geojson", data: emptyFC as GeoJSON.GeoJSON });
+
+      // Default (inactive) route arcs — thin semi-transparent lines
+      map.addLayer({
+        id: DEAL_ROUTES_LINE,
+        type: "line",
+        source: "deal-routes",
+        paint: {
+          "line-color": "rgba(203,213,225,0.25)",
+          "line-width": 1.5,
+        },
+        layout: { "line-cap": "round", "line-join": "round" },
+      });
+
+      // Active/highlighted route arc — thicker, animated dash
+      map.addLayer({
+        id: DEAL_ROUTES_ACTIVE,
+        type: "line",
+        source: "deal-routes",
+        filter: ["==", ["get", "key"], ""],
+        paint: {
+          "line-color": "#2dd4bf",
+          "line-width": 3,
+          "line-dasharray": [2, 2],
+        },
+        layout: { "line-cap": "round", "line-join": "round" },
+      });
+
+      // Origin airport dots (amber)
+      map.addLayer({
+        id: DEAL_AIRPORTS_ORIGIN,
+        type: "circle",
+        source: "deal-airports",
+        filter: ["==", ["get", "role"], "origin"],
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 3, 8, 5, 14, 7],
+          "circle-color": "#fbbf24",
+          "circle-stroke-color": "rgba(251,191,36,0.4)",
+          "circle-stroke-width": 2,
+          "circle-opacity": 0.85,
+        },
+      });
+
+      // Destination airport dots (teal/cyan)
+      map.addLayer({
+        id: DEAL_AIRPORTS_DEST,
+        type: "circle",
+        source: "deal-airports",
+        filter: ["==", ["get", "role"], "dest"],
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 3, 8, 5, 14, 7],
+          "circle-color": "#2dd4bf",
+          "circle-stroke-color": "rgba(45,212,191,0.4)",
+          "circle-stroke-width": 2,
+          "circle-opacity": 0.85,
+        },
+      });
+
+      // Price labels at arc midpoints
+      map.addLayer({
+        id: DEAL_ROUTE_PRICES,
+        type: "symbol",
+        source: "deal-route-prices",
+        layout: {
+          "text-field": ["get", "label"],
+          "text-size": 11,
+          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+          "text-allow-overlap": false,
+          "text-ignore-placement": false,
+          "text-offset": [0, -0.8],
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "rgba(15,23,42,0.85)",
+          "text-halo-width": 1.5,
+          "text-opacity": 0.9,
+        },
+      });
+
+      // Animated dash offset for the active route arc
+      {
+        const routeStart = performance.now();
+        const routePulse = (now: number) => {
+          if (!map.getLayer(DEAL_ROUTES_ACTIVE)) return;
+          const t = ((now - routeStart) % 1200) / 1200;
+          // Animate by shifting the dash pattern phase via line-dasharray tweaking
+          const dashLen = 2 + 2 * t;
+          const gapLen = 4 - 2 * t;
+          map.setPaintProperty(DEAL_ROUTES_ACTIVE, "line-dasharray", [dashLen, gapLen]);
+          routePulseRafRef.current = requestAnimationFrame(routePulse);
+        };
+        routePulseRafRef.current = requestAnimationFrame(routePulse);
+      }
+
+      // Seed initial deal route data if already available
+      if (dealRoutesRef.current.length > 0) {
+        const rSrc = map.getSource("deal-routes") as maplibregl.GeoJSONSource;
+        rSrc?.setData(routesGeoJson(dealRoutesRef.current) as GeoJSON.GeoJSON);
+        const aSrc = map.getSource("deal-airports") as maplibregl.GeoJSONSource;
+        aSrc?.setData(airportsGeoJson(dealRoutesRef.current) as GeoJSON.GeoJSON);
+        const pSrc = map.getSource("deal-route-prices") as maplibregl.GeoJSONSource;
+        pSrc?.setData(routePricesGeoJson(dealRoutesRef.current) as GeoJSON.GeoJSON);
+      }
+
       map.addSource("dots", { type: "geojson", data: dotsGeoJson(locationsRef.current) });
       map.addLayer({
         id: DOTS_GLOW,
@@ -656,272 +849,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         },
       });
 
-      // ── Journal country highlighting ──
-      // We add a separate source for journal-highlighted countries using the same GeoJSON
-      // but with journal-specific properties. This overlays on top of the base country layer.
-      map.addSource("journal-countries", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-        promoteId: "iso",
-      });
-
-      // Soft purple/violet fill for countries with journal entries
-      map.addLayer({
-        id: JOURNAL_FILL_LAYER,
-        type: "fill",
-        source: "journal-countries",
-        paint: {
-          "fill-color": [
-            "case",
-            ["boolean", ["get", "hasCombo"], false],
-            "#f59e0b", // gold for journal + deal combo
-            "#a78bfa", // violet for journal-only
-          ] as unknown as string,
-          "fill-opacity": [
-            "interpolate", ["linear"], ["get", "entryCount"],
-            1, 0.12,
-            5, 0.22,
-            15, 0.32,
-          ] as unknown as number,
-        },
-      });
-
-      // Glowing border for journal countries
-      map.addLayer({
-        id: JOURNAL_GLOW_LAYER,
-        type: "line",
-        source: "journal-countries",
-        paint: {
-          "line-color": [
-            "case",
-            ["boolean", ["get", "hasCombo"], false],
-            "#fbbf24", // gold glow for combo
-            "#c4b5fd", // light violet glow for journal
-          ] as unknown as string,
-          "line-width": [
-            "interpolate", ["linear"], ["zoom"],
-            1, 1.5,
-            6, 3,
-            14, 5,
-          ] as unknown as number,
-          "line-blur": [
-            "interpolate", ["linear"], ["zoom"],
-            1, 2,
-            6, 4,
-            14, 6,
-          ] as unknown as number,
-          "line-opacity": [
-            "case",
-            ["boolean", ["get", "hasCombo"], false],
-            0.85,
-            0.6,
-          ] as unknown as number,
-        },
-      });
-
-      // Pulsing highlight for combo countries (journal + deal)
-      map.addLayer({
-        id: COMBO_PULSE_LAYER,
-        type: "line",
-        source: "journal-countries",
-        filter: ["==", ["get", "hasCombo"], true],
-        paint: {
-          "line-color": "#fbbf24",
-          "line-width": 4,
-          "line-blur": 8,
-          "line-opacity": 0.7,
-        },
-      });
-
-      // ── Flight deal arc paths ──
-      map.addSource("deal-arcs", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      map.addSource("deal-endpoints", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      // Glow under the arc — hero arcs get a wider, brighter glow
-      map.addLayer({
-        id: DEAL_ARC_GLOW_LAYER,
-        type: "line",
-        source: "deal-arcs",
-        paint: {
-          "line-color": [
-            "case",
-            ["==", ["get", "tier"], "cheap"], "#2dd4bf",
-            ["==", ["get", "tier"], "fair"], "#f59e0b",
-            "#fb7185",
-          ] as unknown as string,
-          "line-width": [
-            "case",
-            ["==", ["get", "isHero"], 1],
-            ["interpolate", ["linear"], ["zoom"], 1, 6, 6, 12, 14, 18],
-            ["interpolate", ["linear"], ["zoom"], 1, 3, 6, 6, 14, 10],
-          ] as unknown as number,
-          "line-blur": [
-            "case",
-            ["==", ["get", "isHero"], 1],
-            ["interpolate", ["linear"], ["zoom"], 1, 6, 6, 12, 14, 16],
-            ["interpolate", ["linear"], ["zoom"], 1, 4, 6, 8, 14, 12],
-          ] as unknown as number,
-          "line-opacity": [
-            "case",
-            ["==", ["get", "isHero"], 1], 0.5,
-            0.2,
-          ] as unknown as number,
-        },
-        layout: {
-          "line-cap": "round",
-          "line-join": "round",
-          visibility: "none",
-        },
-      });
-
-      // Main arc line — hero arcs are thicker, solid, and more vivid
-      map.addLayer({
-        id: DEAL_ARC_LAYER,
-        type: "line",
-        source: "deal-arcs",
-        paint: {
-          "line-color": [
-            "case",
-            ["==", ["get", "tier"], "cheap"], "#2dd4bf",
-            ["==", ["get", "tier"], "fair"], "#f59e0b",
-            "#fb7185",
-          ] as unknown as string,
-          "line-width": [
-            "case",
-            ["==", ["get", "isHero"], 1],
-            ["interpolate", ["linear"], ["zoom"], 1, 2.5, 6, 3.5, 14, 5],
-            ["interpolate", ["linear"], ["zoom"], 1, 1, 6, 1.5, 14, 2],
-          ] as unknown as number,
-          "line-opacity": [
-            "case",
-            ["==", ["get", "isHero"], 1], 0.9,
-            0.5,
-          ] as unknown as number,
-          "line-dasharray": [2, 3],
-        },
-        layout: {
-          "line-cap": "round",
-          "line-join": "round",
-          visibility: "none",
-        },
-      });
-
-      // Price label dots at destinations — hero dots are larger and bolder
-      map.addLayer({
-        id: DEAL_ARC_ARROW_LAYER,
-        type: "circle",
-        source: "deal-endpoints",
-        layout: {
-          visibility: "none",
-        },
-        paint: {
-          "circle-radius": [
-            "case",
-            ["==", ["get", "isHero"], 1],
-            ["interpolate", ["linear"], ["zoom"], 1, 6, 6, 10, 14, 14],
-            ["interpolate", ["linear"], ["zoom"], 1, 3, 6, 5, 14, 8],
-          ] as unknown as number,
-          "circle-color": [
-            "case",
-            ["==", ["get", "tier"], "cheap"], "#2dd4bf",
-            ["==", ["get", "tier"], "fair"], "#f59e0b",
-            "#fb7185",
-          ] as unknown as string,
-          "circle-stroke-color": [
-            "case",
-            ["==", ["get", "isHero"], 1], "#ffffff",
-            "#0f172a",
-          ] as unknown as string,
-          "circle-stroke-width": [
-            "case",
-            ["==", ["get", "isHero"], 1], 2,
-            1.5,
-          ] as unknown as number,
-          "circle-opacity": 0.9,
-        },
-      });
-
-      // Glow under airport deal dots — hero dots get a stronger glow
-      map.addLayer({
-        id: DEAL_DOT_GLOW_LAYER,
-        type: "circle",
-        source: "deal-endpoints",
-        layout: {
-          visibility: "none",
-        },
-        paint: {
-          "circle-radius": [
-            "case",
-            ["==", ["get", "isHero"], 1],
-            ["interpolate", ["linear"], ["zoom"], 1, 16, 6, 24, 14, 32],
-            ["interpolate", ["linear"], ["zoom"], 1, 8, 6, 14, 14, 20],
-          ] as unknown as number,
-          "circle-color": [
-            "case",
-            ["==", ["get", "tier"], "cheap"], "#2dd4bf",
-            ["==", ["get", "tier"], "fair"], "#f59e0b",
-            "#fb7185",
-          ] as unknown as string,
-          "circle-blur": 1,
-          "circle-opacity": [
-            "case",
-            ["==", ["get", "isHero"], 1], 0.55,
-            0.3,
-          ] as unknown as number,
-        },
-      });
-
-      // Price labels at deal airport dots — hero deals always visible, others show on zoom
-      map.addLayer({
-        id: DEAL_PRICE_LABEL,
-        type: "symbol",
-        source: "deal-endpoints",
-        layout: {
-          "text-field": [
-            "case",
-            ["==", ["get", "isHero"], 1],
-            ["concat", ["get", "label"], "\n", ["get", "destCity"]],
-            ["get", "label"],
-          ] as unknown as string,
-          "text-size": [
-            "case",
-            ["==", ["get", "isHero"], 1],
-            ["interpolate", ["linear"], ["zoom"], 1, 11, 6, 14, 10, 16],
-            ["interpolate", ["linear"], ["zoom"], 3, 9, 6, 11, 10, 13],
-          ] as unknown as number,
-          "text-offset": [0, 1.8],
-          "text-anchor": "top",
-          // Hero labels always visible; others avoid overlap
-          "text-allow-overlap": ["==", ["get", "isHero"], 1] as unknown as boolean,
-          "text-ignore-placement": false,
-          "symbol-sort-key": ["-", ["get", "isHero"]] as unknown as number,
-          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-          visibility: "none",
-        },
-        paint: {
-          "text-color": [
-            "case",
-            ["==", ["get", "isHero"], 1], "#ffffff",
-            "#e2e8f0",
-          ] as unknown as string,
-          "text-halo-color": "#0f172a",
-          "text-halo-width": [
-            "case",
-            ["==", ["get", "isHero"], 1], 2,
-            1.5,
-          ] as unknown as number,
-        },
-        minzoom: 1.5,
-      });
-
-      // Pulse animation for flight-deal rings + combo country glow + deal arc glow
+      // Pulse animation for flight-deal rings
       const start = performance.now();
       const pulse = (now: number) => {
         const t = ((now - start) % 1600) / 1600;
@@ -929,41 +857,18 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
           map.setPaintProperty(DOTS_DEAL, "circle-radius", 9 + 7 * t);
           map.setPaintProperty(DOTS_DEAL, "circle-stroke-opacity", 0.9 * (1 - t));
         }
-        // Combo countries get a slow breathing glow
-        const comboT = ((now - start) % 3000) / 3000;
-        const comboOpacity = 0.3 + 0.5 * Math.sin(comboT * Math.PI * 2);
-        if (map.getLayer(COMBO_PULSE_LAYER)) {
-          map.setPaintProperty(COMBO_PULSE_LAYER, "line-opacity", comboOpacity);
-        }
-        // Deal arc glow breathing for hero routes — gentle pulsing to draw attention
-        const arcT = ((now - start) % 2500) / 2500;
-        const arcGlowOpacity = 0.35 + 0.2 * Math.sin(arcT * Math.PI * 2);
-        if (map.getLayer(DEAL_ARC_GLOW_LAYER)) {
-          map.setPaintProperty(DEAL_ARC_GLOW_LAYER, "line-opacity", [
-            "case",
-            ["==", ["get", "isHero"], 1], arcGlowOpacity + 0.15,
-            arcGlowOpacity * 0.6,
-          ] as unknown as number);
-        }
         pulseRafRef.current = requestAnimationFrame(pulse);
       };
       pulseRafRef.current = requestAnimationFrame(pulse);
 
       loadedRef.current = true;
+      // Apply status filter + states-mode (if already set) now that sources exist.
+      rebuildGeo();
 
       map.on("click", (e: MapMouseEvent) => {
         if (pinDropRef.current) {
           callbacksRef.current.onPinDrop(e.lngLat.lat, e.lngLat.lng);
           return;
-        }
-        // Check for deal airport dot clicks first (in deals mode)
-        if (overlayModeRef.current === "deals" && map.getLayer(DEAL_ARC_ARROW_LAYER)) {
-          const dealDots = map.queryRenderedFeatures(e.point, { layers: [DEAL_ARC_ARROW_LAYER] });
-          if (dealDots.length > 0) {
-            const props = dealDots[0].properties;
-            callbacksRef.current.onDotClick(props.id as string);
-            return;
-          }
         }
         const dots = map.queryRenderedFeatures(e.point, { layers: [DOTS_CORE, DOTS_GLOW] });
         if (dots.length > 0) {
@@ -973,13 +878,16 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         const countries = map.queryRenderedFeatures(e.point, { layers: [FILL_LAYER] });
         if (countries.length > 0) {
           const props = countries[0].properties as { iso: string; name: string; count: number };
-          const feature = countriesRef.current.find((f) => f.id === props.iso);
+          const feature = displayFeaturesRef.current.find((f) => f.id === props.iso);
           let fitZoom = map.getZoom();
           if (feature) {
             const bounds = countryBoundsForClick(feature, e.lngLat.lng, e.lngLat.lat);
-            const camera = map.cameraForBounds(bounds, { padding: 80, maxZoom: 7 });
+            // Panel opens for a country with wishes — keep it out of the fit area.
+            const padding = visibleAreaPadding(props.count > 0);
+            const camera = map.cameraForBounds(bounds, { padding, maxZoom: 7 });
             fitZoom = camera?.zoom ?? fitZoom;
-            map.fitBounds(bounds, { padding: 80, duration: 1100, maxZoom: 7 });
+            map.fitBounds(bounds, { padding, duration: 1100, maxZoom: 7 });
+            lastFocusAtRef.current = performance.now();
           }
           // Fade the clicked country's heatmap glow so individual dots stand out
           const previous = selectedIsoRef.current;
@@ -1005,6 +913,9 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
           setCountrySelectedAccent(null);
           selectedIsoRef.current = null;
         }
+        // Ignore the zoomend from a just-issued country/wish focus — its low fit
+        // zoom on a phone screen must not be mistaken for a return to world view.
+        if (performance.now() - lastFocusAtRef.current < 1600) return;
         if (z < WORLD_VIEW_ZOOM) {
           callbacksRef.current.onZoomStateChange?.(false);
         }
@@ -1017,22 +928,6 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
           hideHover();
           return;
         }
-        // Check deal endpoint dots first (in deals mode)
-        if (overlayModeRef.current === "deals" && map.getLayer(DEAL_ARC_ARROW_LAYER)) {
-          const dealDotHit = map.queryRenderedFeatures(e.point, { layers: [DEAL_ARC_ARROW_LAYER] });
-          if (dealDotHit.length > 0) {
-            const p = dealDotHit[0].properties;
-            setHover({
-              x: e.point.x + 14,
-              y: e.point.y + 14,
-              name: `${p.destCity} — $${p.price}`,
-            });
-            map.getCanvas().style.cursor = "pointer";
-            setCountryHover(null);
-            return;
-          }
-        }
-
         const hits = map.queryRenderedFeatures(e.point, { layers: [DOTS_CORE, DOTS_GLOW, FILL_LAYER] });
         const dotHit = hits.find((h) => h.layer.id !== FILL_LAYER);
         const countryHit = hits.find((h) => h.layer.id === FILL_LAYER);
@@ -1047,21 +942,14 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
             x: e.point.x + 14,
             y: e.point.y + 14,
             name: dotHit.properties.name as string,
-            cover: cleanThumb(cover) || undefined,
+            cover: coverImageSrc(cover, 240),
           });
         } else if (countryHit) {
-          const props = countryHit.properties as { name: string; count: number; hasDeal?: number; dealPrice?: number };
-          const isDeals = overlayModeRef.current === "deals";
-          let label: string;
-          if (isDeals && props.hasDeal && props.dealPrice) {
-            label = `${props.name} — $${props.dealPrice}`;
-          } else {
-            label = props.count > 0 ? `${props.name} - ${props.count}` : props.name;
-          }
+          const { name, count } = countryHit.properties as { name: string; count: number };
           setHover({
             x: e.point.x + 14,
             y: e.point.y + 14,
-            name: label,
+            name: count > 0 ? `${name} - ${count}` : name,
           });
         } else {
           hideHover();
@@ -1081,6 +969,7 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     return () => {
       detachDualRotate();
       cancelAnimationFrame(pulseRafRef.current);
+      cancelAnimationFrame(routePulseRafRef.current);
       Object.values(dimRafsRef.current).forEach(cancelAnimationFrame);
       map.remove();
       mapRef.current = null;
@@ -1089,185 +978,37 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep sources in sync when locations change
+  // Keep heatmap + dots in sync with locations, theme, status filter, and states mode.
+  useEffect(() => {
+    rebuildGeo();
+  }, [locations, mapTheme, statusFilter, usaAsStates, states, rebuildGeo]);
+
+  // Keep deal route layers in sync with dealRoutes prop.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-
-    const dotsSource = map.getSource("dots") as maplibregl.GeoJSONSource | undefined;
-    dotsSource?.setData(dotsGeoJson(locations));
-
-    const counts = countryCounts(locations);
-    for (const f of countriesRef.current) {
-      f.properties.count = counts[f.id] ?? 0;
-      f.properties.accent = countryFlagAccent(f.id);
-    }
-    const countriesSource = map.getSource("countries") as maplibregl.GeoJSONSource | undefined;
-    countriesSource?.setData({ type: "FeatureCollection", features: countriesRef.current } as GeoJSON.GeoJSON);
-
-    const maxCount = Math.max(2, ...Object.values(counts), 0);
-    applyHeatmapTheme(map, mapTheme, maxCount);
-  }, [locations, mapTheme]);
-
-  // Toggle between Wishes and Deals overlay modes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-
-    if (overlayMode === "deals") {
-      // Build a lookup of deal colors by ISO code
-      const dealsByCountry = new Map<string, CountryDeal>();
-      for (const d of countryDeals) {
-        dealsByCountry.set(d.countryCode, d);
-      }
-
-      // Update country properties with deal data
-      for (const f of countriesRef.current) {
-        const deal = dealsByCountry.get(f.id);
-        if (deal) {
-          (f.properties as Record<string, unknown>).dealTier = deal.tier;
-          (f.properties as Record<string, unknown>).dealPrice = deal.cheapestPrice;
-          (f.properties as Record<string, unknown>).hasDeal = 1;
-        } else {
-          (f.properties as Record<string, unknown>).dealTier = null;
-          (f.properties as Record<string, unknown>).dealPrice = null;
-          (f.properties as Record<string, unknown>).hasDeal = 0;
-        }
-      }
-
-      const countriesSource = map.getSource("countries") as maplibregl.GeoJSONSource | undefined;
-      countriesSource?.setData({ type: "FeatureCollection", features: countriesRef.current } as GeoJSON.GeoJSON);
-
-      // Apply deal-based fill coloring
-      if (map.getLayer(FILL_LAYER)) {
-        map.setPaintProperty(FILL_LAYER, "fill-color", [
-          "case",
-          ["==", ["get", "dealTier"], "cheap"], DEAL_TIER_COLORS.cheap,
-          ["==", ["get", "dealTier"], "fair"], DEAL_TIER_COLORS.fair,
-          ["==", ["get", "dealTier"], "splurge"], DEAL_TIER_COLORS.splurge,
-          "rgba(0,0,0,0)",
-        ] as unknown as string);
-        map.setPaintProperty(FILL_LAYER, "fill-opacity", [
-          "case",
-          [">", ["get", "hasDeal"], 0], 0.35,
-          0,
-        ] as unknown as number);
-      }
-
-      // Update glow line for deals
-      if (map.getLayer(GLOW_LINE_LAYER)) {
-        map.setFilter(GLOW_LINE_LAYER, [">", ["get", "hasDeal"], 0]);
-        map.setPaintProperty(GLOW_LINE_LAYER, "line-color", [
-          "case",
-          ["==", ["get", "dealTier"], "cheap"], DEAL_TIER_COLORS.cheap,
-          ["==", ["get", "dealTier"], "fair"], DEAL_TIER_COLORS.fair,
-          ["==", ["get", "dealTier"], "splurge"], DEAL_TIER_COLORS.splurge,
-          "#fbbf24",
-        ] as unknown as string);
-      }
-
-      // Hide wish dots in deals mode
-      if (map.getLayer(DOTS_GLOW)) map.setLayoutProperty(DOTS_GLOW, "visibility", "none");
-      if (map.getLayer(DOTS_CORE)) map.setLayoutProperty(DOTS_CORE, "visibility", "none");
-      if (map.getLayer(DOTS_DEAL)) map.setLayoutProperty(DOTS_DEAL, "visibility", "none");
-
-      // Show deal airport dots and price labels
-      if (map.getLayer(DEAL_ARC_ARROW_LAYER)) map.setLayoutProperty(DEAL_ARC_ARROW_LAYER, "visibility", "visible");
-      if (map.getLayer(DEAL_DOT_GLOW_LAYER)) map.setLayoutProperty(DEAL_DOT_GLOW_LAYER, "visibility", "visible");
-      if (map.getLayer(DEAL_PRICE_LABEL)) map.setLayoutProperty(DEAL_PRICE_LABEL, "visibility", "visible");
-
+    const rSrc = map.getSource("deal-routes") as maplibregl.GeoJSONSource | undefined;
+    const aSrc = map.getSource("deal-airports") as maplibregl.GeoJSONSource | undefined;
+    const pSrc = map.getSource("deal-route-prices") as maplibregl.GeoJSONSource | undefined;
+    if (!rSrc) return;
+    if (dealRoutes.length === 0) {
+      const empty = { type: "FeatureCollection" as const, features: [] as unknown[] } as GeoJSON.GeoJSON;
+      rSrc.setData(empty);
+      aSrc?.setData(empty);
+      pSrc?.setData(empty);
     } else {
-      // Restore wishes mode: re-apply heatmap and show dots
-      const counts = countryCounts(locations);
-      for (const f of countriesRef.current) {
-        f.properties.count = counts[f.id] ?? 0;
-      }
-      const countriesSource = map.getSource("countries") as maplibregl.GeoJSONSource | undefined;
-      countriesSource?.setData({ type: "FeatureCollection", features: countriesRef.current } as GeoJSON.GeoJSON);
-
-      const maxCount = Math.max(2, ...Object.values(counts), 0);
-      applyHeatmapTheme(map, mapTheme, maxCount);
-
-      // Restore glow line filter
-      if (map.getLayer(GLOW_LINE_LAYER)) {
-        map.setFilter(GLOW_LINE_LAYER, [">", ["get", "count"], 0]);
-      }
-
-      // Show wish dots
-      if (map.getLayer(DOTS_GLOW)) map.setLayoutProperty(DOTS_GLOW, "visibility", "visible");
-      if (map.getLayer(DOTS_CORE)) map.setLayoutProperty(DOTS_CORE, "visibility", "visible");
-      if (map.getLayer(DOTS_DEAL)) map.setLayoutProperty(DOTS_DEAL, "visibility", "visible");
-
-      // Hide deal airport dots and price labels
-      if (map.getLayer(DEAL_ARC_ARROW_LAYER)) map.setLayoutProperty(DEAL_ARC_ARROW_LAYER, "visibility", "none");
-      if (map.getLayer(DEAL_DOT_GLOW_LAYER)) map.setLayoutProperty(DEAL_DOT_GLOW_LAYER, "visibility", "none");
-      if (map.getLayer(DEAL_PRICE_LABEL)) map.setLayoutProperty(DEAL_PRICE_LABEL, "visibility", "none");
+      rSrc.setData(routesGeoJson(dealRoutes) as GeoJSON.GeoJSON);
+      aSrc?.setData(airportsGeoJson(dealRoutes) as GeoJSON.GeoJSON);
+      pSrc?.setData(routePricesGeoJson(dealRoutes) as GeoJSON.GeoJSON);
     }
-  }, [overlayMode, countryDeals, locations, mapTheme]);
+  }, [dealRoutes]);
 
-  // Update journal country highlighting when data changes
+  // Highlight the active deal route.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-
-    const journalSource = map.getSource("journal-countries") as maplibregl.GeoJSONSource | undefined;
-    if (!journalSource) return;
-
-    // Build a set of deal country codes for combo detection
-    const dealCountryCodes = new Set(countryDealsRef.current.map((d) => d.countryCode));
-
-    // Match journal country names to GeoJSON features by name
-    const journalByName = new Map<string, JournalCountry>();
-    for (const jc of journalCountries) {
-      journalByName.set(jc.country.toLowerCase(), jc);
-    }
-
-    const matchedFeatures: GeoFeature[] = [];
-    for (const f of countriesRef.current) {
-      const jc = journalByName.get(f.properties.name.toLowerCase());
-      if (!jc) continue;
-      const hasCombo = dealCountryCodes.has(f.id);
-      matchedFeatures.push({
-        ...f,
-        properties: {
-          ...f.properties,
-          iso: f.id,
-          entryCount: jc.entryCount,
-          hasCombo,
-        } as GeoFeature["properties"] & { entryCount: number; hasCombo: boolean },
-      } as unknown as GeoFeature);
-    }
-
-    journalSource.setData({
-      type: "FeatureCollection",
-      features: matchedFeatures,
-    } as GeoJSON.GeoJSON);
-  }, [journalCountries, countryDeals]);
-
-  // Update deal flight arc paths when data changes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-
-    const arcsSource = map.getSource("deal-arcs") as maplibregl.GeoJSONSource | undefined;
-    const endpointsSource = map.getSource("deal-endpoints") as maplibregl.GeoJSONSource | undefined;
-
-    if (arcsSource) {
-      arcsSource.setData(dealArcsGeoJson(dealRoutes));
-    }
-    if (endpointsSource) {
-      endpointsSource.setData(dealEndpointsGeoJson(dealRoutes));
-    }
-
-    // Show/hide arc layers based on overlay mode
-    const visible = overlayMode === "deals" && dealRoutes.length > 0;
-    const visibility = visible ? "visible" : "none";
-    for (const layerId of [DEAL_ARC_LAYER, DEAL_ARC_GLOW_LAYER, DEAL_ARC_ARROW_LAYER, DEAL_DOT_GLOW_LAYER, DEAL_PRICE_LABEL]) {
-      if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, "visibility", visibility);
-      }
-    }
-  }, [dealRoutes, overlayMode]);
+    if (!map || !loadedRef.current || !map.getLayer(DEAL_ROUTES_ACTIVE)) return;
+    map.setFilter(DEAL_ROUTES_ACTIVE, ["==", ["get", "key"], activeDealRoute ?? ""]);
+  }, [activeDealRoute]);
 
   // Fly to a wish selected in the sidebar
   useEffect(() => {
@@ -1278,7 +1019,10 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       center: [focusPoint.lng, focusPoint.lat],
       zoom: targetZoom,
       duration: 1400,
+      // A wish/location selection always opens the panel — center in the visible area.
+      padding: visibleAreaPadding(true),
     });
+    lastFocusAtRef.current = performance.now();
     if (focusPoint.dimCountry) {
       const previous = selectedIsoRef.current;
       if (previous && previous !== focusPoint.dimCountry) tweenDim(previous, 1);
@@ -1300,7 +1044,8 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         setCountrySelectedAccent(null);
         selectedIsoRef.current = null;
       }
-      map.flyTo({ center: [20, 22], zoom: 1.6, duration: 1100 });
+      // Clear any panel padding left over from a country/wish fit so the world recenters.
+      map.flyTo({ center: [20, 22], zoom: 1.6, duration: 1100, padding: 0 });
       callbacksRef.current.onZoomStateChange?.(false);
     },
   }));

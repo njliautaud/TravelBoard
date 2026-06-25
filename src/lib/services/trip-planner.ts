@@ -7,7 +7,6 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { Decimal } from "@prisma/client/runtime/library";
 import type { TripPlanStatus } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -45,12 +44,12 @@ export interface TripPlanData {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function computeTotalCost(legs: Array<{ fareAmount: Decimal | null }>): number | null {
+function computeTotalCost(legs: Array<{ fareAmount: number | null }>): number | null {
   let total = 0;
   let allPriced = true;
   for (const leg of legs) {
     if (leg.fareAmount != null) {
-      total += Number(leg.fareAmount);
+      total += leg.fareAmount;
     } else {
       allPriced = false;
     }
@@ -64,7 +63,7 @@ function serializePlan(plan: {
   description: string | null;
   startDate: Date | null;
   endDate: Date | null;
-  budget: Decimal | null;
+  budget: number | null;
   currency: string;
   status: TripPlanStatus;
   createdAt: Date;
@@ -75,7 +74,7 @@ function serializePlan(plan: {
     destination: string;
     departDate: Date | null;
     returnDate: Date | null;
-    fareAmount: Decimal | null;
+    fareAmount: number | null;
     fareSource: string | null;
     notes: string | null;
     sortOrder: number;
@@ -89,7 +88,7 @@ function serializePlan(plan: {
       destination: l.destination,
       departDate: l.departDate?.toISOString() ?? null,
       returnDate: l.returnDate?.toISOString() ?? null,
-      fareAmount: l.fareAmount ? Number(l.fareAmount) : null,
+      fareAmount: l.fareAmount,
       fareSource: l.fareSource,
       notes: l.notes,
       sortOrder: l.sortOrder,
@@ -101,7 +100,7 @@ function serializePlan(plan: {
     description: plan.description,
     startDate: plan.startDate?.toISOString() ?? null,
     endDate: plan.endDate?.toISOString() ?? null,
-    budget: plan.budget ? Number(plan.budget) : null,
+    budget: plan.budget,
     currency: plan.currency,
     status: plan.status,
     totalCost: computeTotalCost(plan.legs),
@@ -153,7 +152,7 @@ export async function createTripPlan(
       description: data.description ?? null,
       startDate: data.startDate ? new Date(data.startDate) : null,
       endDate: data.endDate ? new Date(data.endDate) : null,
-      budget: data.budget != null ? new Decimal(data.budget) : null,
+      budget: data.budget ?? null,
       currency: data.currency ?? "USD",
       status: data.status ?? "DRAFT",
     },
@@ -184,7 +183,7 @@ export async function updateTripPlan(
       ...(data.description !== undefined && { description: data.description ?? null }),
       ...(data.startDate !== undefined && { startDate: data.startDate ? new Date(data.startDate) : null }),
       ...(data.endDate !== undefined && { endDate: data.endDate ? new Date(data.endDate) : null }),
-      ...(data.budget !== undefined && { budget: data.budget != null ? new Decimal(data.budget) : null }),
+      ...(data.budget !== undefined && { budget: data.budget ?? null }),
       ...(data.currency != null && { currency: data.currency }),
       ...(data.status != null && { status: data.status }),
     },
@@ -217,7 +216,7 @@ export async function listLegs(planId: string, userId: string): Promise<TripPlan
     destination: l.destination,
     departDate: l.departDate?.toISOString() ?? null,
     returnDate: l.returnDate?.toISOString() ?? null,
-    fareAmount: l.fareAmount ? Number(l.fareAmount) : null,
+    fareAmount: l.fareAmount,
     fareSource: l.fareSource,
     notes: l.notes,
     sortOrder: l.sortOrder,
@@ -254,7 +253,7 @@ export async function addLeg(
       destination: data.destination.toUpperCase(),
       departDate: data.departDate ? new Date(data.departDate) : null,
       returnDate: data.returnDate ? new Date(data.returnDate) : null,
-      fareAmount: data.fareAmount != null ? new Decimal(data.fareAmount) : null,
+      fareAmount: data.fareAmount ?? null,
       fareSource: data.fareSource ?? null,
       notes: data.notes ?? null,
       sortOrder: nextOrder,
@@ -270,7 +269,7 @@ export async function addLeg(
     destination: leg.destination,
     departDate: leg.departDate?.toISOString() ?? null,
     returnDate: leg.returnDate?.toISOString() ?? null,
-    fareAmount: leg.fareAmount ? Number(leg.fareAmount) : null,
+    fareAmount: leg.fareAmount,
     fareSource: leg.fareSource,
     notes: leg.notes,
     sortOrder: leg.sortOrder,
@@ -304,7 +303,7 @@ export async function updateLeg(
       ...(data.destination != null && { destination: data.destination.toUpperCase() }),
       ...(data.departDate !== undefined && { departDate: data.departDate ? new Date(data.departDate) : null }),
       ...(data.returnDate !== undefined && { returnDate: data.returnDate ? new Date(data.returnDate) : null }),
-      ...(data.fareAmount !== undefined && { fareAmount: data.fareAmount != null ? new Decimal(data.fareAmount) : null }),
+      ...(data.fareAmount !== undefined && { fareAmount: data.fareAmount ?? null }),
       ...(data.fareSource !== undefined && { fareSource: data.fareSource ?? null }),
       ...(data.notes !== undefined && { notes: data.notes ?? null }),
       ...(data.sortOrder != null && { sortOrder: data.sortOrder }),
@@ -319,7 +318,7 @@ export async function updateLeg(
     destination: leg.destination,
     departDate: leg.departDate?.toISOString() ?? null,
     returnDate: leg.returnDate?.toISOString() ?? null,
-    fareAmount: leg.fareAmount ? Number(leg.fareAmount) : null,
+    fareAmount: leg.fareAmount,
     fareSource: leg.fareSource,
     notes: leg.notes,
     sortOrder: leg.sortOrder,

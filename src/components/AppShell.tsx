@@ -242,8 +242,8 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   return (
     <div className="relative flex h-dvh w-full overflow-hidden">
       {/* Map is ALWAYS rendered — it IS the app */}
-      <div className="absolute inset-0 z-0">
-        <MapApp initialLocations={initialLocations} dealsMode={dealsMode} />
+      <div className={`absolute inset-0 z-0 ${appEntered ? "sm:left-16" : ""}`}>
+        <MapApp initialLocations={initialLocations} />
       </div>
 
       {/* Landing state — map visible behind, compelling hero card */}
@@ -361,14 +361,10 @@ export default function AppShell({ initialLocations }: AppShellProps) {
 
       {/* Overlay panel for non-map tabs — slides over the map with backdrop blur */}
       {isOverlay && appEntered && (
-        <div className="absolute inset-0 z-30 flex">
+        <div className="absolute inset-0 z-30 sm:left-16 flex">
           {/* Dismiss backdrop on desktop */}
           <div
-            className="hidden sm:block sm:w-16 flex-shrink-0"
-            onClick={() => setActiveTab("map")}
-          />
-          <div
-            className="hidden sm:block flex-1 max-w-[calc(100%-480px-64px)]"
+            className="hidden sm:block flex-1 max-w-[calc(100%-480px)]"
             onClick={() => setActiveTab("map")}
           />
           {/* Panel */}

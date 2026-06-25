@@ -6,8 +6,6 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import type { Decimal } from "@prisma/client/runtime/library";
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -49,18 +47,13 @@ export interface CommentData {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function decimalToNumber(d: Decimal | null): number {
-  if (d === null) return 0;
-  return Number(d);
-}
-
 function serializeDeal(row: {
   id: string;
   boardId: string;
   userId: string;
   origin: string;
   destination: string;
-  price: Decimal;
+  price: number;
   currency: string;
   notes: string | null;
   votes: number;
@@ -73,7 +66,7 @@ function serializeDeal(row: {
     userId: row.userId,
     origin: row.origin,
     destination: row.destination,
-    price: decimalToNumber(row.price),
+    price: row.price,
     currency: row.currency,
     notes: row.notes,
     votes: row.votes,
@@ -95,7 +88,7 @@ function serializeBoard(row: {
     userId: string;
     origin: string;
     destination: string;
-    price: Decimal;
+    price: number;
     currency: string;
     notes: string | null;
     votes: number;
@@ -259,13 +252,73 @@ export async function createDeal(boardId: string, userId: string, input: CreateD
   return serializeDeal(row);
 }
 
-export async function voteDeal(dealId: string, direction: "up" | "down"): Promise<{ votes: number } | null> {
+export async function voteDeal(
+  dealId: string,
+  direction: "up" | "down",
+  userId?: string
+): Promise<{ votes: number; userVote: string | null } | null> {
   const deal = await prisma.boardDeal.findUnique({ where: { id: dealId } });
   if (!deal) return null;
 
+  // If userId provided, enforce per-user vote deduplication
+  if (userId) {
+    const existing = await prisma.dealVote.findUnique({
+      where: { userId_dealId: { userId, dealId } },
+    });
+
+    if (existing) {
+      if (existing.direction === direction) {
+        // Same vote again — remove it (toggle off)
+        await prisma.$transaction([
+          prisma.dealVote.delete({ where: { id: existing.id } }),
+          prisma.boardDeal.update({
+            where: { id: dealId },
+            data: {
+              votes: direction === "up"
+                ? Math.max(0, deal.votes - 1)
+                : deal.votes + 1,
+            },
+          }),
+        ]);
+        const updated = await prisma.boardDeal.findUnique({ where: { id: dealId } });
+        return { votes: updated?.votes ?? 0, userVote: null };
+      } else {
+        // Switching direction — update vote and adjust count by 2
+        await prisma.$transaction([
+          prisma.dealVote.update({
+            where: { id: existing.id },
+            data: { direction },
+          }),
+          prisma.boardDeal.update({
+            where: { id: dealId },
+            data: {
+              votes: direction === "up" ? deal.votes + 2 : Math.max(0, deal.votes - 2),
+            },
+          }),
+        ]);
+        const updated = await prisma.boardDeal.findUnique({ where: { id: dealId } });
+        return { votes: updated?.votes ?? 0, userVote: direction };
+      }
+    }
+
+    // New vote
+    await prisma.$transaction([
+      prisma.dealVote.create({ data: { userId, dealId, direction } }),
+      prisma.boardDeal.update({
+        where: { id: dealId },
+        data: {
+          votes: direction === "up" ? deal.votes + 1 : Math.max(0, deal.votes - 1),
+        },
+      }),
+    ]);
+    const updated = await prisma.boardDeal.findUnique({ where: { id: dealId } });
+    return { votes: updated?.votes ?? 0, userVote: direction };
+  }
+
+  // Fallback: no userId (anonymous), just increment/decrement
   const newVotes = direction === "up" ? deal.votes + 1 : Math.max(0, deal.votes - 1);
   await prisma.boardDeal.update({ where: { id: dealId }, data: { votes: newVotes } });
-  return { votes: newVotes };
+  return { votes: newVotes, userVote: null };
 }
 
 // ---------------------------------------------------------------------------

@@ -13,12 +13,27 @@
     "whatsapp-bot:setup": "npx puppeteer browsers install chrome",
     "whatsapp-bot:stop": "node scripts/whatsapp-bot-stop.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "esp32:upload": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/esp32-pio.ps1 run -t upload --upload-port COM4",
+    "esp32:upload-idf54": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/esp32-pio.ps1 run --environment esp32-s3-idf54 -t upload --upload-port COM4",
+    "esp32:build-idf54": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/esp32-pio.ps1 run --environment esp32-s3-idf54",
+    "esp32:monitor": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/esp32-pio.ps1 device monitor --port COM4",
+    "esp32:usb-bridge": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hardware-usb-bridge.ps1",
+    "cap:build": "bash scripts/cap-build.sh",
+    "cap:build:android": "bash scripts/cap-build.sh android",
+    "cap:build:ios": "bash scripts/cap-build.sh ios",
+    "cap:sync": "npx cap sync",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
     "@clerk/nextjs": "^7.5.3",
     "@clerk/themes": "^2.4.57",
     "@prisma/client": "^6.19.3",

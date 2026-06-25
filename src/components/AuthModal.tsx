@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { SessionUser } from "@/lib/types";
 
 interface AuthModalProps {
@@ -8,7 +9,7 @@ interface AuthModalProps {
   onClose: () => void;
   onSuccess: (user: SessionUser) => void;
   initialMode?: "login" | "register";
-  /** If true, user cannot dismiss — login is required (HC #631) */
+  /** If true, user cannot dismiss — login is required */
   required?: boolean;
 }
 
@@ -106,16 +107,26 @@ export default function AuthModal({ open, onClose, onSuccess, initialMode = "log
         </button>
 
         <div className="mt-4 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => {
-              setMode(mode === "login" ? "register" : "login");
-              setError(null);
-            }}
-            className="text-xs text-slate-400 transition hover:text-amber-300"
-          >
-            {mode === "login" ? "Need an account? Sign up" : "Already have an account? Log in"}
-          </button>
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setMode(mode === "login" ? "register" : "login");
+                setError(null);
+              }}
+              className="text-xs text-slate-400 transition hover:text-amber-300"
+            >
+              {mode === "login" ? "Need an account? Sign up" : "Already have an account? Log in"}
+            </button>
+            {mode === "login" && (
+              <Link
+                href="/forgot-password"
+                className="text-xs text-slate-500 transition hover:text-amber-300"
+              >
+                Forgot password?
+              </Link>
+            )}
+          </div>
           {!required && (
             <button
               type="button"

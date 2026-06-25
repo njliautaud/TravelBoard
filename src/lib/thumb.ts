@@ -1,7 +1,6 @@
-// Client-safe helper (no sharp import) for routing social thumbnails through
-// the play-button removal proxy.
+// Client-safe helper (no sharp import) for routing thumbnails through server proxies.
 
-import { API_BASE } from "./api";
+import { coverProxyPath } from "@/lib/coverProxy";
 
 const SOCIAL_CDN_RE =
   /(cdninstagram\.com|fbcdn\.net|tiktokcdn|ytimg\.com|sndcdn\.com|akamaihd\.net)/i;
@@ -14,10 +13,42 @@ export function cleanThumb(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
   try {
     if (SOCIAL_CDN_RE.test(new URL(url).hostname)) {
-      return `${API_BASE}/api/image-proxy?url=${encodeURIComponent(url)}`;
+      return `/api/image-proxy?url=${encodeURIComponent(url)}`;
     }
   } catch {
     /* not a valid URL */
   }
   return url;
+}
+
+/**
+ * Display URL for cover photos in the UI (sidebar, form picker, details modal, map hover).
+ * Routes external hosts through /api/cover-proxy so images load reliably in the browser.
+ */
+export function coverImageSrc(url: string | null | undefined, width = 480): string | undefined {
+  if (!url?.trim()) return undefined;
+  const trimmed = url.trim();
+
+  // Same-origin (uploads, /api/*) and inline data URIs load directly.
+  if (trimmed.startsWith("/")) return trimmed;
+  if (trimmed.startsWith("data:")) return trimmed;
+
+  try {
+    const host = new URL(trimmed).hostname;
+    // Social CDNs may have a baked-in play button — strip it via image-proxy.
+    if (SOCIAL_CDN_RE.test(host)) {
+      return `/api/image-proxy?url=${encodeURIComponent(trimmed)}`;
+    }
+    // Everything else (Wikimedia, Google-image hosts, travel sites, etc.) goes
+    // through cover-proxy so it loads reliably (browser UA, no hotlink block,
+    // same-origin, content-type checked).
+    return coverProxyPath(trimmed, width);
+  } catch {
+    return undefined;
+  }
+}
+
+/** @deprecated use coverImageSrc */
+export function coverPreviewUrl(url: string, maxWidth = 320): string {
+  return coverImageSrc(url, maxWidth) ?? url;
 }

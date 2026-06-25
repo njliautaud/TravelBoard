@@ -38,8 +38,9 @@ model User {
   email        String?
   role         UserRole   @default(EDITOR)
   mapTheme     MapTheme   @default(CLASSIC)
-  homeAirports    String     @default("[]")
-  maxTravelHours  Int        @default(24)
+  homeAirports String    @default("[]")
+  usaAsStates  Boolean    @default(false) /// show US states as independent map units
+  maxTravelHours  Int     @default(24)
   maxLayoverHours Int        @default(8)
   cabin           String     @default("any")
   nonstopOnly     Boolean    @default(false)
@@ -66,6 +67,8 @@ model User {
   boardComments        BoardComment[]
   gamificationProgress GamificationProgress?
   notificationPref     NotificationPref?
+  passwordResets       PasswordReset[]
+  dealVotes            DealVote[]
 }
 
 /// One wishlist/journal entry
@@ -81,8 +84,9 @@ model Location {
   status         VisitStatus   @default(TO_VISIT)
   notes          String?
   reminderAt     DateTime?
-  priceThreshold Decimal?
+  priceThreshold Float?
   starred        Boolean       @default(false)
+  sortOrder      Int           @default(0) /// manual order within a country list (lower = higher up)
   coverImageUrl  String?
   seasonSpring   Boolean       @default(false)
   seasonSummer   Boolean       @default(false)
@@ -113,7 +117,7 @@ model FlightPrice {
   id          String   @id @default(cuid())
   location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
   locationId  String
-  price       Decimal
+  price       Float
   currency    String   @default("USD")
   origin      String?
   destination String?
@@ -136,6 +140,17 @@ model Draft {
   @@index([userId, createdAt])
 }
 
+/// Cached Google Images (Serper.dev) results, keyed by normalized query.
+/// Lets repeat lookups skip the external API entirely (0 credit cost).
+model ImageCache {
+  id          String   @id @default(cuid())
+  searchQuery String   @unique /// normalized: trimmed, lowercased, single-spaced
+  images      String /// PreviewImage[] JSON — see src/lib/serperImages.ts
+  source      String   @default("serper")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 // ─── Meridian Feature Models ─────────────────────────────────────────────────
 
 enum TripPlanStatus {
@@ -155,7 +170,7 @@ model FareCache {
   month        Int
   outboundDate DateTime?
   returnDate   DateTime?
-  price        Decimal
+  price        Float
   currency     String   @default("USD")
   airline      String?
   source       String?
@@ -175,7 +190,7 @@ model FareHistory {
   origin      String
   destination String
   month       Int
-  price       Decimal
+  price       Float
   source      String?
   recordedAt  DateTime @default(now())
 
@@ -190,7 +205,7 @@ model Watch {
   userId          String
   origin          String
   destinationCode String
-  targetPrice     Decimal
+  targetPrice     Float
   currency        String     @default("USD")
   active          Boolean    @default(true)
   lastChecked     DateTime?
@@ -207,7 +222,7 @@ model AlertLog {
   id          String   @id @default(cuid())
   watch       Watch    @relation(fields: [watchId], references: [id], onDelete: Cascade)
   watchId     String
-  price       Decimal
+  price       Float
   source      String?
   triggeredAt DateTime @default(now())
 
@@ -246,7 +261,7 @@ model TripPlan {
   description String?
   startDate   DateTime?
   endDate     DateTime?
-  budget      Decimal?
+  budget      Float?
   currency    String         @default("USD")
   status      TripPlanStatus @default(DRAFT)
   createdAt   DateTime       @default(now())
@@ -266,7 +281,7 @@ model TripPlanLeg {
   destination String
   departDate DateTime?
   returnDate DateTime?
-  fareAmount Decimal?
+  fareAmount Float?
   fareSource String?
   notes      String?
   sortOrder  Int      @default(0)
@@ -309,7 +324,7 @@ model CardProfile {
   cardName      String
   issuer        String?
   pointsBalance Int      @default(0)
-  annualFee     Decimal?
+  annualFee     Float?
   category      String?
   createdAt     DateTime @default(now())
 
@@ -354,12 +369,13 @@ model BoardDeal {
   userId      String
   origin      String
   destination String
-  price       Decimal
+  price       Float
   currency    String         @default("USD")
   notes       String?
   votes       Int            @default(0)
   createdAt   DateTime       @default(now())
   comments    BoardComment[]
+  dealVotes   DealVote[]
 
   @@index([boardId])
   @@index([userId])
@@ -464,6 +480,35 @@ model SearchCache {
 
   @@index([origin, month])
   @@index([expiresAt])
+}
+
+/// Password reset tokens
+model PasswordReset {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+/// Per-user vote deduplication for board deals
+model DealVote {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  deal      BoardDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  dealId    String
+  direction String   @default("up") /// "up" or "down"
+  createdAt DateTime @default(now())
+
+  @@unique([userId, dealId])
+  @@index([dealId])
 }
 
 /// Key-value application settings
