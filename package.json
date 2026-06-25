@@ -25,6 +25,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/client": "^6.19.3",
+    "@supabase/supabase-js": "^2.108.2",
     "bcryptjs": "^3.0.2",
     "maplibre-gl": "^5.24.0",
     "next": "15.5.19",

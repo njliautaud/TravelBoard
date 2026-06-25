@@ -313,7 +313,8 @@ Claude's reply / permission prompt → SSE /events → whatsapp-bot.mjs → What
 ## 13. Two-server setup: dev (:3000) + frozen stable (:3001)
 
 To let a friend use a stable build while you keep editing, two servers run in tandem against the
-**same** Postgres (so their wishes save to this PC and appear in your profile switcher):
+**same** shared **Supabase** Postgres (cloud) — so their wishes save to the shared DB and appear in
+your profile switcher. (Migrated from Neon → Supabase on 2026-06-24; see `SUPABASE_MIGRATION.md`.)
 
 > **⚠️ Standing rules — apply automatically whenever you change the app:**
 > 1. **Added / removed / upgraded an npm dependency?** Also run `npm install` in the
@@ -325,8 +326,9 @@ To let a friend use a stable build while you keep editing, two servers run in ta
 
 - **:3000 — development** — the main repo folder on `master`. Run `npm run dev`. This is what you
   and Claude edit; hot-reloads on every change.
-- **:3001 — frozen stable** — a **git worktree** at `..\TravelBoard-stable` checked out to the
-  `stable` branch (pinned to a known-good commit, currently `5820911`). Run **from that folder**:
+- **:3001 — stable** — a **git worktree** at `..\TravelBoard-stable` checked out to the
+  `stable` branch (brought current with `master` on 2026-06-24; advance it deliberately, not on every
+  edit). Run **from that folder**:
   ```
   npx next dev --turbopack -p 3001 -H 0.0.0.0
   ```

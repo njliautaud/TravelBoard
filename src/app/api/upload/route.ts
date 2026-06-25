@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
-import { writeFile, mkdir } from "fs/promises";
+import { saveUpload } from "@/lib/storage";
 import path from "path";
 import crypto from "crypto";
 
@@ -26,8 +26,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Unsupported file type ${ext || "(none)"}` }, { status: 400 });
   }
   const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`;
-  const uploadsDir = path.join(process.cwd(), "public", "uploads");
-  await mkdir(uploadsDir, { recursive: true });
-  await writeFile(path.join(uploadsDir, name), Buffer.from(await file.arrayBuffer()));
-  return NextResponse.json({ url: `/uploads/${name}` }, { status: 201 });
+  try {
+    const { url } = await saveUpload({
+      bytes: Buffer.from(await file.arrayBuffer()),
+      filename: name,
+      contentType: file.type || "application/octet-stream",
+    });
+    return NextResponse.json({ url }, { status: 201 });
+  } catch (err) {
+    console.error("upload failed:", err);
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+  }
 }

@@ -16,12 +16,9 @@ Personal travel bucket list and journal on an interactive world map. Countries g
 
 ```bash
 npm install
-cp .env.example .env        # edit secrets and keys
+cp .env.example .env        # set DATABASE_URL/DIRECT_URL to the shared Supabase DB + keys
 
-# PostgreSQL — Docker or local instance matching DATABASE_URL
-docker compose up -d        # optional
-
-npx prisma migrate deploy   # apply migrations
+npx prisma migrate deploy   # apply migrations (never `migrate dev` — see below)
 npm run dev                 # http://localhost:3000 (port 3000 pinned)
 ```
 
@@ -31,7 +28,9 @@ npm run dev                 # http://localhost:3000 (port 3000 pinned)
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string |
+| `DATABASE_URL` / `DIRECT_URL` | Supabase Postgres connection strings (runtime / migrations) |
+| `STORAGE_DRIVER` | `local` (public/uploads) or `supabase` (Storage bucket) for media uploads |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_STORAGE_BUCKET` | Supabase Storage (service-role key is server-only) |
 | `SESSION_SECRET` | Signs the httpOnly session cookie |
 | `FLIGHT_API_KEY` | `X-API-Key` for `POST /api/flight-prices` |
 | `WHATSAPP_INGEST_KEY` | Shared secret for draft ingest (`POST /api/drafts/ingest`) |
@@ -104,17 +103,20 @@ See `PROJECT_CONTEXT.md` for architecture, data safety, and handoff notes.
 
 ## Data safety
 
-Your places live in **PostgreSQL**, not in the repo. Restarting the dev server or editing code does not delete them.
+Your places live in the **shared Supabase Postgres**, not in the repo. Restarting the dev server or editing code does not delete them.
 
 **Avoid** unless you intend to wipe data:
 
 - `npx prisma migrate reset`
 - `TRAVELBOARD_SEED_RESET=1 npx prisma db seed`
 
-**Backup** (local Postgres):
+**Backup** — a version-independent logical export (works regardless of the local
+`pg_dump` version; writes a timestamped JSON to `backups/`):
 
-```powershell
-pg_dump -U postgres -d travelboard -F c -f travelboard-backup.dump
+```bash
+node scripts/export-db-backup.mjs
+# restore into a fresh DB (after `prisma migrate deploy` builds the schema):
+node scripts/import-db-backup.mjs backups/travelboard-data-<timestamp>.json
 ```
 
 ## WhatsApp bot (Claude Code remote control)
