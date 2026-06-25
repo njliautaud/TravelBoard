@@ -6,10 +6,10 @@
  */
 
 import { useEffect, useState, useCallback } from "react";
-import { createBrowserSupabaseClient } from "./supabase";
+import { createClient } from "./supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 
-const supabase = createBrowserSupabaseClient();
+const supabase = createClient();
 
 export function useSupabaseUser() {
   const [user, setUser] = useState<User | null>(null);

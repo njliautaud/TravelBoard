@@ -1,5 +1,8 @@
 export type MapTheme = "classic" | "flag";
 
+export type DistancePref = "farther" | "nearby" | "no_preference";
+export type FlightPref = "international" | "domestic" | "both";
+
 export interface UserSettings {
   mapTheme: MapTheme;
   /** Treat each US state as its own map unit (clickable, counted separately). */
@@ -7,6 +10,10 @@ export interface UserSettings {
   homeAirports: string[];
   /** Treat each US state as its own map unit (clickable, counted separately). */
   usaAsStates: boolean;
+  /** Distance preference for deal filtering. */
+  distancePref: DistancePref;
+  /** Flight type preference (international / domestic / both). */
+  flightPref: FlightPref;
   /**
    * Passport: codes of countries / US states the user has marked as visited.
    * Country = ISO-3 (e.g. "USA", "FRA"); US state = "US-XX" (e.g. "US-CA").
@@ -20,6 +27,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   usaAsStates: false,
   homeAirports: [],
   usaAsStates: false,
+  distancePref: "no_preference",
+  flightPref: "both",
   visitedRegions: [],
 };
 

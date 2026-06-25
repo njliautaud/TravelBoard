@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { smartFetch } from "@/lib/services/search-cache";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/unified-auth";
 
 /**
  * GET /api/fares?origin=MCO&month=6
@@ -11,14 +13,42 @@ import { smartFetch } from "@/lib/services/search-cache";
  *   refresh so the next request gets fresh data.
  * - If no cache exists, fetches from provider and caches for future users.
  *
+ * If no origin param is provided, falls back to the authenticated user's
+ * homeAirports (first one used). If still none, returns 400.
+ *
  * Response includes cache metadata:
  *   fromCache   - true if served from cache without API call
  *   refreshing  - true if a background refresh was triggered
  *   cacheAgeSec - how old the cached data is in seconds
  */
 export async function GET(req: NextRequest) {
-  const origin = req.nextUrl.searchParams.get("origin");
+  let origin = req.nextUrl.searchParams.get("origin");
   const monthStr = req.nextUrl.searchParams.get("month");
+
+  // If no origin provided, try to use the authenticated user's homeAirports
+  if (!origin) {
+    try {
+      const session = await getAuthUser();
+      if (session) {
+        const user = await prisma.user.findUnique({
+          where: { id: session.id },
+          select: { homeAirports: true, onboarded: true },
+        });
+        if (user?.onboarded) {
+          let airports: string[] = [];
+          try { airports = JSON.parse(user.homeAirports as unknown as string || "[]"); } catch {
+            // homeAirports might already be a string[] from Prisma
+            if (Array.isArray(user.homeAirports)) airports = user.homeAirports;
+          }
+          if (airports.length > 0) {
+            origin = airports[0]; // Use first home airport for single-origin endpoint
+          }
+        }
+      }
+    } catch {
+      // Auth failure shouldn't block — just require explicit origin
+    }
+  }
 
   if (!origin) {
     return NextResponse.json({ error: "origin is required" }, { status: 400 });

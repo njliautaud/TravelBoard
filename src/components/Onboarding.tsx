@@ -1,10 +1,9 @@
 "use client";
 
 /**
- * Onboarding wizard - 3-question flow for new users:
- * 1. Which airports do you prefer flying out of? (multi-select)
- * 2. International or domestic flights? (single choice)
- * 3. Which points/loyalty programs are you part of? (multi-select cards + programs)
+ * Onboarding wizard - 2-step flow for new users:
+ * 1. Where do you fly from? (multi-select airports, top 8 geo-sorted)
+ * 2. What are you looking for? (travel style card + top loyalty chip toggles)
  *
  * After answering, saves to DB and triggers personalized deal fetch.
  */
@@ -145,8 +144,46 @@ export interface OnboardingData {
   loyaltyPrograms: string[];
 }
 
-const STEP_LABELS = ["Airports", "Flight type", "Loyalty programs"];
-const TOTAL_STEPS = 3;
+const STEP_LABELS = ["Airports", "Preferences"];
+const TOTAL_STEPS = 2;
+
+// Travel style cards — each maps to flightPref + distancePref
+const TRAVEL_STYLE_OPTIONS = [
+  {
+    id: "weekend",
+    label: "Weekend getaways",
+    desc: "Domestic flights, shorter trips nearby",
+    emoji: "🏖️",
+    flightPref: "domestic" as const,
+    distancePref: "nearby" as const,
+  },
+  {
+    id: "international",
+    label: "International adventures",
+    desc: "Farther destinations, explore the world",
+    emoji: "🌍",
+    flightPref: "international" as const,
+    distancePref: "farther" as const,
+  },
+  {
+    id: "everything",
+    label: "Show me everything",
+    desc: "All deals, no filter",
+    emoji: "✈️",
+    flightPref: "both" as const,
+    distancePref: "no_preference" as const,
+  },
+] as const;
+
+// Top 6 most popular loyalty programs as simple toggle chips
+const TOP_PROGRAMS = [
+  { id: "chase_ur", label: "Chase UR" },
+  { id: "amex_mr", label: "Amex MR" },
+  { id: "cap1_miles", label: "Capital One" },
+  { id: "delta", label: "Delta SkyMiles" },
+  { id: "united", label: "United MileagePlus" },
+  { id: "american", label: "AAdvantage" },
+] as const;
 
 // ---------------------------------------------------------------------------
 // Main Component
@@ -159,12 +196,16 @@ export function OnboardingWizard({
 }) {
   const [step, setStep] = useState(0);
   const [airports, setAirports] = useState<string[]>([]);
-  const [flightPref, setFlightPref] = useState<"international" | "domestic" | "both">("both");
-  const [distancePref, setDistancePref] = useState<"farther" | "nearby" | "no_preference">("no_preference");
+  const [travelStyle, setTravelStyle] = useState<string>("everything");
   const [loyaltyPrograms, setLoyaltyPrograms] = useState<string[]>([]);
   const [airportSearch, setAirportSearch] = useState("");
   const [geoSortedAirports, setGeoSortedAirports] = useState<AirportOption[]>(HOME_AIRPORTS);
   const [geoStatus, setGeoStatus] = useState<"pending" | "granted" | "denied">("pending");
+
+  // Derive flightPref + distancePref from travelStyle selection
+  const selectedStyle = TRAVEL_STYLE_OPTIONS.find((s) => s.id === travelStyle) ?? TRAVEL_STYLE_OPTIONS[2];
+  const flightPref = selectedStyle.flightPref;
+  const distancePref = selectedStyle.distancePref;
 
   // Request geolocation on mount to sort airports by proximity
   useEffect(() => {
@@ -195,9 +236,10 @@ export function OnboardingWizard({
     );
   };
 
-  const filteredAirports = useMemo(() => {
+  // Show top 8 airports (geo-sorted if available), or filtered results when searching
+  const displayAirports = useMemo(() => {
     const base = geoSortedAirports;
-    if (!airportSearch.trim()) return base;
+    if (!airportSearch.trim()) return base.slice(0, 8);
     const q = airportSearch.toLowerCase();
     return base.filter(
       (a) =>
@@ -245,21 +287,35 @@ export function OnboardingWizard({
   const canAdvance =
     step === 0 ? airports.length > 0 : true;
 
+  // Theming locked to AuthModal (HC #651): same card chrome, icon badge header,
+  // heading typography, slate-950 surface, amber primary, footer band.
+  const stepHeading =
+    step === 0
+      ? "Where do you fly from?"
+      : "What are you looking for?";
+  const stepSubtitle =
+    step === 0
+      ? "Tap the airports you'd depart from."
+      : "Pick your travel style, then any points programs.";
+
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md">
-      <div className="w-[min(560px,92vw)] max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
-        {/* Hero branding */}
-        <div className="px-6 pt-8 pb-4 text-center">
-          <div className="text-2xl font-extrabold tracking-widest text-amber-400 drop-shadow-[0_0_12px_rgba(245,158,11,0.3)]">
-            TRAVELBOARD
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-[480px] max-h-[92vh] overflow-hidden flex flex-col rounded-2xl border border-slate-700/70 bg-slate-950 shadow-2xl">
+        {/* Header (mirrors AuthModal: icon badge -> heading -> subtitle, centered) */}
+        <div className="px-8 pt-8 pb-5 shrink-0">
+          <div className="mb-5 flex justify-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800 text-amber-400 shadow-md ring-1 ring-slate-700">
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor" aria-hidden>
+                <path d="M12 1.5l1.6 6.3 6.3-1.6-4.7 4.7 4.7 4.7-6.3-1.6L12 22.5l-1.6-6.5-6.3 1.6 4.7-4.7-4.7-4.7 6.3 1.6L12 1.5z" />
+              </svg>
+            </div>
           </div>
-          <div className="mt-1 text-sm text-slate-400">
-            Let&apos;s personalize your deal feed
-          </div>
+          <h2 className="text-center text-[22px] font-bold text-slate-100">{stepHeading}</h2>
+          <p className="mt-1 text-center text-sm text-slate-400">{stepSubtitle}</p>
         </div>
 
         {/* Progress indicator */}
-        <div className="px-6 mb-4">
+        <div className="px-8 mb-4 shrink-0">
           <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
             <div
               className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-500"
@@ -305,23 +361,19 @@ export function OnboardingWizard({
         </div>
 
         {/* Step content */}
-        <div className="px-6 pb-2 min-h-[300px]">
-          {/* STEP 1: Airports */}
+        <div className="px-8 pb-2 min-h-[280px] overflow-y-auto">
+          {/* STEP 1: Airports — top 8 geo-sorted as big tap-friendly buttons */}
           {step === 0 && (
             <div>
-              <h3 className="text-base font-bold text-slate-100 mb-1">
-                Which airports do you prefer flying out of?
-              </h3>
-              <p className="text-xs text-slate-400 mb-3">
-                Select all that apply. We&apos;ll find deals from these airports.
-                {geoStatus === "granted" && (
-                  <span className="ml-1 text-teal-400">Sorted by distance from you.</span>
-                )}
-              </p>
+              {geoStatus === "granted" && (
+                <p className="mb-3 text-[12px] text-amber-300/80">
+                  Sorted by distance from you.
+                </p>
+              )}
 
-              {/* Search */}
+              {/* Search (matches AuthModal input chrome) */}
               <input
-                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 placeholder:text-slate-500 focus:border-amber-500/50 outline-none mb-3"
+                className="mb-3 w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 transition focus:border-amber-500/60 focus:outline-none"
                 placeholder="Search airports (e.g. JFK, Chicago, LAX)..."
                 value={airportSearch}
                 onChange={(e) => setAirportSearch(e.target.value)}
@@ -350,26 +402,26 @@ export function OnboardingWizard({
                 </div>
               )}
 
-              {/* Airport grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-[280px] overflow-y-auto pr-1">
-                {filteredAirports.map((a) => {
+              {/* Airport grid — big tap-friendly buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                {displayAirports.map((a) => {
                   const selected = airports.includes(a.iata);
                   return (
                     <button
                       key={a.iata}
                       type="button"
                       onClick={() => toggleAirport(a.iata)}
-                      className={`relative flex flex-col items-start rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                      className={`relative flex flex-col items-start rounded-xl border px-4 py-3.5 text-left transition ${
                         selected
                           ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
-                          : "border-slate-700/60 bg-slate-900/60 text-slate-300 hover:border-slate-600 hover:bg-slate-800/60"
+                          : "border-slate-700 bg-slate-900/80 text-slate-300 hover:border-slate-600 hover:bg-slate-800/60"
                       }`}
                     >
-                      <span className="text-xs font-bold">{a.iata}</span>
-                      <span className="text-[10px] text-slate-400 truncate w-full">{a.city}</span>
+                      <span className="text-base font-bold">{a.iata}</span>
+                      <span className="text-xs text-slate-400 truncate w-full">{a.city}</span>
                       {selected && (
-                        <span className="absolute top-1.5 right-1.5 text-amber-400">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <span className="absolute top-2.5 right-2.5 text-amber-400">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
                         </span>
@@ -381,222 +433,91 @@ export function OnboardingWizard({
             </div>
           )}
 
-          {/* STEP 2: International vs Domestic + Distance Preference */}
+          {/* STEP 2: Travel style + loyalty programs (combined, one screen) */}
           {step === 1 && (
             <div>
-              <h3 className="text-base font-bold text-slate-100 mb-1">
-                What kind of flights do you prefer?
-              </h3>
-              <p className="text-xs text-slate-400 mb-4">
-                This helps us prioritize the right deals for you.
-              </p>
-
-              {/* International / Domestic */}
-              <div className="space-y-2.5 mb-5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  Destination type
-                </span>
-                {FLIGHT_PREF_OPTIONS.map((opt) => (
+              {/* Travel style cards */}
+              <div className="space-y-2.5 mb-6">
+                {TRAVEL_STYLE_OPTIONS.map((opt) => (
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => setFlightPref(opt.id)}
-                    className={`w-full flex items-center gap-4 rounded-xl border px-5 py-3.5 text-left transition ${
-                      flightPref === opt.id
-                        ? "border-amber-500/50 bg-amber-500/10 shadow-[0_0_10px_rgba(245,158,11,0.1)]"
-                        : "border-slate-700/60 bg-slate-900/60 hover:border-slate-600 hover:bg-slate-800/60"
+                    onClick={() => setTravelStyle(opt.id)}
+                    className={`w-full flex items-center gap-4 rounded-xl border px-4 py-4 text-left transition ${
+                      travelStyle === opt.id
+                        ? "border-amber-500/50 bg-amber-500/10"
+                        : "border-slate-700 bg-slate-900/80 hover:border-slate-600 hover:bg-slate-800/60"
                     }`}
                   >
-                    <div
-                      className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition ${
-                        flightPref === opt.id
-                          ? "border-amber-400 bg-amber-400"
-                          : "border-slate-600"
-                      }`}
-                    >
-                      {flightPref === opt.id && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="text-slate-950">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      )}
-                    </div>
-                    <div>
-                      <div className={`text-sm font-semibold ${flightPref === opt.id ? "text-amber-200" : "text-slate-200"}`}>
+                    <span className="text-2xl flex-shrink-0">{opt.emoji}</span>
+                    <div className="min-w-0">
+                      <div className={`text-sm font-semibold ${travelStyle === opt.id ? "text-amber-200" : "text-slate-200"}`}>
                         {opt.label}
                       </div>
                       <div className="text-xs text-slate-400 mt-0.5">{opt.desc}</div>
                     </div>
-                  </button>
-                ))}
-              </div>
-
-              {/* Distance preference */}
-              <div className="space-y-2.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  How far do you want to go?
-                </span>
-                {DISTANCE_PREF_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setDistancePref(opt.id)}
-                    className={`w-full flex items-center gap-4 rounded-xl border px-5 py-3.5 text-left transition ${
-                      distancePref === opt.id
-                        ? "border-teal-500/50 bg-teal-500/10 shadow-[0_0_10px_rgba(20,184,166,0.1)]"
-                        : "border-slate-700/60 bg-slate-900/60 hover:border-slate-600 hover:bg-slate-800/60"
-                    }`}
-                  >
-                    <div
-                      className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition ${
-                        distancePref === opt.id
-                          ? "border-teal-400 bg-teal-400"
-                          : "border-slate-600"
-                      }`}
-                    >
-                      {distancePref === opt.id && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="text-slate-950">
+                    {travelStyle === opt.id && (
+                      <span className="ml-auto flex-shrink-0 text-amber-400">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="20 6 9 17 4 12" />
                         </svg>
-                      )}
-                    </div>
-                    <div>
-                      <div className={`text-sm font-semibold ${distancePref === opt.id ? "text-teal-200" : "text-slate-200"}`}>
-                        {opt.label}
-                      </div>
-                      <div className="text-xs text-slate-400 mt-0.5">{opt.desc}</div>
-                    </div>
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
 
-          {/* STEP 3: Loyalty Programs */}
-          {step === 2 && (
-            <div>
-              <h3 className="text-base font-bold text-slate-100 mb-1">
-                Which points and loyalty programs are you part of?
-              </h3>
-              <p className="text-xs text-slate-400 mb-4">
-                We&apos;ll show transfer deals and award availability for your programs.
-                Select all that apply, or skip if you don&apos;t collect points yet.
-              </p>
-
-              {/* Credit card programs */}
-              <div className="mb-4">
-                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-                  Credit Card Points
-                </h4>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {CARD_PROGRAMS.map((prog) => {
-                    const selected = loyaltyPrograms.includes(prog.id);
-                    return (
-                      <button
-                        key={prog.id}
-                        type="button"
-                        onClick={() => toggleProgram(prog.id)}
-                        className={`relative flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition ${
-                          selected
-                            ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
-                            : "border-slate-700/60 bg-slate-900/60 text-slate-300 hover:border-slate-600 hover:bg-slate-800/60"
-                        }`}
-                      >
-                        <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[9px] font-bold ${
-                          selected ? "bg-amber-500/20 text-amber-300" : "bg-slate-800 text-slate-400"
-                        }`}>
-                          {prog.icon}
-                        </span>
-                        <span className="font-medium truncate">{prog.name}</span>
-                        {selected && (
-                          <span className="absolute top-1.5 right-1.5 text-amber-400">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Airline programs */}
-              <div className="mb-4">
-                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-                  Airline Frequent Flyer
-                </h4>
-                <div className="grid grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
-                  {AIRLINE_PROGRAMS.map((prog) => {
-                    const selected = loyaltyPrograms.includes(prog.id);
-                    return (
-                      <button
-                        key={prog.id}
-                        type="button"
-                        onClick={() => toggleProgram(prog.id)}
-                        className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition ${
-                          selected
-                            ? "border-purple-500/50 bg-purple-500/10 text-purple-200"
-                            : "border-slate-700/60 bg-slate-900/60 text-slate-300 hover:border-slate-600"
-                        }`}
-                      >
-                        <span className={`h-2 w-2 rounded-full flex-shrink-0 ${selected ? "bg-purple-400" : "bg-slate-600"}`} />
-                        <span className="truncate">{prog.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Hotel programs */}
+              {/* Loyalty programs — top 6 as toggle chips */}
               <div>
-                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-                  Hotel Loyalty
-                </h4>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {HOTEL_PROGRAMS.map((prog) => {
+                <span className="mb-3 block text-[13px] font-semibold text-slate-200">
+                  Any points programs?
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {TOP_PROGRAMS.map((prog) => {
                     const selected = loyaltyPrograms.includes(prog.id);
                     return (
                       <button
                         key={prog.id}
                         type="button"
                         onClick={() => toggleProgram(prog.id)}
-                        className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition ${
+                        className={`rounded-full border px-4 py-2 text-xs font-medium transition ${
                           selected
-                            ? "border-teal-500/50 bg-teal-500/10 text-teal-200"
-                            : "border-slate-700/60 bg-slate-900/60 text-slate-300 hover:border-slate-600"
+                            ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                            : "border-slate-700 bg-slate-900/80 text-slate-400 hover:border-slate-600 hover:text-slate-200"
                         }`}
                       >
-                        <span className={`h-2 w-2 rounded-full flex-shrink-0 ${selected ? "bg-teal-400" : "bg-slate-600"}`} />
-                        <span className="truncate">{prog.name}</span>
+                        {prog.label}
                       </button>
                     );
                   })}
+                  {/* None / Skip chip */}
+                  <button
+                    type="button"
+                    onClick={() => setLoyaltyPrograms([])}
+                    className={`rounded-full border px-4 py-2 text-xs font-medium transition ${
+                      loyaltyPrograms.length === 0
+                        ? "border-slate-600 bg-slate-800 text-slate-300"
+                        : "border-slate-700 bg-slate-900/80 text-slate-500 hover:border-slate-600 hover:text-slate-300"
+                    }`}
+                  >
+                    None / Skip
+                  </button>
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between border-t border-slate-800 px-6 py-4">
-          <div>
-            {step === 2 && (
-              <button
-                type="button"
-                onClick={finish}
-                className="text-xs text-slate-500 hover:text-slate-300 transition"
-              >
-                Skip -- I don&apos;t collect points
-              </button>
-            )}
-          </div>
+        {/* Footer (mirrors AuthModal: border-t band, bg-slate-900/50) */}
+        <div className="shrink-0 flex items-center justify-between border-t border-slate-800 bg-slate-900/50 px-8 py-4">
+          <div />
 
           <div className="flex items-center gap-2">
             {step > 0 && (
               <button
                 type="button"
                 onClick={prevStep}
-                className="flex items-center gap-1 rounded-lg border border-slate-700 px-3 py-2 text-xs font-medium text-slate-300 transition hover:bg-slate-800"
+                className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-slate-800"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -608,12 +529,10 @@ export function OnboardingWizard({
               type="button"
               onClick={nextStep}
               disabled={!canAdvance}
-              className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:from-amber-400 hover:to-amber-500 hover:shadow-[0_0_20px_rgba(245,158,11,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {step === TOTAL_STEPS - 1 ? "Start exploring" : "Continue"}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
+              <span aria-hidden>&#8250;</span>
             </button>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/unified-auth";
 import { prisma } from "@/lib/prisma";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * POST /api/auth/delete-account
@@ -27,17 +27,15 @@ export async function POST() {
       where: { id: user.id },
     });
 
-    // Clear session cookie
-    const res = NextResponse.json({
-      message: "Account deleted successfully.",
-    });
-    res.cookies.set(SESSION_COOKIE, "", {
-      httpOnly: true,
-      sameSite: "lax",
-      maxAge: 0,
-      path: "/",
-    });
-    return res;
+    // Sign out of Supabase (clears Supabase session cookies)
+    try {
+      const supabase = await createClient();
+      await supabase.auth.signOut();
+    } catch {
+      // Best-effort; user row is already deleted.
+    }
+
+    return NextResponse.json({ message: "Account deleted successfully." });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message, status: 500 }, { status: 500 });

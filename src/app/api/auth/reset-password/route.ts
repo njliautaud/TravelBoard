@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { hashPassword, validatePassword } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 /**
  * POST /api/auth/reset-password
  *
- * Auth: none (public, token-based).
- * Resets user password using a valid reset token.
+ * Auth: requires an active Supabase recovery session (the user arrived via the
+ * password-reset email link → /auth/callback → /reset-password, which exchanged
+ * the recovery code for a session cookie).
  *
- * Body: { token: string, password: string }
+ * Body: { password: string }
  * Response: { message: string }
+ *
+ * Note: the legacy token-based flow (PasswordReset table + bcrypt) was replaced
+ * by Supabase Auth's native recovery flow during the Clerk → Supabase migration.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -25,49 +28,31 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => null);
-    const token = body?.token;
     const password = body?.password;
 
-    if (typeof token !== "string" || typeof password !== "string") {
+    if (typeof password !== "string" || password.length < 8) {
       return NextResponse.json(
-        { error: "Token and new password are required", status: 400 },
+        { error: "Password must be at least 8 characters.", status: 400 },
         { status: 400 }
       );
     }
 
-    const pErr = validatePassword(password);
-    if (pErr) {
-      return NextResponse.json({ error: pErr, status: 400 }, { status: 400 });
-    }
-
-    // Find valid, unused, non-expired token
-    const resetRecord = await prisma.passwordReset.findFirst({
-      where: {
-        token,
-        usedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      include: { user: true },
-    });
-
-    if (!resetRecord) {
+    const supabase = await createClient();
+    const { data: sessionData } = await supabase.auth.getUser();
+    if (!sessionData.user) {
       return NextResponse.json(
-        { error: "Invalid or expired reset token", status: 400 },
-        { status: 400 }
+        { error: "Reset link is invalid or expired. Request a new one.", status: 401 },
+        { status: 401 }
       );
     }
 
-    // Update password and mark token as used
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { id: resetRecord.userId },
-        data: { passwordHash: await hashPassword(password) },
-      }),
-      prisma.passwordReset.update({
-        where: { id: resetRecord.id },
-        data: { usedAt: new Date() },
-      }),
-    ]);
+    const { error: updateErr } = await supabase.auth.updateUser({ password });
+    if (updateErr) {
+      return NextResponse.json(
+        { error: updateErr.message, status: 400 },
+        { status: 400 }
+      );
+    }
 
     return NextResponse.json({ message: "Password has been reset successfully." });
   } catch (err) {

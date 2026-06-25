@@ -2,13 +2,25 @@
 
 import { useMemo, useState } from "react";
 import { HOME_AIRPORTS } from "@/lib/airports";
-import type { MapTheme, UserSettings } from "@/lib/settings";
+import type { DistancePref, FlightPref, MapTheme, UserSettings } from "@/lib/settings";
 
 interface SettingsPanelProps {
   settings: UserSettings;
   saving: boolean;
   onChange: (patch: Partial<UserSettings>) => void;
 }
+
+const DISTANCE_OPTIONS: { id: DistancePref; label: string }[] = [
+  { id: "no_preference", label: "Show me everything" },
+  { id: "farther", label: "Skip nearby \u2014 I want to go far" },
+  { id: "nearby", label: "Keep it close \u2014 weekend getaways" },
+];
+
+const FLIGHT_OPTIONS: { id: FlightPref; label: string }[] = [
+  { id: "both", label: "Both domestic & international" },
+  { id: "international", label: "International only" },
+  { id: "domestic", label: "Domestic only" },
+];
 
 const THEMES: { id: MapTheme; label: string; description: string }[] = [
   {
@@ -155,6 +167,61 @@ export default function SettingsPanel({ settings, saving, onChange }: SettingsPa
             );
           })}
         </ul>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Flight Preferences
+        </h2>
+        <p className="mb-3 text-xs text-slate-500">
+          What kind of deals should we surface for you?
+        </p>
+
+        <p className="mb-1.5 text-[11px] font-medium text-slate-400">Distance</p>
+        <div className="mb-3 space-y-2">
+          {DISTANCE_OPTIONS.map((opt) => {
+            const active = settings.distancePref === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => onChange({ distancePref: opt.id })}
+                className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                  active
+                    ? "border-amber-500/60 bg-amber-500/15"
+                    : "border-slate-700 bg-slate-900/60 hover:border-slate-600"
+                }`}
+              >
+                <span className={`block text-sm font-medium ${active ? "text-amber-200" : "text-slate-200"}`}>
+                  {opt.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="mb-1.5 text-[11px] font-medium text-slate-400">Flight type</p>
+        <div className="space-y-2">
+          {FLIGHT_OPTIONS.map((opt) => {
+            const active = settings.flightPref === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => onChange({ flightPref: opt.id })}
+                className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                  active
+                    ? "border-amber-500/60 bg-amber-500/15"
+                    : "border-slate-700 bg-slate-900/60 hover:border-slate-600"
+                }`}
+              >
+                <span className={`block text-sm font-medium ${active ? "text-amber-200" : "text-slate-200"}`}>
+                  {opt.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       {/* Notifications */}

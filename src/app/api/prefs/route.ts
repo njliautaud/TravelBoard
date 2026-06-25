@@ -43,11 +43,8 @@ export async function GET() {
       return NextResponse.json({ error: "User not found", status: 404 }, { status: 404 });
     }
 
-    let airports: string[] = [];
-    try { airports = JSON.parse(user.homeAirports || "[]"); } catch {}
-
-    let styles: string[] = [];
-    try { styles = JSON.parse(user.tripStyles || "[]"); } catch {}
+    const airports = user.homeAirports ?? [];
+    const styles = user.tripStyles ?? [];
 
     return NextResponse.json({
       prefs: {

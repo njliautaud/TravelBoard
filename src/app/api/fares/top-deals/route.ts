@@ -51,8 +51,8 @@ export async function GET(req: NextRequest) {
   // Load user preferences if authenticated
   let userAirports: string[] = [];
   let flightPref: string = "both";
+  let distancePref: string = "no_preference";
   let loyaltyPrograms: string[] = [];
-  let preferFarther: boolean = false;
 
   try {
     const session = await getAuthUser();
@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
         select: {
           homeAirports: true,
           flightPref: true,
+          distancePref: true,
           loyaltyPrograms: true,
           onboarded: true,
         },
@@ -69,9 +70,8 @@ export async function GET(req: NextRequest) {
       if (user?.onboarded) {
         try { userAirports = JSON.parse(user.homeAirports || "[]"); } catch {}
         flightPref = user.flightPref || "both";
+        distancePref = user.distancePref || "no_preference";
         try { loyaltyPrograms = JSON.parse(user.loyaltyPrograms || "[]"); } catch {}
-        // International preference implies preferring farther destinations
-        preferFarther = flightPref === "international";
       }
     }
   } catch {
@@ -227,18 +227,22 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Boost international/far deals for users who prefer them
-    if (preferFarther) {
-      for (const deal of [...cashDeals, ...awardItems]) {
-        const isIntl = !US_PREFIXES.has(deal.flyToCode);
-        if (isIntl) {
-          deal.dealScore = Math.min(1, (deal.dealScore ?? 0) + 0.1);
-        }
+    // Apply distance preference filtering and boosting
+    let mergedDeals = [...cashDeals, ...awardItems];
+    if (distancePref === "farther") {
+      // Remove all US domestic destinations entirely; boost international +0.2
+      mergedDeals = mergedDeals.filter((d) => !US_PREFIXES.has(d.flyToCode));
+      for (const deal of mergedDeals) {
+        deal.dealScore = Math.min(1, (deal.dealScore ?? 0) + 0.2);
       }
+    } else if (distancePref === "nearby") {
+      // Remove all international destinations entirely
+      mergedDeals = mergedDeals.filter((d) => US_PREFIXES.has(d.flyToCode));
     }
+    // "no_preference" — show everything, no boost
 
     // Intermix: sort by dealScore descending, awards and cash together
-    const allDeals = [...cashDeals, ...awardItems]
+    const allDeals = mergedDeals
       .sort((a, b) => (b.dealScore ?? 0) - (a.dealScore ?? 0))
       .slice(0, effectiveLimit);
 

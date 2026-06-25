@@ -5,11 +5,14 @@ import { prisma } from "@/lib/prisma";
 /**
  * POST /api/onboarding
  *
- * Auth: optional (creates anonymous user if not authenticated).
- * Saves onboarding preferences. Creates a default user if none exists.
+ * Auth: required (Supabase Auth). Anonymous onboarding is no longer supported —
+ * the wizard runs AFTER signup per HC #631 (login required).
  *
  * Body: { airports: string[], flightPref: string, distancePref: string, loyaltyPrograms: string[] }
  * Response: { ok: true, userId: string }
+ *
+ * Note: homeAirports / loyaltyPrograms are native String[] columns post-merge.
+ * The legacy JSON.stringify path was removed during HC #650/#651.
  */
 export async function POST(req: NextRequest) {
   let body: {
@@ -40,56 +43,27 @@ export async function POST(req: NextRequest) {
     // Derive preferFarther from distance preference for backward compatibility
     const preferFarther = distancePref === "farther";
 
-    // Try to find existing user, or create one
     const session = await getAuthUser();
-    let userId: string;
-
-    if (session) {
-      userId = session.id;
-    } else {
-      // Create anonymous user for onboarding
-      const user = await prisma.user.create({
-        data: {
-          username: `traveler_${Date.now().toString(36)}`,
-          passwordHash: "",
-          homeAirports: JSON.stringify(airports),
-          flightPref,
-          distancePref,
-          preferFarther,
-          loyaltyPrograms: JSON.stringify(loyaltyPrograms),
-          onboarded: true,
-        },
-      });
-      userId = user.id;
-
-      // Set session cookie
-      const { createSessionToken, SESSION_COOKIE } = await import("@/lib/auth");
-      const token = createSessionToken(userId);
-      const res = NextResponse.json({ ok: true, userId });
-      res.cookies.set(SESSION_COOKIE, token, {
-        httpOnly: true,
-        secure: false,
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60,
-        path: "/",
-      });
-      return res;
+    if (!session) {
+      return NextResponse.json(
+        { error: "Authentication required", status: 401 },
+        { status: 401 }
+      );
     }
 
-    // Update existing user
     await prisma.user.update({
-      where: { id: userId },
+      where: { id: session.id },
       data: {
-        homeAirports: JSON.stringify(airports),
+        homeAirports: airports,
         flightPref,
         distancePref,
         preferFarther,
-        loyaltyPrograms: JSON.stringify(loyaltyPrograms),
+        loyaltyPrograms,
         onboarded: true,
       },
     });
 
-    return NextResponse.json({ ok: true, userId });
+    return NextResponse.json({ ok: true, userId: session.id });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message, status: 500 }, { status: 500 });
@@ -97,7 +71,7 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * GET /api/onboarding — check if current user has completed onboarding
+ * GET /api/onboarding — check if current user has completed onboarding.
  */
 export async function GET() {
   const session = await getAuthUser();
@@ -121,17 +95,12 @@ export async function GET() {
     return NextResponse.json({ onboarded: false });
   }
 
-  let airports: string[] = [];
-  try { airports = JSON.parse(user.homeAirports || "[]"); } catch {}
-  let programs: string[] = [];
-  try { programs = JSON.parse(user.loyaltyPrograms || "[]"); } catch {}
-
   return NextResponse.json({
     onboarded: user.onboarded,
-    airports,
+    airports: user.homeAirports ?? [],
     flightPref: user.flightPref,
     distancePref: user.distancePref,
     preferFarther: user.preferFarther,
-    loyaltyPrograms: programs,
+    loyaltyPrograms: user.loyaltyPrograms ?? [],
   });
 }
