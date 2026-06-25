@@ -2,11 +2,13 @@
 
 Personal travel bucket list and journal on an interactive world map. Countries glow with your saved wishes; click to zoom in, read entries, and add places from Instagram reels via WhatsApp or the **Android share sheet**.
 
+**Live:** https://travel-board-psi.vercel.app (Vercel; push to `master` auto-deploys). Boards are private (owner + accepted friends); individual spots can be published to a public feed at [`/feed`](https://travel-board-psi.vercel.app/feed). See `PROJECT_CONTEXT.md` §14 + `SUPABASE_MIGRATION.md`.
+
 ## Stack
 
 - Next.js 15 (App Router, TypeScript) + Tailwind CSS 4
 - MapLibre GL JS (Carto dark basemap, no API token)
-- PostgreSQL 16 + Prisma ORM 6
+- **Supabase** Postgres (cloud, shared dev+prod) + Prisma ORM 6; media via Supabase Storage in prod
 - Nominatim (OpenStreetMap) geocoding
 - Wikipedia / Wikimedia Commons + Serper.dev (Google Images) for cover photos, cached in Postgres
 - WhatsApp Web.js bot for driving Claude Code from your phone (optional)

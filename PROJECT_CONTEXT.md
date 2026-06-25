@@ -13,9 +13,10 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 - **Journal**: pins hold notes, photos, links, seasons, reminders, flight-deal thresholds.
 - **Draft inbox**: `POST /api/drafts/ingest` → drafts inbox → smart-fill from caption/location/Wikimedia cover. Reserved for future producers (notifications, flight deals); links are now added via the Android share form.
 - **Android app**: native share target → always opens the prefilled form; reaches the server from anywhere via **Tailscale** with a saved-servers switcher. See `android/`.
-- **Profiles**: a logged-in user can switch the sidebar dropdown to view any other account's board **read-only** (`/api/users`, `/api/locations?userId=`); edits stay owner-only (small private instance — everyone logged in may view everyone).
+- **Social / privacy model** (reworked 2026-06-24): boards are **private** — viewable only by the owner or an **accepted friend** (`canViewBoard` / `areFriends` in `src/lib/access.ts`). The old "any logged-in user can view anyone" behavior was removed. A user can instead publish an **individual spot** (`Location.isPublic`) to a **public feed** (`/feed`, `/api/public/feed`) readable by anyone incl. logged-out visitors; only safe fields are exposed (no notes/reminders/prices). Friends are managed in the "Travel Mates" sidebar section; viewing a friend's board is read-only (`/api/locations?userId=`).
 - **Cover photos**: Google Images via Serper.dev, Postgres-cached with fuzzy/cross-language reuse and a duplicate-wish guard.
-- **Future**: ESP32 LED world map via `/api/hardware-sync`; partner Python script for flight prices.
+- **Live**: deployed on **Vercel** at https://travel-board-psi.vercel.app (auto-deploys on push to `master`); shares the same Supabase DB as local dev — so **data changes locally also appear on the live site** (one shared DB; no separate dev DB yet). See §14.
+- **Future**: **Flight Tracker** (placeholder sidebar section now); ESP32 LED world map via `/api/hardware-sync`; partner Python script for flight prices.
 
 ### User preferences (do not violate)
 
@@ -32,9 +33,10 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 | Framework | Next.js 15.5, App Router, TypeScript, Turbopack |
 | Styling | Tailwind CSS v4 |
 | Map | MapLibre GL JS v5, Carto `dark_all`, `public/data/countries.geo.json` (ISO alpha-3 ids) |
-| DB | PostgreSQL 16 + **Prisma 6** (do not upgrade to v7) |
-| Auth | Username/password (bcrypt), HMAC httpOnly cookie `tb_session` |
-| Images | `sharp` declutter/resize; Wikimedia/Wikipedia in `coverImage.ts`; Google Images via `serperImages.ts`; reliability proxy `coverProxy.ts` + `/api/cover-proxy` |
+| DB | **Supabase Postgres** (cloud, shared by dev + prod) + **Prisma 6** (do not upgrade to v7). Migrated from Neon 2026-06-24 — see `SUPABASE_MIGRATION.md` + [[supabase-migration]] |
+| Hosting | **Vercel** (prod). Prod build is **webpack** (`next build`, not turbopack — see §9 sharp gotcha). See §14 |
+| Auth | Username/password (bcrypt), HMAC httpOnly cookie `tb_session`. Access control in `src/lib/access.ts` (private boards + accepted-friend viewing + per-spot public) |
+| Images | `sharp` declutter/resize; Wikimedia/Wikipedia in `coverImage.ts`; Google Images via `serperImages.ts`; reliability proxy `coverProxy.ts` + `/api/cover-proxy`. Uploads via `src/lib/storage.ts` (local fs in dev, Supabase Storage bucket `TravelBoard` in prod) |
 | Android | Kotlin WebView wrapper + share target in `android/` (Gradle, minSdk 26, targetSdk 34 — temporary, see §10) |
 
 ---
@@ -43,13 +45,15 @@ TravelBoard is a **personal travel bucket list & journal** for William and his p
 
 ```
 src/app/page.tsx
-  └─ MapApp.tsx              — also owns the bottom-center All/Wished/Visited map filter
-       │                       (`statusFilter`) and lazy-loads US-state polygons for states mode
-       ├─ Sidebar.tsx        — dropdown View group: World | Wishes (default) | Visited | Settings
-       │                       (World resets the map; Wishes/Visited filter the list) + a
-       │                       Profiles group to switch to another user's board (read-only)
+  └─ MapApp.tsx              — owns the shared wished/visited/all filter (`statusFilter`, the single
+       │                       source of truth) reflected by BOTH the bottom-center map toggle
+       │                       (World/Wished/Visited) and the sidebar; lazy-loads US-state polygons
+       ├─ Sidebar.tsx        — section dropdown: Travel Journal | Travel Mates | Flight Tracker
+       │                       (placeholder) | Settings. The Journal panel = Add place button + a
+       │                       World/Wished/Visited toggle (synced with the map toggle) + the list
        ├─ SettingsPanel.tsx  — map theme, USA one-country-vs-by-state, home airports
        ├─ TravelMap.tsx      — heatmap, flag borders, Alaska/Hawaii zoom, world-view zoom threshold.
+       │                       Right-click a country → floating "Add wish in <country>" (own board only)
        │                       `rebuildGeo()` is the single source of truth for glow + dots:
        │                       applies statusFilter and swaps USA→state features in states mode
        ├─ SidePanel.tsx      — right panel / mobile bottom sheet (auto-closes on world view).
@@ -94,6 +98,9 @@ the prefilled `EntryForm` once logged in.
 - **Cache-first** (`ImageCache` table): exact hit → fuzzy "same wish" hit (`overlapScore`
   in `similarity.ts`, ≥0.6) → Serper pull (cached). `refresh=1` forces a fresh pull
   (the EntryForm "Regenerate" button). No key / error ⇒ deterministic placeholders, not cached.
+- **Generic admin/geography words** (`state`, `county`, `united`, …) are stopwords so a shared
+  **country** can't drive a false "similar" reuse — e.g. "florida … united states" no longer
+  reuses a "half dome … united states" cache row (2026-06-25 fix).
 
 ### Reliable display (`src/lib/coverProxy.ts`, `src/lib/thumb.ts`, `/api/cover-proxy`)
 
@@ -108,6 +115,8 @@ the prefilled `EntryForm` once logged in.
   `cascada`/`waterfall`, …). Shared by the cache match **and** the duplicate-wish guard.
 - `isDuplicateWish()` gates on matching country, then activity-token overlap (location words
   removed so Eiffel ≠ Louvre). EntryForm warns via `window.confirm` before saving a likely dup.
+- **Directional distinguishers** (`north`/`south`/`east`/`west`/`new`/…): if one wish has one and
+  the other doesn't, they're treated as distinct — so "North Carolina" ≠ "South Carolina" (2026-06-25 fix).
 
 ---
 
@@ -115,21 +124,25 @@ the prefilled `EntryForm` once logged in.
 
 Key models:
 
-- **User**: `username`, `passwordHash`, `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes), `usaAsStates` (Boolean — render US states as independent map units).
-- **Location**: per-user wishes; `starred`, `sortOrder` (manual order within a country list), seasons, `coverImageUrl`, `priceThreshold`, media, flight prices.
-- **Draft**: inbox items (`rawText`, `extractedUrl`, `source`); fed by `POST /api/drafts/ingest`, reserved for future producers (notifications, flight deals).
+- **User**: `username`, `passwordHash`, `mapTheme` (`CLASSIC` | `FLAG`), `homeAirports` (string[] IATA codes), `usaAsStates` (Boolean). Plus `Friendship` (accepted/pending) + `Notification` for the social layer.
+- **Location**: per-user wishes; `starred`, `sortOrder`, seasons, `coverImageUrl`, `priceThreshold`, media, flight prices, **`isPublic`** (publish a single spot to the public feed).
+- **Draft**: inbox items (`rawText`, `extractedUrl`, `source`); fed by `POST /api/drafts/ingest`.
 - **FlightPrice**: ingested via API key; latest price drives `isDeal` in serialize.
-- **ImageCache**: `searchQuery` (unique, normalized), `images` (Json: `PreviewImage[]`), `source`, timestamps. Permanent Serper image cache.
+- **ImageCache**: `searchQuery` (unique, normalized), `images` (Json), `source`, timestamps. Permanent Serper image cache.
+- **StoredImage**: image bytes captured into the DB (e.g. an Instagram reel cover), served via `/api/stored-image/[id]` so a cover stays stable across machines.
 
-Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000_multi_user_drafts_seasons`, `20260613120000_user_settings`, `20260621120000_image_cache`, `20260622093000_add_location_sortorder`, `20260622210000_user_usa_as_states`.
+**Access control** lives in `src/lib/access.ts`: `areFriends(a,b)` (accepted friendship, true for self) and `canViewBoard(viewerId|null, targetId)` (owner or accepted friend). A full board is owner/friend-only; a single spot is public only when `isPublic` (served by `/api/public/feed`, never exposing notes/reminders/prices).
 
-> **Migration drift:** `User.mapTheme` was historically plain `text` in the DB (not the
-> `MapTheme` enum), which broke every new-user insert with `type "public.MapTheme" does not
-> exist` (reads never cast, so it went unnoticed). **Repaired 2026-06-23** with hand-written
-> SQL — created the enum and converted the column (lossless; only `CLASSIC` existed). General
-> rule still stands: never `prisma migrate dev` here (it wants to drop/recreate columns =
-> **data loss**); add schema with hand-written SQL + `prisma migrate deploy` (how `image_cache`
-> was applied).
+Migrations now also include: `…friends_inbox`, `…location_backup` + `…drop_location_backup`, `20260624120000_stored_image`, `20260625000000_maptheme_enum_repair`, `20260625100000_location_public`.
+
+> **DB = Supabase** (migrated from Neon 2026-06-24). Local dev `.env` uses the **direct** host
+> `db.<ref>.supabase.co:5432` (IPv6); Vercel uses the **transaction pooler :6543** (see §14).
+> **Migration drift (`mapTheme`):** historically `text` not the `MapTheme` enum, so a fresh deploy
+> (Supabase) broke every new-user insert with `type "public.MapTheme" does not exist`. The enum +
+> in-place conversion is now captured as `20260625000000_maptheme_enum_repair` (guarded, lossless).
+> **Golden rule:** never `prisma migrate dev` (it drop/recreates columns = **data loss**); add
+> schema with hand-written SQL + `prisma migrate deploy`. Applying a migration hits the shared
+> Supabase DB used by prod — treat as a production change.
 
 ### Seed safety (`prisma/seed.ts`)
 
@@ -143,8 +156,11 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 | Route | Auth | Notes |
 | --- | --- | --- |
 | `/api/auth/login`, `/register`, `/logout`, `/me` | — | Session auth |
-| `/api/users` | session | Lists accounts for the sidebar profile switcher |
-| `/api/locations`, `/api/locations/[id]`, `/api/locations/[id]/star` | session writes | User-scoped; `GET ?userId=` views another user's board read-only |
+| `/api/users`, `/api/users/[id]/stats` | session | Account list + per-profile stats (friend-gated) |
+| `/api/friends`, `/api/friends/[id]`, `/api/notifications` | session | Friend requests + inbox |
+| `/api/locations`, `/api/locations/[id]`, `/api/locations/[id]/star` | session writes | Owner-scoped; `GET ?userId=` views a board **only if owner or accepted friend** (else 403) — see `access.ts` |
+| `/api/public/feed` | **none** | Public feed of published spots (`isPublic`), read-only, safe fields only |
+| `/api/stored-image/[id]` | none | Serves bytes from `StoredImage` |
 | `/api/locations/reorder` | session | Body `{ ids: string[] }` → writes `sortOrder` = index (per-country order) |
 | `/api/settings` | session | `mapTheme`, `homeAirports` |
 | `/api/drafts`, `/api/drafts/[id]`, `/api/drafts/ingest`, `/api/drafts/enrich` | session / ingest key | Draft inbox + enrichment |
@@ -184,10 +200,18 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 
 ---
 
-## 8. Current Status (2026-06-22)
+## 8. Current Status (2026-06-25)
 
 ### Done
 
+**2026-06-24 → 25 — Supabase migration + public soft-launch on Vercel:**
+- **DB + media storage moved Neon → Supabase** (cloud, shared by local dev AND the live site). Data migrated + verified. The long-standing `mapTheme` drift is now captured as migration `20260625000000_maptheme_enum_repair` (guarded, data-preserving). Version-independent backup/restore: `scripts/export-db-backup.mjs` + `import-db-backup.mjs` (JSON — the local pg_dump 16 can't dump the PG17 server). See `SUPABASE_MIGRATION.md`.
+- **Public feed / privacy model**: per-spot `Location.isPublic` → `/api/public/feed` (no auth) + `/feed` page. Boards are now **private** (owner or accepted friend only) via `src/lib/access.ts`; fixed a leak where a logged-out user could fetch any spot. "Publish to feed" toggle in EntryForm.
+- **Media uploads** route to a Supabase Storage bucket (`TravelBoard`) in prod via `src/lib/storage.ts` + `STORAGE_DRIVER`; dev still writes `public/uploads/`.
+- **Deployed to Vercel** → https://travel-board-psi.vercel.app (auto-deploys on push to `master`). See §14.
+- **Beta feedback**: synced the wished/visited/all filter across the sidebar + bottom map toggle + new-entry default (one `statusFilter`); restructured the sidebar into sections (Travel Journal / Travel Mates / Flight Tracker / Settings) with a World/Wished/Visited toggle under the Journal; **right-click a country → "Add wish"**; tightened cover-cache + duplicate matching (admin-word stopwords + directional distinguishers — "florida" no longer reuses an unrelated cache; "North Carolina" ≠ "South Carolina").
+
+**Earlier (≤ 2026-06-23):**
 - Multi-user auth, starred wishes, seasons, cover images, draft inbox
 - Link enrichment, image proxy, cover generate/cycle, settings (theme + airports)
 - Flag border glow, Alaska/Hawaii zoom, world view UX, sidebar dropdown
@@ -218,7 +242,9 @@ Migrations: `20260612124434_init`, `20260612140349_add_starred`, `20260612150000
 
 - **Prisma 6 only.** `npx prisma generate` may EPERM if dev server locks DLL — restart dev first.
 - **Never** `prisma migrate reset` on a DB with real user data. New tables: hand-written migration + `migrate deploy` (avoid `migrate dev` — it wants to drop `User.mapTheme`).
-- **`SERPER_API_KEY` lives only in gitignored `.env`.** Blank ⇒ placeholder images (not cached). Cache is local Postgres (`ImageCache`), persistent, not Serper-side.
+- **Two separate config stores: local `.env` (gitignored) vs Vercel env vars.** Any key the LIVE site needs (e.g. `SERPER_API_KEY`) must be added in the Vercel dashboard too — `.env` is never uploaded. Blank `SERPER_API_KEY` ⇒ placeholder images (not cached).
+- **`sharp` on Vercel:** routes importing `sharp` (e.g. `/api/locations` → `instagramCover.ts`) 500 in prod unless the build traces the native binary. Fixed via `next.config.ts`: webpack build (NOT `--turbopack`), `serverExternalPackages: ["sharp"]`, and `outputFileTracingIncludes` for `@img/**`. See §14 + [[vercel-deploy]].
+- **Shared DB:** local dev, the `:3001` stable worktree, AND the live Vercel site all hit the **same Supabase DB**. Adding/deleting data locally changes the live site's data. No separate dev DB yet.
 - `cover-proxy` now fetches arbitrary public https hosts — keep the SSRF blocklist in `coverProxy.ts` intact.
 - Duplicate matching is intentionally aggressive (any two salt flats in a country match); `window.confirm` "add anyway" is the escape.
 - PATCH locations replaces media wholesale; empty `coverImageUrl` is respected (no auto re-fetch).
@@ -348,3 +374,30 @@ Setup notes / gotchas:
   (shared DB).
 - Friend reaches it at `http://100.127.72.12:3001` over Tailscale. If unreachable, allow port 3001
   through Windows Firewall (3000 already works).
+
+---
+
+## 14. Vercel deployment (public soft-launch)
+
+Live at **https://travel-board-psi.vercel.app** (Vercel project `travel-board`, team
+`team_UpadywpuWBXfEo1Fv870tXFq`, GitHub-connected → **push to `master` auto-deploys**). Full
+runbook: `SUPABASE_MIGRATION.md`; memory: [[vercel-deploy]], [[supabase-migration]].
+
+- **Dev vs prod**: edit on `localhost:3000` (only `git push` updates the public site). Code is
+  isolated per machine, but the **DB is shared** (Supabase) — data changes locally hit the live site.
+- **DB URL differs by environment**: local `.env` = direct `db.<ref>.supabase.co:5432` (IPv6, works
+  from the PC). **Vercel `DATABASE_URL` = transaction pooler `aws-1-us-east-2.pooler.supabase.com:6543`
+  + `?pgbouncer=true&connection_limit=1`** (serverless is IPv4; the direct host is IPv6-only). No
+  Supabase IPv4 add-on needed — the pooler is IPv4.
+- **Vercel env vars** (Dashboard → Settings → Env, Production): `DATABASE_URL` (6543 pooler),
+  `DIRECT_URL`, `SESSION_SECRET` (fresh, not the local one), `STORAGE_DRIVER=supabase`, `SUPABASE_URL`,
+  `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET=TravelBoard`, `SERPER_API_KEY`. NOT the
+  WhatsApp/flight/hardware keys (local tools only).
+- **Build fixes that must stay** (`package.json` + `next.config.ts`): `"build": "next build"`
+  (webpack, NOT turbopack), `postinstall: prisma generate`, `serverExternalPackages: ["sharp"]`,
+  `outputFileTracingIncludes` for `@img/**` (else `/api/locations` 500s on a sharp `.so` load error).
+- **`.vercelignore`** excludes `.whatsapp-auth`, `esp32-touch`, `backups`, etc. (the CLI doesn't read
+  `.gitignore`; `.whatsapp-auth` holds OS-locked files that break `vercel deploy`).
+- **CLI deploy** (needs a Vercel token): `npx vercel@latest deploy --prod --yes --token <T> --scope team_UpadywpuWBXfEo1Fv870tXFq`. Normally unnecessary — just `git push`.
+- **Idea for later**: a separate Supabase project as an isolated dev DB so local testing doesn't
+  touch live data.
