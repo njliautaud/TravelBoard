@@ -235,11 +235,20 @@ export default function LoungeFinder() {
 
           {/* Results */}
           {loading ? (
-            <div className="py-12 text-center text-sm text-slate-500">Searching lounges...</div>
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400">
+              <div className="h-4 w-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+              Searching lounges...
+            </div>
           ) : searched && lounges.length === 0 ? (
-            <div className="py-12 text-center">
+            <div className="flex flex-col items-center gap-2 py-12">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-700/60 bg-slate-900/80">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-500">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </div>
               <p className="text-sm text-slate-400">No lounges found for {airport}.</p>
-              <p className="mt-1 text-xs text-slate-500">Try a major hub like JFK, LAX, ATL, ORD, or SFO.</p>
+              <p className="text-xs text-slate-500">Try a major hub like JFK, LAX, ATL, ORD, or SFO.</p>
             </div>
           ) : (
             <div className="space-y-3">

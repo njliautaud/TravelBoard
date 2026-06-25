@@ -189,7 +189,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
           if (data?.user) {
-            setCurrentUser(data.user);
+            setCurrentUser({ id: data.user.id, username: data.user.username, role: data.user.role });
             checkOnboarding();
           }
         })
@@ -464,6 +464,18 @@ export default function AppShell({ initialLocations }: AppShellProps) {
                 </span>
               )}
             </button>
+            {currentUser?.role === "OWNER" && (
+              <button
+                onClick={() => router.push("/admin")}
+                title="Admin"
+                className="mb-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[10px] font-medium text-slate-500 transition-all duration-200 hover:bg-slate-800/80 hover:text-slate-300"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                <span>Admin</span>
+              </button>
+            )}
           </>
         )}
         {visibleTabs.map((tab) => {

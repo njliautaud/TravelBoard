@@ -27,7 +27,8 @@ ln -s /home/jupiter/TravelBoard/node_modules "$DEPLOY_DIR/node_modules"
 rm -rf "$DEPLOY_DIR/src/app/api"
 mkdir -p "$DEPLOY_DIR/src/app/api"
 rm -f "$DEPLOY_DIR/src/middleware.ts"
-rm -rf "$DEPLOY_DIR/src/app/admin"
+# Admin page is role-gated (OWNER only) — keep it in production
+# rm -rf "$DEPLOY_DIR/src/app/admin"
 
 # Replace layout: use dynamic imports to avoid SSR prerender crash with Clerk
 cat > "$DEPLOY_DIR/src/app/layout.tsx" << 'LAYOUT'
@@ -189,6 +190,10 @@ export default function SignUpPage() {
   );
 }
 SIGNUP
+
+# Remove dynamic journal/[id] route (breaks static export even with generateStaticParams)
+# Journal entries are loaded via client-side navigation from /journal
+rm -rf "$DEPLOY_DIR/src/app/journal/[id]"
 
 # Replace ALL @clerk/nextjs imports with @clerk/react across source
 find "$DEPLOY_DIR/src" -name "*.tsx" -o -name "*.ts" | xargs sed -i 's|@clerk/nextjs|@clerk/react|g' 2>/dev/null || true

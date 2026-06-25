@@ -173,9 +173,11 @@ export default function AlertsPanel() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
+      setLoadError(false);
       const [watchRes, alertRes] = await Promise.all([
         fetch("/api/watches").then((r) => r.json()),
         fetch("/api/alerts").then((r) => r.json()),
@@ -184,7 +186,7 @@ export default function AlertsPanel() {
       setAlerts(alertRes.alerts ?? []);
       setUnreadCount(alertRes.unreadCount ?? 0);
     } catch {
-      // silently fail
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -218,6 +220,27 @@ export default function AlertsPanel() {
       <div className="flex items-center justify-center py-12 text-slate-400 text-sm">
         <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mr-2" />
         Loading watches...
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-12 px-4">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-red-400">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        </div>
+        <p className="text-sm text-slate-400">Could not load watches and alerts.</p>
+        <button
+          onClick={() => { setLoading(true); loadData(); }}
+          className="rounded-lg border border-slate-700 px-4 py-1.5 text-xs text-slate-400 transition hover:border-slate-600 hover:text-slate-200"
+        >
+          Try again
+        </button>
       </div>
     );
   }

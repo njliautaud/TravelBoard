@@ -445,7 +445,10 @@ export default function SocialBoards() {
         {view === "list" && (
           <div className="mx-auto max-w-2xl p-4">
             {loading ? (
-              <div className="py-12 text-center text-sm text-slate-500">Loading boards...</div>
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400">
+                <div className="h-4 w-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                Loading boards...
+              </div>
             ) : boards.length === 0 ? (
               <div className="py-12 text-center">
                 <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-700/60 bg-slate-900/80">

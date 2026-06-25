@@ -5,13 +5,12 @@ const config: CapacitorConfig = {
   appName: "TravelBoard",
   webDir: "out",
 
-  // For development: point the native shell at the hosted Next.js server
+  // For development: uncomment the server block below and point at your dev server
   // so you get live updates without rebuilding static exports.
-  // Comment this out (or remove) for production builds that bundle static files.
-  server: {
-    url: "http://100.71.253.30:3000", // Jupiter Tailscale — change to your dev server
-    cleartext: true, // allow plain HTTP in dev
-  },
+  // server: {
+  //   url: "http://100.71.253.30:3000", // Jupiter Tailscale — change to your dev server
+  //   cleartext: true, // allow plain HTTP in dev
+  // },
 
   // Status bar + splash screen — dark theme to match the app
   plugins: {

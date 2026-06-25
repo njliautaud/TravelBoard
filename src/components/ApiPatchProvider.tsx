@@ -11,6 +11,26 @@ import { installApiFetchPatch } from "@/lib/api";
 export default function ApiPatchProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     installApiFetchPatch();
+
+    // Register service worker for PWA offline support
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then((reg) => {
+          // Auto-update: when a new SW is found, activate it immediately
+          reg.onupdatefound = () => {
+            const newWorker = reg.installing;
+            if (newWorker) {
+              newWorker.onstatechange = () => {
+                if (newWorker.state === "activated") {
+                  console.log("[SW] Updated and activated");
+                }
+              };
+            }
+          };
+        })
+        .catch((err) => console.warn("[SW] Registration failed:", err));
+    }
   }, []);
 
   return <>{children}</>;

@@ -157,6 +157,68 @@ export default function SettingsPanel({ settings, saving, onChange }: SettingsPa
         </ul>
       </section>
 
+      {/* Notifications */}
+      <section className="mt-6">
+        <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Notifications
+        </h2>
+        <p className="mb-3 text-xs text-slate-500">
+          Get notified about price drops and deal alerts.
+        </p>
+        <div className="space-y-2">
+          {/* Push notifications coming soon */}
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="block text-sm font-medium text-slate-200">
+                  Push notifications
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Browser push alerts for price drops and deal matches.
+                </span>
+              </div>
+              <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-400">
+                Coming soon
+              </span>
+            </div>
+          </div>
+
+          {/* Email digest — functional placeholder */}
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="block text-sm font-medium text-slate-200">
+                  Email digest
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Weekly summary of deals from your home airports.
+                </span>
+              </div>
+              <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-400">
+                Coming soon
+              </span>
+            </div>
+          </div>
+
+          {/* Deal alerts */}
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="block text-sm font-medium text-slate-200">
+                  Price watch alerts
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Get alerted when watched routes drop below your target price.
+                </span>
+              </div>
+              <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-400">
+                Coming soon
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {saving && <p className="mt-3 text-center text-[11px] text-slate-500">Saving…</p>}
     </div>
   );

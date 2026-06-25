@@ -384,9 +384,15 @@ export default function LoyaltyTracker() {
 
           {/* Tracked balances list */}
           {balances.length === 0 && !showAdd ? (
-            <p className="text-center text-sm text-slate-500 py-8">
-              No loyalty programs tracked yet. Click &quot;+ Add Program&quot; or browse &quot;All Programs&quot; to get started.
-            </p>
+            <div className="flex flex-col items-center gap-2 py-12">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-700/60 bg-slate-900/80">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-amber-400">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+              </div>
+              <p className="text-sm text-slate-400">No loyalty programs tracked yet.</p>
+              <p className="text-xs text-slate-500">Add a program above or browse &quot;All Programs&quot; to get started.</p>
+            </div>
           ) : (
             <div className="space-y-2">
               {balances.map((b) => {
@@ -609,9 +615,10 @@ export default function LoyaltyTracker() {
           })}
 
           {cardCatalog.length === 0 && (
-            <p className="text-center text-sm text-slate-500 py-8">
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
+              <div className="h-4 w-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
               Loading card catalog...
-            </p>
+            </div>
           )}
         </div>
       )}

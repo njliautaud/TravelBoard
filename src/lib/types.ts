@@ -66,6 +66,7 @@ export interface DraftItem {
 export interface SessionUser {
   id: string;
   username: string;
+  role?: "OWNER" | "EDITOR" | "VIEWER";
 }
 
 export interface GeocodeResult {

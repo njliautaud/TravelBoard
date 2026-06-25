@@ -54,12 +54,12 @@ export default function RootLayout({
       >
         {clerkEnabled ? (
           <ClerkProvider
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             appearance={{
               baseTheme: dark,
               variables: {
                 colorPrimary: "#f59e0b",              // amber-500
                 colorBackground: "#020617",            // slate-950
-                colorText: "#e2e8f0",                  // slate-200
                 colorTextOnPrimaryBackground: "#0f172a",
                 colorTextSecondary: "#94a3b8",         // slate-400
                 colorInputBackground: "#0f172a",       // slate-900
@@ -67,7 +67,7 @@ export default function RootLayout({
                 colorNeutral: "#e2e8f0",               // slate-200
                 colorDanger: "#f87171",                // red-400
               },
-            }}
+            } as any}
           >
             {inner}
           </ClerkProvider>

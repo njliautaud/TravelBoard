@@ -21,12 +21,12 @@ export default function ClerkClientProvider({
   return (
     <ClerkProvider
       publishableKey={PUBLISHABLE_KEY}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       appearance={{
         baseTheme: dark,
         variables: {
           colorPrimary: "#f59e0b",
           colorBackground: "#020617",
-          colorText: "#e2e8f0",
           colorTextOnPrimaryBackground: "#0f172a",
           colorTextSecondary: "#94a3b8",
           colorInputBackground: "#0f172a",
@@ -34,11 +34,10 @@ export default function ClerkClientProvider({
           colorNeutral: "#e2e8f0",
           colorDanger: "#f87171",
         },
-      }}
+      } as any}
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
-      afterSignInUrl="/"
-      afterSignUpUrl="/"
+      afterSignOutUrl="/"
     >
       {children}
     </ClerkProvider>

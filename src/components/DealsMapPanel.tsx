@@ -86,9 +86,23 @@ function countryDisplayName(code: string): string {
 // Sub-components
 // ---------------------------------------------------------------------------
 
+/** Whether a deal qualifies as round-trip (has both outbound + return dates). */
+function isRoundTrip(deal: DealItem): boolean {
+  return !!(deal.outboundDate && deal.returnDate);
+}
+
+/** Format a one-way miles value into the "X mi x 2 = Y mi RT" string. */
+function formatAwardRT(miles: number | undefined): string {
+  if (!miles) return "";
+  const oneWay = miles;
+  const rt = oneWay * 2;
+  return `${oneWay.toLocaleString()} mi x 2 = ${rt.toLocaleString()} mi RT`;
+}
+
 function CompactDealCard({ deal, onClick }: { deal: DealItem; onClick?: () => void }) {
   const tier = deal.tier ?? "fair";
   const grade = dealGrade(deal.savingsPercent);
+  const roundTrip = isRoundTrip(deal);
 
   return (
     <button
@@ -109,6 +123,16 @@ function CompactDealCard({ deal, onClick }: { deal: DealItem; onClick?: () => vo
             {deal.destination}
           </span>
           <span className="flex-shrink-0 text-[10px] text-slate-500">{deal.flyToCode}</span>
+          {/* Round-trip / One-way badge */}
+          {roundTrip ? (
+            <span className="flex-shrink-0 rounded bg-teal-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-teal-300 border border-teal-500/25">
+              Round-trip
+            </span>
+          ) : (
+            <span className="flex-shrink-0 rounded bg-slate-700/40 px-1.5 py-0.5 text-[9px] font-medium text-slate-400 border border-slate-600/30">
+              One-way
+            </span>
+          )}
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-500">
           {deal.airline && <span>{deal.airline}</span>}
@@ -123,14 +147,21 @@ function CompactDealCard({ deal, onClick }: { deal: DealItem; onClick?: () => vo
         {deal.isAward ? (
           <>
             <div className="text-sm font-bold text-purple-400">
-              {deal.miles?.toLocaleString()}
+              {roundTrip
+                ? `${((deal.miles ?? 0) * 2).toLocaleString()}`
+                : deal.miles?.toLocaleString()}
             </div>
-            <div className="text-[10px] text-slate-500">miles</div>
+            <div className="text-[10px] text-slate-500">
+              {roundTrip ? "miles RT" : "miles"}
+            </div>
           </>
         ) : (
           <>
             <div className={`text-sm font-bold ${TIER_COLORS[tier] ?? "text-slate-300"}`}>
-              ${deal.price}
+              ${roundTrip ? (deal.price * 2) : deal.price}
+            </div>
+            <div className="text-[10px] text-slate-500">
+              {roundTrip ? "round-trip" : "one-way"}
             </div>
             {deal.savingsPercent > 0 && (
               <div className="text-[10px] font-medium text-emerald-400">
@@ -153,6 +184,7 @@ function DealDetailOverlay({
 }) {
   const tier = deal.tier ?? "fair";
   const grade = dealGrade(deal.savingsPercent);
+  const roundTrip = isRoundTrip(deal);
 
   return (
     <div className="flex flex-col gap-3 p-4">
@@ -168,18 +200,36 @@ function DealDetailOverlay({
           <h3 className="text-lg font-bold text-slate-100">{deal.destination}</h3>
           <p className="text-sm text-slate-400">{deal.flyToCode} from {deal.origin}</p>
         </div>
-        <span
-          className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-bold ${GRADE_COLORS[grade] ?? GRADE_COLORS.C}`}
-        >
-          {grade}
-        </span>
+        <div className="flex items-center gap-2">
+          {roundTrip ? (
+            <span className="rounded-full bg-teal-500/15 px-2.5 py-1 text-[10px] font-semibold text-teal-300 border border-teal-500/25">
+              Round-trip
+            </span>
+          ) : (
+            <span className="rounded-full bg-slate-700/40 px-2.5 py-1 text-[10px] font-medium text-slate-400 border border-slate-600/30">
+              One-way
+            </span>
+          )}
+          <span
+            className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-bold ${GRADE_COLORS[grade] ?? GRADE_COLORS.C}`}
+          >
+            {grade}
+          </span>
+        </div>
       </div>
 
+      {/* Total price display */}
       <div className="flex items-baseline gap-2">
         {deal.isAward ? (
           <>
-            <span className="text-2xl font-bold text-purple-400">{deal.miles?.toLocaleString()}</span>
-            <span className="text-sm text-slate-400">miles</span>
+            <span className="text-2xl font-bold text-purple-400">
+              {roundTrip
+                ? ((deal.miles ?? 0) * 2).toLocaleString()
+                : deal.miles?.toLocaleString()}
+            </span>
+            <span className="text-sm text-slate-400">
+              {roundTrip ? "miles round-trip" : "miles one-way"}
+            </span>
             {deal.cabinLabel && (
               <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-[10px] font-semibold text-purple-300 capitalize">
                 {deal.cabinLabel}
@@ -188,7 +238,12 @@ function DealDetailOverlay({
           </>
         ) : (
           <>
-            <span className={`text-2xl font-bold ${TIER_COLORS[tier]}`}>${deal.price}</span>
+            <span className={`text-2xl font-bold ${TIER_COLORS[tier]}`}>
+              ${roundTrip ? (deal.price * 2) : deal.price}
+            </span>
+            <span className="text-sm text-slate-400">
+              {roundTrip ? "round-trip total" : "one-way"}
+            </span>
             {deal.savingsPercent > 0 && (
               <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-400">
                 Save {deal.savingsPercent}%
@@ -197,6 +252,73 @@ function DealDetailOverlay({
           </>
         )}
       </div>
+
+      {/* Per-leg pricing breakdown (round-trip only) */}
+      {roundTrip && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 space-y-2">
+          <div className="text-[10px] font-semibold text-amber-300 uppercase tracking-wider">
+            Per-leg breakdown
+          </div>
+          {deal.isAward ? (
+            <>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                  <span className="text-slate-300">
+                    Outbound{deal.outboundDate ? ` (${new Date(deal.outboundDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })})` : ""}
+                  </span>
+                </div>
+                <span className="font-medium text-purple-300">{deal.miles?.toLocaleString()} miles</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400">
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                  </svg>
+                  <span className="text-slate-300">
+                    Return{deal.returnDate ? ` (${new Date(deal.returnDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })})` : ""}
+                  </span>
+                </div>
+                <span className="font-medium text-purple-300">{deal.miles?.toLocaleString()} miles</span>
+              </div>
+              <div className="border-t border-amber-500/20 pt-1.5 text-[11px] text-amber-200">
+                {formatAwardRT(deal.miles)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                  <span className="text-slate-300">
+                    Outbound{deal.outboundDate ? ` (${new Date(deal.outboundDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })})` : ""}
+                  </span>
+                </div>
+                <span className={`font-medium ${TIER_COLORS[tier]}`}>${deal.price}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400">
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                  </svg>
+                  <span className="text-slate-300">
+                    Return{deal.returnDate ? ` (${new Date(deal.returnDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })})` : ""}
+                  </span>
+                </div>
+                <span className={`font-medium ${TIER_COLORS[tier]}`}>${deal.price}</span>
+              </div>
+              <div className="border-t border-amber-500/20 pt-1.5 flex justify-between text-xs">
+                <span className="text-amber-200 font-medium">Total round-trip</span>
+                <span className={`font-bold ${TIER_COLORS[tier]}`}>${deal.price * 2}</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Meta details */}
       <div className="space-y-2 rounded-xl border border-slate-700/40 bg-slate-800/30 p-3">
@@ -236,6 +358,11 @@ function DealDetailOverlay({
             <span className="text-slate-300">{deal.programName}</span>
           </div>
         )}
+        {/* Trip type row */}
+        <div className="flex justify-between text-xs">
+          <span className="text-slate-500">Trip type</span>
+          <span className="text-slate-300">{roundTrip ? "Round-trip" : "One-way"}</span>
+        </div>
       </div>
 
       {deal.deepLink && (

@@ -13,7 +13,7 @@ export async function GET() {
   try {
     const user = await getAuthUser();
     return NextResponse.json({
-      user: user ? { id: user.id, username: user.username, imageUrl: user.imageUrl } : null,
+      user: user ? { id: user.id, username: user.username, imageUrl: user.imageUrl, role: user.role } : null,
       loggedIn: user !== null,
       editor: user !== null,
     });

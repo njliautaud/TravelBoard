@@ -7,13 +7,20 @@ import { getAuthUser } from "@/lib/unified-auth";
 /**
  * POST /api/fares/warm
  * Body: { origin: string, month: number }
- * Protected: requires authenticated session.
+ * Protected: requires authenticated session OR internal Bearer token.
  * Triggers a cache warming for the given origin + month.
  */
 export async function POST(req: NextRequest) {
-  const user = await getAuthUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Allow internal/script access with Bearer token (WHATSAPP_INGEST_KEY or SESSION_SECRET)
+  const authHeader = req.headers.get("authorization");
+  const internalKey = process.env.WHATSAPP_INGEST_KEY || process.env.SESSION_SECRET;
+  const isInternalAuth = authHeader && internalKey && authHeader === `Bearer ${internalKey}`;
+
+  if (!isInternalAuth) {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   let body: { origin?: string; month?: number };

@@ -27,6 +27,7 @@ function corsHeaders(origin: string | null) {
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/forgot-password(.*)",
   // Public API routes: auth endpoints, public data, webhook ingestion, hardware sync
   "/api/auth(.*)",
   "/api/onboarding(.*)",

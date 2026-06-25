@@ -32,6 +32,7 @@ export default function SignUpCatchAll() {
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-slate-950">
+      <div className="flex flex-col items-center gap-4">
       <ClerkSignUp
         routing="hash"
         signInUrl="/sign-in"
@@ -40,14 +41,13 @@ export default function SignUpCatchAll() {
           variables: {
             colorPrimary: "#f59e0b",
             colorBackground: "#020617",
-            colorText: "#e2e8f0",
             colorTextOnPrimaryBackground: "#0f172a",
             colorTextSecondary: "#94a3b8",
             colorInputBackground: "#0f172a",
             colorInputText: "#e2e8f0",
             colorNeutral: "#e2e8f0",
             colorDanger: "#f87171",
-          },
+          } as Record<string, string>,
           elements: {
             rootBox: "mx-auto",
             card: "bg-slate-950 border border-slate-700/70 shadow-2xl",
@@ -105,6 +105,17 @@ export default function SignUpCatchAll() {
           },
         }}
       />
+      <p className="mt-2 text-center text-xs text-slate-500">
+        By signing up, you agree to our{" "}
+        <Link href="/terms" className="text-amber-400/80 underline decoration-amber-400/30 hover:text-amber-400 hover:decoration-amber-400">
+          Terms of Service
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy" className="text-amber-400/80 underline decoration-amber-400/30 hover:text-amber-400 hover:decoration-amber-400">
+          Privacy Policy
+        </Link>.
+      </p>
+      </div>
     </div>
   );
 }

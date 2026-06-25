@@ -26,6 +26,8 @@ export async function GET() {
 
   try {
     // Run all queries in parallel
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
     const [
       userCount,
       locationCount,
@@ -42,6 +44,10 @@ export async function GET() {
       boardDealCount,
       // Per-origin fare coverage
       fareCoverage,
+      recentSignups,
+      imageCacheCount,
+      cardProfileCount,
+      loyaltyBalanceCount,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.location.count(),
@@ -62,6 +68,10 @@ export async function GET() {
         orderBy: { _count: { id: "desc" } },
         take: 20,
       }),
+      prisma.user.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
+      prisma.imageCache.count(),
+      prisma.cardProfile.count(),
+      prisma.loyaltyBalance.count(),
     ]);
 
     // Provider status
@@ -73,6 +83,7 @@ export async function GET() {
       stats: {
         users: {
           total: userCount,
+          recentSignups,
         },
         content: {
           locations: locationCount,
@@ -102,6 +113,11 @@ export async function GET() {
           flightApi: hasFlightApiKey,
           tequila: hasTequilaKey,
           airlabs: hasAirlabsKey,
+        },
+        extras: {
+          imageCacheEntries: imageCacheCount,
+          cardProfiles: cardProfileCount,
+          loyaltyBalances: loyaltyBalanceCount,
         },
         database: {
           status: "connected",

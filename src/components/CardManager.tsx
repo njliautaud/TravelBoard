@@ -24,6 +24,7 @@ interface CatalogCard {
 export default function CardManager() {
   const [cards, setCards] = useState<CardProfile[]>([]);
   const [cardCatalog, setCardCatalog] = useState<CatalogCard[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ cardName: "", issuer: "", pointsBalance: "", annualFee: "", category: "" });
@@ -52,7 +53,9 @@ export default function CardManager() {
     }
   }, []);
 
-  useEffect(() => { loadCards(); loadCatalog(); }, [loadCards, loadCatalog]);
+  useEffect(() => {
+    Promise.all([loadCards(), loadCatalog()]).finally(() => setLoading(false));
+  }, [loadCards, loadCatalog]);
 
   function resetForm() {
     setForm({ cardName: "", issuer: "", pointsBalance: "", annualFee: "", category: "" });
@@ -203,10 +206,22 @@ export default function CardManager() {
       )}
 
       {/* Card List */}
-      {cards.length === 0 && !showAdd ? (
-        <p className="text-center text-sm text-slate-500 py-8">
-          No cards yet. Add your credit cards to track points and find optimal transfer paths.
-        </p>
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
+          <div className="h-4 w-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+          Loading cards...
+        </div>
+      ) : cards.length === 0 && !showAdd ? (
+        <div className="flex flex-col items-center gap-2 py-12">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-700/60 bg-slate-900/80">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-amber-400">
+              <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+              <line x1="1" y1="10" x2="23" y2="10" />
+            </svg>
+          </div>
+          <p className="text-sm text-slate-400">No cards yet.</p>
+          <p className="text-xs text-slate-500">Add your credit cards to track points and find optimal transfer paths.</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {cards.map((card) => (

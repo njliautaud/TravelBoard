@@ -55,6 +55,10 @@ function fmtPrice(n: number): string {
   return `$${Math.round(n).toLocaleString()}`;
 }
 
+function isRoundTrip(r: { outboundDate: string | null; returnDate: string | null }): boolean {
+  return !!(r.outboundDate && r.returnDate);
+}
+
 function fmtDate(iso: string | null): string {
   if (!iso) return "--";
   const d = new Date(`${iso}T00:00:00Z`);
@@ -236,6 +240,7 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
       .catch(() => {
         setResults([]);
         setTotalMatched(0);
+        setError("Could not reach the server. Please try again.");
         setLoading(false);
       });
 
@@ -418,8 +423,22 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
         )}
 
         {error && !loading && (
-          <div className="text-red-400 text-sm py-4 text-center">
-            Search failed: {error}
+          <div className="flex flex-col items-center gap-2 py-8">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-red-400">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <p className="text-sm text-red-400">{error}</p>
+            <button
+              type="button"
+              onClick={runSearch}
+              className="mt-1 rounded-lg border border-slate-700 px-4 py-1.5 text-xs text-slate-400 transition hover:border-slate-600 hover:text-slate-200"
+            >
+              Try again
+            </button>
           </div>
         )}
 
@@ -468,6 +487,15 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
                           <span className="text-sm font-medium text-slate-200">
                             {r.flyToCode || r.destination}
                           </span>
+                          {isRoundTrip(r) ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-300 font-semibold border border-teal-500/25">
+                              Round-trip
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/40 text-slate-400 font-medium border border-slate-600/30">
+                              One-way
+                            </span>
+                          )}
                           {r.tier === "cheap" && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-medium">
                               cheap
@@ -481,16 +509,21 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
                         </div>
                         <div className="text-xs text-slate-500 mt-0.5">
                           {r.outboundDate
-                            ? `${fmtDate(r.outboundDate)} - ${fmtDate(r.returnDate)}`
+                            ? `${fmtDate(r.outboundDate)}${r.returnDate ? ` - ${fmtDate(r.returnDate)}` : ""}`
                             : `Month ${MONTHS[r.month] ?? r.month}`}
                           {r.airline ? ` -- ${r.airline}` : ""}
                           {r.source ? ` -- ${r.source}` : ""}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-lg font-bold text-amber-300">
-                          {fmtPrice(r.price)}
-                        </span>
+                        <div className="text-right">
+                          <span className="text-lg font-bold text-amber-300">
+                            {isRoundTrip(r) ? fmtPrice(r.price * 2) : fmtPrice(r.price)}
+                          </span>
+                          <div className="text-[10px] text-slate-500">
+                            {isRoundTrip(r) ? "round-trip" : "one-way"}
+                          </div>
+                        </div>
                         <span className="text-slate-600 text-xs">
                           {isExpanded ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>}
                         </span>
@@ -500,6 +533,31 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
                     {/* Expanded detail panel */}
                     {isExpanded && (
                       <div className="px-3 pb-3 pt-1 border-t border-slate-800/50 space-y-3">
+                        {/* Per-leg breakdown for round-trip deals */}
+                        {isRoundTrip(r) && (
+                          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5 space-y-1.5">
+                            <div className="text-[10px] font-semibold text-amber-300 uppercase tracking-wider">
+                              Per-leg breakdown
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-slate-300">
+                                Outbound ({fmtDate(r.outboundDate)})
+                              </span>
+                              <span className="font-medium text-amber-300">{fmtPrice(r.price)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-slate-300">
+                                Return ({fmtDate(r.returnDate)})
+                              </span>
+                              <span className="font-medium text-amber-300">{fmtPrice(r.price)}</span>
+                            </div>
+                            <div className="border-t border-amber-500/20 pt-1 flex justify-between text-xs">
+                              <span className="text-amber-200 font-medium">Total round-trip</span>
+                              <span className="font-bold text-amber-300">{fmtPrice(r.price * 2)}</span>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Price history chart */}
                         {priceHistory.length >= 2 && (
                           <div>
@@ -537,8 +595,15 @@ export default function SearchView({ defaultOrigin = "MCO" }: SearchViewProps) {
               })}
 
               {results.length === 0 && !loading && (
-                <div className="text-center py-8 text-slate-500 text-sm">
-                  No fares found for this search. Try different dates or a different destination.
+                <div className="flex flex-col items-center gap-2 py-12">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-700/60 bg-slate-900/80">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-500">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-slate-400">No fares found for this search.</p>
+                  <p className="text-xs text-slate-500">Try different dates or a different destination.</p>
                 </div>
               )}
             </div>

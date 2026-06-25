@@ -159,24 +159,21 @@ export default function MapApp({ initialLocations }: MapAppProps) {
   }, [settings.usaAsStates, usStates]);
 
   // Fetch deal routes for map arc rendering.
+  // Re-fetches when settings.homeAirports changes (e.g. after onboarding).
+  const homeAirportsKey = settings.homeAirports.join(",");
   useEffect(() => {
     if (!loggedIn) return;
     const fetchRoutes = async () => {
       try {
-        let origin = "MCO";
-        try {
-          const res = await fetch("/api/settings");
-          const data = await res.json();
-          const airports: string[] = data?.settings?.homeAirports ?? [];
-          if (airports.length > 0) origin = airports[0]!;
-        } catch { /* default */ }
+        const origin = settings.homeAirports.length > 0 ? settings.homeAirports[0]! : "MCO";
         const res = await fetch(`/api/deals/routes?origin=${origin}&limit=20`);
         const data = await res.json();
         if (Array.isArray(data.routes)) setDealRoutes(data.routes);
       } catch { /* silent */ }
     };
     fetchRoutes();
-  }, [loggedIn]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn, homeAirportsKey]);
 
   // Which map unit (country, or US state in states mode) a wish belongs to.
   // Shared with the map so the SidePanel shows the same grouping.

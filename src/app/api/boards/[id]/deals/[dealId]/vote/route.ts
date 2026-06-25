@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const body = await req.json().catch(() => ({}));
     const direction = (body as { direction?: string }).direction === "down" ? "down" as const : "up" as const;
 
-    const result = await voteDeal(dealId, direction);
+    const result = await voteDeal(dealId, direction, user.id);
     if (!result) return NextResponse.json({ error: "Deal not found", status: 404 }, { status: 404 });
     return NextResponse.json(result);
   } catch (err) {

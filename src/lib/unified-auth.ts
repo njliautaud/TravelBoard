@@ -14,6 +14,7 @@ export interface AuthUser {
   username: string;
   clerkId?: string;  // Only set when using Clerk
   imageUrl?: string | null; // Clerk profile image
+  role?: string;     // UserRole from DB (OWNER, EDITOR, VIEWER)
 }
 
 const isClerkEnabled = !!(
@@ -45,7 +46,7 @@ async function getClerkUser(): Promise<AuthUser | null> {
     // Find or create user in our DB linked to Clerk ID
     let dbUser = await prisma.user.findFirst({
       where: { clerkId: userId },
-      select: { id: true, username: true, clerkId: true, imageUrl: true },
+      select: { id: true, username: true, clerkId: true, imageUrl: true, role: true },
     });
 
     if (!dbUser) {
@@ -63,7 +64,7 @@ async function getClerkUser(): Promise<AuthUser | null> {
           clerkId: userId,
           imageUrl: clerkUser?.imageUrl,
         },
-        select: { id: true, username: true, clerkId: true, imageUrl: true },
+        select: { id: true, username: true, clerkId: true, imageUrl: true, role: true },
       });
     }
 
@@ -72,6 +73,7 @@ async function getClerkUser(): Promise<AuthUser | null> {
       username: dbUser.username,
       clerkId: userId,
       imageUrl: dbUser.imageUrl,
+      role: dbUser.role,
     };
   } catch {
     return null;
@@ -83,7 +85,12 @@ async function getLegacyUser(): Promise<AuthUser | null> {
     const { getSessionUser } = await import("./auth");
     const user = await getSessionUser();
     if (!user) return null;
-    return { id: user.id, username: user.username };
+    // Fetch role from DB (getSessionUser doesn't include it)
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { role: true },
+    });
+    return { id: user.id, username: user.username, role: dbUser?.role };
   } catch {
     return null;
   }

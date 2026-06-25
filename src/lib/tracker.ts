@@ -48,7 +48,7 @@ export function track(event: string, props?: EventProps): void {
   try {
     const apiBase =
       typeof window !== "undefined" &&
-      (window as Record<string, unknown>).__NEXT_DATA__
+      (window as unknown as Record<string, unknown>).__NEXT_DATA__
         ? ""
         : "";
     fetch(`${apiBase}/api/analytics`, {

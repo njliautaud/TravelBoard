@@ -101,7 +101,10 @@ export default function GamificationPanel() {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center bg-slate-950">
-        <p className="text-sm text-slate-500">Loading achievements...</p>
+        <div className="flex items-center gap-2 text-sm text-slate-400">
+          <div className="h-4 w-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+          Loading achievements...
+        </div>
       </div>
     );
   }

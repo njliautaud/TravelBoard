@@ -40,14 +40,13 @@ export default function SignInCatchAll() {
           variables: {
             colorPrimary: "#f59e0b",
             colorBackground: "#020617",
-            colorText: "#e2e8f0",
             colorTextOnPrimaryBackground: "#0f172a",
             colorTextSecondary: "#94a3b8",
             colorInputBackground: "#0f172a",
             colorInputText: "#e2e8f0",
             colorNeutral: "#e2e8f0",
             colorDanger: "#f87171",
-          },
+          } as Record<string, string>,
           elements: {
             rootBox: "mx-auto",
             card: "bg-slate-950 border border-slate-700/70 shadow-2xl",
