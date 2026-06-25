@@ -117,7 +117,10 @@ export default function Sidebar({
   const starredCount = listed.filter((l) => l.starred).length;
 
   // The <select> shows the panel when on Friends/Settings, else the shared filter.
-  const dropdownValue = panel === "list" ? statusFilter : panel;
+  // "World" doubles as the all-places state here (it also recenters the map), so
+  // there's no separate "All" option — show World whenever the filter is "all".
+  const dropdownValue =
+    panel !== "list" ? panel : statusFilter === "all" ? "world" : statusFilter;
 
   const handleViewChange = (value: string) => {
     if (value === "world") {
@@ -181,7 +184,6 @@ export default function Sidebar({
           >
             <optgroup label="View">
               <option value="world">World</option>
-              <option value="all">All</option>
               <option value="wished">Wishes</option>
               <option value="visited">Visited</option>
               <option value="friends">Friends</option>
