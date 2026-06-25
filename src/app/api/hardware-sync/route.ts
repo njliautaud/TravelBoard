@@ -23,17 +23,22 @@ export async function GET() {
       include: locationInclude,
       orderBy: { createdAt: "asc" },
     });
-
     const items = locations.map(serializeLocation).map((l) => ({
       id: l.id,
       name: l.activityName,
       lat: l.latitude,
       lng: l.longitude,
       countryCode: l.countryCode,
+      countryName: l.countryName,
+      city: l.city,
+      region: l.region,
       status: l.status,
+      notes: l.notes,
       isDeal: l.isDeal,
+      latestPrice: l.latestPrice?.price ?? null,
+      priceCurrency: l.latestPrice?.currency ?? null,
+      coverImageUrl: l.coverImageUrl ?? null,
     }));
-
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       count: items.length,

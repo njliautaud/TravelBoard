@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // app runtime (Supabase: direct db.<ref>, or 6543 pooler on serverless)
+  directUrl = env("DIRECT_URL") // migrations (Supabase: direct db.<ref>:5432, or session pooler if IPv4-only)
 }
 
 enum VisitStatus {
@@ -29,6 +30,16 @@ enum MapTheme {
   FLAG
 }
 
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+}
+
+enum NotificationType {
+  FRIEND_REQUEST
+  FRIEND_ACCEPTED
+}
+
 model User {
   id           String     @id @default(cuid())
   username     String     @unique
@@ -38,21 +49,27 @@ model User {
   email        String?
   role         UserRole   @default(EDITOR)
   mapTheme     MapTheme   @default(CLASSIC)
-  homeAirports String    @default("[]")
+  homeAirports String[]   @default([])
   usaAsStates  Boolean    @default(false) /// show US states as independent map units
+  visitedRegions String[] @default([]) /// Passport: visited country (ISO-3) / US-state (US-XX) codes; independent of Location, no effect on wish glow
+  passportOnboardedAt DateTime? /// when the user finished/dismissed the "map where you've been" onboarding (null = show it once)
   maxTravelHours  Int     @default(24)
   maxLayoverHours Int        @default(8)
   cabin           String     @default("any")
   nonstopOnly     Boolean    @default(false)
-  tripStyles      String     @default("[]")
+  tripStyles      String[]   @default([])
   flightPref      String     @default("both")   /// "international", "domestic", "both"
   distancePref    String     @default("no_preference") /// "farther", "nearby", "no_preference"
   preferFarther   Boolean    @default(false)
-  loyaltyPrograms String     @default("[]")      /// JSON array of program IDs
-  heldCards       String     @default("[]")      /// JSON array of card IDs
+  loyaltyPrograms String[]   @default([])      /// array of program IDs
+  heldCards       String[]   @default([])      /// array of card IDs
   onboarded       Boolean    @default(false)
   locations    Location[]
   drafts       Draft[]
+  sentFriendRequests     Friendship[]   @relation("SentFriendRequests")
+  receivedFriendRequests Friendship[]   @relation("ReceivedFriendRequests")
+  notifications          Notification[] @relation("RecipientNotifications")
+  actorNotifications     Notification[] @relation("ActorNotifications")
   createdAt    DateTime   @default(now())
 
   // Meridian relations
@@ -71,6 +88,39 @@ model User {
   dealVotes            DealVote[]
 }
 
+/// A friend link between two users. One row per (requester, addressee) pair;
+/// starts PENDING when requested, flips to ACCEPTED once the addressee accepts.
+model Friendship {
+  id          String       @id @default(cuid())
+  requester   User         @relation("SentFriendRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+  requesterId String
+  addressee   User         @relation("ReceivedFriendRequests", fields: [addresseeId], references: [id], onDelete: Cascade)
+  addresseeId String
+  status      FriendStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+  respondedAt DateTime?
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+  @@index([requesterId, status])
+}
+
+/// Inbox notification (friend request received / request accepted). `user` is
+/// the recipient; `actor` is whoever triggered it.
+model Notification {
+  id           String           @id @default(cuid())
+  user         User             @relation("RecipientNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  type         NotificationType
+  actor        User?            @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: SetNull)
+  actorId      String?
+  friendshipId String?
+  read         Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+
+  @@index([userId, read, createdAt])
+}
+
 /// One wishlist/journal entry
 model Location {
   id             String        @id @default(cuid())
@@ -87,6 +137,7 @@ model Location {
   priceThreshold Float?
   starred        Boolean       @default(false)
   sortOrder      Int           @default(0) /// manual order within a country list (lower = higher up)
+  isPublic       Boolean       @default(false) /// published to the public feed (the rest of the board stays private)
   coverImageUrl  String?
   seasonSpring   Boolean       @default(false)
   seasonSummer   Boolean       @default(false)
@@ -101,6 +152,7 @@ model Location {
 
   @@index([countryCode])
   @@index([userId])
+  @@index([isPublic, createdAt])
 }
 
 model Media {
@@ -140,12 +192,24 @@ model Draft {
   @@index([userId, createdAt])
 }
 
+/// Image bytes captured into the shared DB (e.g. an Instagram reel cover).
+/// cdninstagram URLs are signed and short-lived, so they break on another
+/// machine or after a while; we copy the bytes here once and serve them via
+/// /api/stored-image/[id] so the cover is stable everywhere.
+model StoredImage {
+  id        String   @id @default(cuid())
+  mime      String   @default("image/jpeg")
+  bytes     Bytes
+  source    String   @default("instagram")
+  createdAt DateTime @default(now())
+}
+
 /// Cached Google Images (Serper.dev) results, keyed by normalized query.
 /// Lets repeat lookups skip the external API entirely (0 credit cost).
 model ImageCache {
   id          String   @id @default(cuid())
   searchQuery String   @unique /// normalized: trimmed, lowercased, single-spaced
-  images      String /// PreviewImage[] JSON — see src/lib/serperImages.ts
+  images      Json /// PreviewImage[] — see src/lib/serperImages.ts
   source      String   @default("serper")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

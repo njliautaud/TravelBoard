@@ -17,6 +17,7 @@ export interface LocationBody {
   seasonSummer?: boolean;
   seasonFall?: boolean;
   seasonWinter?: boolean;
+  isPublic?: boolean;
   media?: Omit<MediaItem, "id">[];
 }
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DraftPrefill, GeocodeResult, LocationItem, MediaItem, MediaType, VisitStatus } from "@/lib/types";
 import { cleanThumb, coverImageSrc } from "@/lib/thumb";
 import { isDuplicateWish } from "@/lib/similarity";
+import { isSocialUrl } from "@/lib/linkEnrichment";
 
 export interface PinDropResult {
   latitude: number;
@@ -19,6 +20,8 @@ interface EntryFormProps {
   draftId?: string | null;
   /** Existing wishes, used to warn before adding a likely duplicate. */
   existingLocations?: LocationItem[];
+  /** Status a NEW entry defaults to (synced with the current wished/visited filter). */
+  defaultStatus?: VisitStatus;
   pinDropResult: PinDropResult | null;
   onRequestPinDrop: () => void;
   onClose: () => void;
@@ -41,6 +44,7 @@ interface FormState {
   seasonSummer: boolean;
   seasonFall: boolean;
   seasonWinter: boolean;
+  isPublic: boolean;
   coverImageUrl: string;
   media: MediaItem[];
 }
@@ -61,6 +65,7 @@ const EMPTY: FormState = {
   seasonSummer: false,
   seasonFall: false,
   seasonWinter: false,
+  isPublic: false,
   coverImageUrl: "",
   media: [],
 };
@@ -82,6 +87,7 @@ function fromLocation(loc: LocationItem): FormState {
     seasonSummer: loc.seasonSummer,
     seasonFall: loc.seasonFall,
     seasonWinter: loc.seasonWinter,
+    isPublic: loc.isPublic,
     coverImageUrl: loc.coverImageUrl ?? "",
     media: loc.media.map((m) => ({ ...m })),
   };
@@ -96,13 +102,14 @@ const amberBtnCls =
 type CoverOption = {
   url: string;
   previewUrl: string;
-  source: "wikipedia" | "commons" | "google";
+  source: "wikipedia" | "commons" | "google" | "instagram";
 };
 
 const SOURCE_LABEL: Record<CoverOption["source"], string> = {
   wikipedia: "Wikipedia",
   commons: "Wikimedia",
   google: "Google",
+  instagram: "Instagram",
 };
 
 export default function EntryForm({
@@ -112,6 +119,7 @@ export default function EntryForm({
   draftPrefill,
   draftId,
   existingLocations,
+  defaultStatus = "TO_VISIT",
   pinDropResult,
   onRequestPinDrop,
   onClose,
@@ -141,6 +149,7 @@ export default function EntryForm({
       } else if (draftPrefill) {
         setForm({
           ...EMPTY,
+          status: defaultStatus,
           activityName: draftPrefill.activityName ?? "",
           notes: draftPrefill.notes ?? "",
           coverImageUrl: draftPrefill.coverImageUrl ?? "",
@@ -153,7 +162,7 @@ export default function EntryForm({
           media: (draftPrefill.media ?? []).map((m, i) => ({ ...m, sortOrder: i })),
         });
       } else {
-        setForm(EMPTY);
+        setForm({ ...EMPTY, status: defaultStatus });
       }
       setQuery("");
       setResults([]);
@@ -163,7 +172,7 @@ export default function EntryForm({
       setCoverOptions([]);
       setCoverNote(null);
     }
-  }, [open, editing, draftPrefill]);
+  }, [open, editing, draftPrefill, defaultStatus]);
 
   const coverSearchKey = () =>
     [form.activityName, form.city, form.region, form.countryName]
@@ -180,87 +189,88 @@ export default function EntryForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.activityName, form.city, form.region, form.countryName]);
 
-  // Smart-fill from shared reel / post metadata
+  // Analyze a social link (shared reel/post, or one pasted in Photos & links)
+  // and smart-fill the form from its caption/thumbnail/location.
+  const runEnrichment = useCallback(async (url: string, rawText: string) => {
+    setEnriching(true);
+    setError(null);
+    setEnrichHint("Reading post caption, thumbnail, and location…");
+    try {
+      const params = new URLSearchParams({ url, rawText: rawText || url });
+      const res = await fetch(`/api/drafts/enrich?${params}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setEnrichHint("Couldn’t read post details — fill in manually");
+        return;
+      }
+
+      const e = data.enrichment as {
+        activityName?: string | null;
+        notes?: string | null;
+        thumbnailUrl?: string | null;
+        coverImageUrl?: string | null;
+        locationQuery?: string | null;
+        geocode?: {
+          displayName: string;
+          latitude: number;
+          longitude: number;
+          countryCode: string | null;
+          countryName: string | null;
+          region: string | null;
+          city: string | null;
+        } | null;
+      };
+
+      setForm((f) => {
+        const media = [...f.media];
+        // Keep the reel still frame in the gallery.
+        if (e.thumbnailUrl && !media.some((m) => m.url === e.thumbnailUrl)) {
+          media.push({
+            type: "IMAGE_URL",
+            url: e.thumbnailUrl,
+            caption: "Reel frame",
+            sortOrder: media.length,
+          });
+        }
+        // Default the cover to the reel's own thumbnail (same as "Set cover" on
+        // that frame). We no longer auto-generate a Wikipedia/Google cover —
+        // the user fills in details first, then can Generate/Regenerate.
+        const cover = e.thumbnailUrl ?? f.coverImageUrl;
+        return {
+          ...f,
+          activityName: e.activityName ?? f.activityName,
+          notes: e.notes ?? f.notes,
+          coverImageUrl: cover,
+          countryName: e.geocode?.countryName ?? f.countryName,
+          countryCode: e.geocode?.countryCode ?? f.countryCode,
+          region: e.geocode?.region ?? f.region,
+          city: e.geocode?.city ?? f.city,
+          latitude: e.geocode ? String(e.geocode.latitude) : f.latitude,
+          longitude: e.geocode ? String(e.geocode.longitude) : f.longitude,
+          media: media.map((m, i) => ({ ...m, sortOrder: i })),
+        };
+      });
+
+      if (e.geocode?.displayName) setQuery(e.geocode.displayName);
+      setEnrichHint(
+        e.geocode
+          ? `Found location: ${e.geocode.displayName}`
+          : e.locationQuery
+            ? `Saw “${e.locationQuery}” but couldn’t pin it — search manually`
+            : "Filled from post — add a location if needed"
+      );
+    } catch {
+      setEnrichHint("Couldn’t read post details — fill in manually");
+    } finally {
+      setEnriching(false);
+    }
+  }, []);
+
+  // Auto-run once when opening a prefilled "Add a place" form from a shared link.
   useEffect(() => {
     if (!open || editing || !draftPrefill?.enrichUrl) return;
-
-    const url = draftPrefill.enrichUrl;
-    const rawText = draftPrefill.enrichRawText ?? "";
-    let cancelled = false;
-
-    (async () => {
-      setEnriching(true);
-      setEnrichHint("Reading post caption, thumbnail, and location…");
-      try {
-        const params = new URLSearchParams({ url, rawText });
-        const res = await fetch(`/api/drafts/enrich?${params}`);
-        const data = await res.json();
-        if (cancelled || !res.ok) return;
-
-        const e = data.enrichment as {
-          activityName?: string | null;
-          notes?: string | null;
-          thumbnailUrl?: string | null;
-          coverImageUrl?: string | null;
-          locationQuery?: string | null;
-          geocode?: {
-            displayName: string;
-            latitude: number;
-            longitude: number;
-            countryCode: string | null;
-            countryName: string | null;
-            region: string | null;
-            city: string | null;
-          } | null;
-        };
-
-        setForm((f) => {
-          const media = [...f.media];
-          // Keep the reel still frame in the gallery (it has the play button, so not the cover).
-          if (e.thumbnailUrl && !media.some((m) => m.url === e.thumbnailUrl)) {
-            media.push({
-              type: "IMAGE_URL",
-              url: e.thumbnailUrl,
-              caption: "Reel frame",
-              sortOrder: media.length,
-            });
-          }
-          // Prefer a clean location photo as the cover; fall back to the reel frame.
-          const cover = e.coverImageUrl ?? e.thumbnailUrl ?? f.coverImageUrl;
-          return {
-            ...f,
-            activityName: e.activityName ?? f.activityName,
-            notes: e.notes ?? f.notes,
-            coverImageUrl: cover,
-            countryName: e.geocode?.countryName ?? f.countryName,
-            countryCode: e.geocode?.countryCode ?? f.countryCode,
-            region: e.geocode?.region ?? f.region,
-            city: e.geocode?.city ?? f.city,
-            latitude: e.geocode ? String(e.geocode.latitude) : f.latitude,
-            longitude: e.geocode ? String(e.geocode.longitude) : f.longitude,
-            media: media.map((m, i) => ({ ...m, sortOrder: i })),
-          };
-        });
-
-        if (e.geocode?.displayName) setQuery(e.geocode.displayName);
-        setEnrichHint(
-          e.geocode
-            ? `Found location: ${e.geocode.displayName}`
-            : e.locationQuery
-              ? `Saw “${e.locationQuery}” but couldn’t pin it — search manually`
-              : "Filled from post — add a location if needed"
-        );
-      } catch {
-        if (!cancelled) setEnrichHint("Couldn’t read post details — fill in manually");
-      } finally {
-        if (!cancelled) setEnriching(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, editing, draftPrefill?.enrichUrl, draftPrefill?.enrichRawText]);
+    runEnrichment(draftPrefill.enrichUrl, draftPrefill.enrichRawText ?? "");
+  }, [open, editing, draftPrefill?.enrichUrl, draftPrefill?.enrichRawText, runEnrichment]);
 
   // Apply coordinates coming back from pin-drop mode
   useEffect(() => {
@@ -393,16 +403,22 @@ export default function EntryForm({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Image search failed");
 
-      const images = (data.images ?? []) as { imageUrl?: string; thumbnailUrl?: string | null }[];
+      const images = (data.images ?? []) as {
+        imageUrl?: string;
+        thumbnailUrl?: string | null;
+        source?: string;
+      }[];
       const options: CoverOption[] = images
-        .filter((im): im is { imageUrl: string; thumbnailUrl?: string | null } =>
-          typeof im.imageUrl === "string" && im.imageUrl.startsWith("http"),
+        .filter((im): im is { imageUrl: string; thumbnailUrl?: string | null; source?: string } =>
+          // Google results are absolute http(s); a captured IG cover is a
+          // same-origin /api/stored-image path — accept both.
+          typeof im.imageUrl === "string" && (im.imageUrl.startsWith("http") || im.imageUrl.startsWith("/")),
         )
         .map((im) => ({
           url: im.imageUrl,
           // Serper thumbnails are Google-hosted (gstatic) and proxy reliably for the picker.
           previewUrl: coverImageSrc(im.thumbnailUrl || im.imageUrl, 240) || im.imageUrl,
-          source: "google" as const,
+          source: im.source === "instagram" ? ("instagram" as const) : ("google" as const),
         }));
 
       if (options.length === 0) {
@@ -488,6 +504,7 @@ export default function EntryForm({
         seasonSummer: form.seasonSummer,
         seasonFall: form.seasonFall,
         seasonWinter: form.seasonWinter,
+        isPublic: form.isPublic,
         coverImageUrl: form.coverImageUrl.trim() || null,
         media: form.media.map((m, i) => ({ type: m.type, url: m.url, caption: m.caption, sortOrder: i })),
       };
@@ -814,6 +831,17 @@ export default function EntryForm({
                     <span className="shrink-0 rounded bg-sky-500/15 px-2 py-1 text-[10px] font-medium text-sky-300">LINK</span>
                   )}
                   <span className="min-w-0 flex-1 truncate text-xs text-slate-400">{m.url}</span>
+                  {m.type === "LINK" && isSocialUrl(m.url) && (
+                    <button
+                      type="button"
+                      disabled={enriching}
+                      onClick={() => runEnrichment(m.url, m.url)}
+                      title="Analyze this link for a title, location, and cover"
+                      className="shrink-0 rounded border border-violet-500/50 bg-violet-500/10 px-2 py-1 text-[10px] font-medium text-violet-200 hover:bg-violet-500/20 disabled:opacity-50"
+                    >
+                      {enriching ? "Analyzing…" : "Auto-generate"}
+                    </button>
+                  )}
                   {m.type !== "LINK" &&
                     (form.coverImageUrl === m.url ? (
                       <span className="shrink-0 rounded bg-amber-500/20 px-2 py-1 text-[10px] font-medium text-amber-300">Cover</span>
@@ -869,6 +897,37 @@ export default function EntryForm({
             />
           </div>
         </div>
+
+        {/* Public feed toggle — per-spot publishing; the rest of the board stays private */}
+        <button
+          type="button"
+          onClick={() => set("isPublic", !form.isPublic)}
+          aria-pressed={form.isPublic}
+          className={`mt-4 flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition ${
+            form.isPublic
+              ? "border-emerald-500/60 bg-emerald-500/10"
+              : "border-slate-700 bg-slate-900/60 hover:border-slate-600"
+          }`}
+        >
+          <span
+            className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition ${
+              form.isPublic ? "bg-emerald-500/80" : "bg-slate-700"
+            }`}
+          >
+            <span
+              className={`h-4 w-4 rounded-full bg-white transition ${form.isPublic ? "translate-x-4" : ""}`}
+            />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-slate-100">
+              {form.isPublic ? "Published to the public feed" : "Publish to the public feed"}
+            </span>
+            <span className="block text-xs text-slate-400">
+              Shares only this spot (name, place, photo) with everyone — your notes, reminders, and the
+              rest of your board stay private.
+            </span>
+          </span>
+        </button>
 
         {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
 

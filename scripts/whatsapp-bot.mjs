@@ -1,13 +1,18 @@
 /**
- * WhatsApp ingestion bot for TravelBoard.
+ * WhatsApp ⇄ Claude Code remote-control relay for TravelBoard.
+ *
+ * Drive this Claude Code session from your phone: message yourself
+ * "Claude <instruction>" in WhatsApp and it is injected into the live session;
+ * Claude's replies and permission prompts come back to the same chat.
  *
  * Setup:
- *   1. Set WHATSAPP_INGEST_KEY and WHATSAPP_OWNER_USERNAME in .env
+ *   1. Set CLAUDE_CHANNEL_SECRET in .env (must match scripts/claude-channel.mjs)
  *   2. npm run whatsapp-bot:setup   (first time only — installs Chrome)
- *   3. npm run dev                  (keep running in another terminal)
+ *   3. Start Claude Code with the channel:
+ *        claude --dangerously-load-development-channels server:claude-whatsapp
  *   4. npm run whatsapp-bot
  *   5. Scan QR with WhatsApp → Linked devices
- *   6. Message yourself with a link — it lands in Draft inbox
+ *   6. Message yourself "Claude <instruction>"
  *
  * If you see "browser is already running", run: npm run whatsapp-bot:stop
  */
@@ -19,12 +24,19 @@ import qrcode from "qrcode-terminal";
 
 const { Client, LocalAuth } = pkg;
 
-const API = process.env.TRAVELBOARD_API ?? "http://localhost:3000";
-const INGEST_KEY = process.env.WHATSAPP_INGEST_KEY;
-const OWNER = process.env.WHATSAPP_OWNER_USERNAME ?? "swann";
+// Remote-control channel (drive Claude Code from your phone). Must match
+// CLAUDE_CHANNEL_SECRET used by scripts/claude-channel.mjs.
+const CHANNEL_SECRET = process.env.CLAUDE_CHANNEL_SECRET ?? "";
+const CHANNEL_PORT = Number(process.env.CLAUDE_CHANNEL_PORT ?? 8788);
+const CHANNEL_BASE = `http://127.0.0.1:${CHANNEL_PORT}`;
+// Prefixes the channel uses for outbound messages we relay to WhatsApp; we skip
+// these on the way back in so relays don't loop.
+const RELAY_MARKERS = ["💬", "🔐"];
+// A permission verdict reply, e.g. "yes abcde" (5 letters, never 'l').
+const VERDICT_RE = /^\s*(?:y|yes|n|no)\s+[a-km-z]{5}\s*$/i;
 
-if (!INGEST_KEY) {
-  console.error("Set WHATSAPP_INGEST_KEY in .env");
+if (!CHANNEL_SECRET) {
+  console.error("Set CLAUDE_CHANNEL_SECRET in .env (must match scripts/claude-channel.mjs)");
   process.exit(1);
 }
 
@@ -65,29 +77,10 @@ client.on("qr", (qr) => {
   qrcode.generate(qr, { small: true });
 });
 
-async function checkApi() {
-  try {
-    const res = await fetch(`${API}/api/auth/me`, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) {
-      console.warn(`Warning: TravelBoard at ${API} returned ${res.status}. Is npm run dev running?`);
-      return;
-    }
-    const ct = res.headers.get("content-type") ?? "";
-    if (!ct.includes("json")) {
-      console.warn(
-        `Warning: ${API} did not return JSON (got ${ct}). Another app may be using that port — check TRAVELBOARD_API in .env`
-      );
-    } else {
-      console.log(`TravelBoard API OK at ${API}`);
-    }
-  } catch (e) {
-    console.error(`Cannot reach TravelBoard at ${API} — start npm run dev first (${String(e)})`);
-  }
-}
-
 client.on("ready", () => {
-  console.log(`WhatsApp bot ready — forwarding to ${API} for user "${OWNER}"`);
-  checkApi();
+  console.log("WhatsApp bot ready — Claude remote control ON.");
+  console.log('Message yourself "Claude <instruction>" to drive Claude Code.');
+  startChannelRelay();
 });
 
 client.on("auth_failure", (msg) => {
@@ -98,84 +91,115 @@ client.on("disconnected", (reason) => {
   console.error("WhatsApp disconnected:", reason);
 });
 
-const BOT_REPLY = "Saved to TravelBoard draft inbox ✓";
-const URL_RE =
-  /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)/gi;
-
-/** Body text, or URLs from link-preview messages where body can be empty. */
+/** Trimmed message body. */
 function messageText(msg) {
-  const body = msg.body?.trim() ?? "";
-  if (body) return body;
-  const links = (msg.links ?? [])
-    .map((l) => (typeof l === "string" ? l : l?.link))
-    .filter(Boolean);
-  if (links.length) return links.join("\n");
-  return "";
+  return msg.body?.trim() ?? "";
 }
 
-function extractUrls(text) {
-  return [...text.matchAll(URL_RE)].map((m) => m[0]);
-}
-
-const recentUrls = new Map();
-function seenRecently(url) {
-  const now = Date.now();
-  for (const [k, t] of recentUrls) {
-    if (now - t > 60_000) recentUrls.delete(k);
+async function safeReply(msg, text) {
+  try {
+    await msg.reply(text);
+  } catch (e) {
+    console.log("Could not send WhatsApp reply:", String(e));
   }
-  if (recentUrls.has(url)) return true;
-  recentUrls.set(url, now);
-  return false;
+}
+
+/** Forward an instruction or verdict to the local Claude Code channel. */
+async function forwardToChannel(text) {
+  try {
+    const res = await fetch(`${CHANNEL_BASE}/`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain", "X-Channel-Secret": CHANNEL_SECRET },
+      body: text,
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok;
+  } catch (e) {
+    console.error("Channel forward failed:", String(e));
+    return false;
+  }
+}
+
+/** Send Claude's replies / permission prompts to the owner's own WhatsApp chat. */
+async function relayToOwner(text) {
+  try {
+    const selfId = client.info?.wid?._serialized;
+    if (!selfId) return;
+    await client.sendMessage(selfId, text);
+  } catch (e) {
+    console.error("Relay to WhatsApp failed:", String(e));
+  }
+}
+
+/** Subscribe to the channel's SSE stream and relay each message to WhatsApp. */
+async function startChannelRelay() {
+  console.log(`Claude channel relay: streaming ${CHANNEL_BASE}/events → WhatsApp`);
+  for (;;) {
+    try {
+      const res = await fetch(`${CHANNEL_BASE}/events`);
+      if (!res.ok || !res.body) throw new Error(`events ${res.status}`);
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const frame = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          for (const line of frame.split("\n")) {
+            const t = line.trim();
+            if (!t.startsWith("data:")) continue;
+            const data = t.slice(5).trim();
+            if (!data) continue;
+            try {
+              const { text } = JSON.parse(data);
+              if (text) await relayToOwner(text);
+            } catch {
+              // non-JSON keepalive (": connected") — ignore
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Channel relay disconnected, retrying in 3s:", String(e));
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
 }
 
 async function handleIncomingMessage(msg) {
   const text = messageText(msg);
-  if (!text || text.includes(BOT_REPLY)) return;
+  if (!text) return;
+  // Skip our own relayed messages so they don't loop back into the channel.
+  if (RELAY_MARKERS.some((m) => text.startsWith(m))) return;
 
-  const urls = extractUrls(text);
-  if (!urls.length) {
-    console.log("Ignored (no URL):", text.slice(0, 60) || `[${msg.type}]`);
+  // Remote-control: "Claude <instruction>" or a permission verdict ("yes abcde").
+  const claudeMatch = /^\s*claude\b[:,]?\s*([\s\S]*)$/i.exec(text);
+  if (claudeMatch) {
+    const instruction = claudeMatch[1].trim();
+    if (!instruction) {
+      await safeReply(msg, 'Add an instruction after "Claude". e.g. Claude: list the open TODOs');
+      return;
+    }
+    const ok = await forwardToChannel(instruction);
+    await safeReply(
+      msg,
+      ok
+        ? "→ Claude ✓"
+        : "⚠️ Claude channel offline. Start the session with: claude --dangerously-load-development-channels server:claude-whatsapp",
+    );
     return;
   }
 
-  const url = urls[0];
-  if (seenRecently(url)) return;
-
-  try {
-    const res = await fetch(`${API}/api/drafts/ingest`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Ingest-Key": INGEST_KEY,
-      },
-      body: JSON.stringify({ text, username: OWNER, source: "whatsapp" }),
-    });
-
-    const raw = await res.text();
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      console.error(
-        `Ingest failed: ${API} returned non-JSON (status ${res.status}).`,
-        "Is npm run dev running on the correct port? Set TRAVELBOARD_API in .env if not 3000."
-      );
-      return;
-    }
-
-    if (res.ok) {
-      console.log("Draft saved:", data.draft?.id ?? "ok", "←", text.slice(0, 80));
-      try {
-        await msg.reply(BOT_REPLY);
-      } catch (e) {
-        console.log("Draft saved but could not send WhatsApp reply:", String(e));
-      }
-    } else {
-      console.error("Ingest failed:", data);
-    }
-  } catch (e) {
-    console.error("Ingest error:", e);
+  if (VERDICT_RE.test(text)) {
+    await forwardToChannel(text);
+    return;
   }
+
+  console.log("Ignored (not a Claude instruction):", text.slice(0, 60) || `[${msg.type}]`);
 }
 
 // "message" skips messages you send. message_create catches Message yourself + shares.

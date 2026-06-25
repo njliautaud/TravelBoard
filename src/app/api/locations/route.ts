@@ -4,11 +4,27 @@ import { getAuthUser } from "@/lib/unified-auth";
 import { locationInclude, serializeLocation } from "@/lib/serialize";
 import { validateLocationBody, type LocationBody } from "@/lib/validate";
 import { resolveCoverImage } from "@/lib/coverImage";
+import { captureInstagramCover, isInstagramCdnUrl } from "@/lib/instagramCover";
+import { canViewBoard } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 async function resolveCover(body: LocationBody): Promise<string | null> {
-  if (body.coverImageUrl?.trim()) return body.coverImageUrl.trim();
+  const chosen = body.coverImageUrl?.trim();
+  if (chosen) {
+    // A cover set from an Instagram reel is a signed, short-lived cdninstagram
+    // URL that breaks on other machines — capture the bytes into the shared DB.
+    if (isInstagramCdnUrl(chosen)) {
+      const captured = await captureInstagramCover(chosen, {
+        activityName: body.activityName!,
+        city: body.city,
+        region: body.region,
+        countryName: body.countryName,
+      });
+      return captured ?? chosen;
+    }
+    return chosen;
+  }
   // Only auto-fetch on create when the user didn't pick a cover themselves.
   return resolveCoverImage({
     activityName: body.activityName!,
@@ -21,16 +37,31 @@ async function resolveCover(body: LocationBody): Promise<string | null> {
 export async function GET(req: NextRequest) {
   const user = await getAuthUser();
   if (!user) return NextResponse.json({ locations: [] });
-  // Any logged-in user may view another user's board read-only (?userId=...).
-  // Omitted ⇒ your own board. Editing stays owner-only on the mutating routes.
+  // A user's full board is private: viewable only by the owner or an accepted
+  // friend (?userId=... = whose board; omitted => your own). Public sharing is
+  // per-spot via the public feed, not the whole board. Edits stay owner-only.
   const requested = req.nextUrl.searchParams.get("userId")?.trim();
   const targetUserId = requested || user.id;
-  const locations = await prisma.location.findMany({
-    where: { userId: targetUserId },
-    include: locationInclude,
-    orderBy: { createdAt: "desc" },
+  if (targetUserId !== user.id && !(await canViewBoard(user.id, targetUserId))) {
+    return NextResponse.json({ error: "You can only view your own or a friend's board." }, { status: 403 });
+  }
+  const [locations, owner] = await Promise.all([
+    prisma.location.findMany({
+      where: { userId: targetUserId },
+      include: locationInclude,
+      orderBy: { createdAt: "desc" },
+    }),
+    // The board owner's passport drives the static "been there" glow for whoever
+    // is viewing (your own, or a friend's fully-visible board).
+    prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { visitedRegions: true },
+    }),
+  ]);
+  return NextResponse.json({
+    locations: locations.map(serializeLocation),
+    visitedRegions: owner?.visitedRegions ?? [],
   });
-  return NextResponse.json({ locations: locations.map(serializeLocation) });
 }
 
 export async function POST(req: NextRequest) {
@@ -63,6 +94,7 @@ export async function POST(req: NextRequest) {
       seasonSummer: body.seasonSummer ?? false,
       seasonFall: body.seasonFall ?? false,
       seasonWinter: body.seasonWinter ?? false,
+      isPublic: body.isPublic ?? false,
       media: {
         create: (body.media ?? []).map((m, i) => ({
           type: m.type,

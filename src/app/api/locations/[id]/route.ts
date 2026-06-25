@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/unified-auth";
 import { locationInclude, serializeLocation } from "@/lib/serialize";
 import { validateLocationBody, type LocationBody } from "@/lib/validate";
+import { captureInstagramCover, isInstagramCdnUrl } from "@/lib/instagramCover";
+import { areFriends } from "@/lib/access";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -24,9 +26,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const { id } = await params;
     const location = await prisma.location.findUnique({ where: { id }, include: locationInclude });
     if (!location) return NextResponse.json({ error: "Not found", status: 404 }, { status: 404 });
-    if (user && location.userId !== user.id) {
-      return NextResponse.json({ error: "Not found", status: 404 }, { status: 404 });
-    }
+    // Visible to: the owner, an accepted friend, or anyone if the spot is public.
+    const isOwner = user?.id === location.userId;
+    const allowed =
+      isOwner || location.isPublic || (user ? await areFriends(user.id, location.userId) : false);
+    if (!allowed) return NextResponse.json({ error: "Not found", status: 404 }, { status: 404 });
     return NextResponse.json({ location: serializeLocation(location) });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -56,7 +60,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const error = validateLocationBody(body);
     if (error) return NextResponse.json({ error, status: 400 }, { status: 400 });
 
-    const coverImageUrl = body.coverImageUrl?.trim() || null;
+    // Respect explicit clears — never restore a deleted cover or auto-fetch on edit.
+    let coverImageUrl = body.coverImageUrl?.trim() || null;
+    // A cover set from an Instagram reel (signed, short-lived cdninstagram URL)
+    // is captured into the shared DB so it stays valid across machines.
+    if (coverImageUrl && isInstagramCdnUrl(coverImageUrl)) {
+      const captured = await captureInstagramCover(coverImageUrl, {
+        activityName: body.activityName!,
+        city: body.city,
+        region: body.region,
+        countryName: body.countryName,
+      });
+      coverImageUrl = captured ?? coverImageUrl;
+    }
 
     const updated = await prisma.location.update({
       where: { id },
@@ -77,6 +93,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         seasonSummer: body.seasonSummer ?? false,
         seasonFall: body.seasonFall ?? false,
         seasonWinter: body.seasonWinter ?? false,
+        isPublic: body.isPublic ?? existing.isPublic,
         media: {
           deleteMany: {},
           create: (body.media ?? []).map((m, i) => ({

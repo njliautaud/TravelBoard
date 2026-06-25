@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listCoverImageCandidates, searchCoverImage, type CoverSearchFields } from "@/lib/coverImage";
+import { listCoverCandidates, coverSearchQueries, searchCoverImage, type CoverSearchFields } from "@/lib/coverImage";
 
 
 function parseFields(req: NextRequest): CoverSearchFields | null {
@@ -41,11 +41,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ url });
     }
 
-    const candidates = await listCoverImageCandidates(fields);
+    const limit = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("limit") ?? "3", 10) || 3, 1), 12);
+    const candidates = await listCoverCandidates(fields, limit);
+    const queries = coverSearchQueries(fields);
     return NextResponse.json({
       candidates,
-      url: candidates[0] ?? null,
+      url: candidates[0]?.url ?? null,
       total: candidates.length,
+      query: queries[0] ?? null,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

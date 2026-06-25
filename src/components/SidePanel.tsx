@@ -176,6 +176,8 @@ function CountryList({
   const movedRef = useRef(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
+  // Resync local order whenever the country's set of wishes changes (selection
+  // change, add/delete, or a server refresh with new sortOrder).
   const idsKey = entries.map((e) => e.id).join(",");
   useEffect(() => {
     setOrder(entries.map((e) => e.id));

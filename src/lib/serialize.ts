@@ -33,6 +33,7 @@ export function serializeLocation(loc: LocationWithRelations): LocationItem {
     priceThreshold: threshold,
     starred: loc.starred,
     sortOrder: loc.sortOrder ?? 0,
+    isPublic: loc.isPublic,
     coverImageUrl: loc.coverImageUrl,
     seasonSpring: loc.seasonSpring,
     seasonSummer: loc.seasonSummer,
@@ -46,6 +47,36 @@ export function serializeLocation(loc: LocationWithRelations): LocationItem {
     isDeal: latestPrice !== null && threshold !== null && latestPrice.price <= threshold,
     createdAt: loc.createdAt.toISOString(),
     updatedAt: loc.updatedAt.toISOString(),
+  };
+}
+
+export type PublicSpotPayload = Prisma.LocationGetPayload<{
+  include: { media: true; user: { select: { username: true } } };
+}>;
+
+/**
+ * Read-only public-feed shape for a single published spot. Deliberately omits
+ * private journal fields (notes, reminders, price thresholds, flight prices) —
+ * publishing a spot shares only where/what/photo, never the rest of the board.
+ */
+export function serializePublicSpot(loc: PublicSpotPayload) {
+  return {
+    id: loc.id,
+    activityName: loc.activityName,
+    countryCode: loc.countryCode,
+    countryName: loc.countryName,
+    region: loc.region,
+    city: loc.city,
+    latitude: loc.latitude,
+    longitude: loc.longitude,
+    status: loc.status,
+    coverImageUrl: loc.coverImageUrl,
+    media: loc.media
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((m) => ({ type: m.type, url: m.url, caption: m.caption })),
+    author: { username: loc.user.username },
+    createdAt: loc.createdAt.toISOString(),
   };
 }
 

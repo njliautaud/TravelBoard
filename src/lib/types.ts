@@ -4,6 +4,10 @@ export type VisitStatus = "TO_VISIT" | "VISITED";
 /** Map/list view filter: everything, only to-visit ("wished"), or only visited. */
 export type StatusFilter = "all" | "wished" | "visited";
 
+/** Primary navigation section (left edge-dock on desktop, bottom nav on mobile). */
+export type Panel = "journal" | "passport" | "friends" | "flights" | "settings";
+
+
 /** True when a wish passes the given status filter. */
 export function matchesStatusFilter(status: VisitStatus, filter: StatusFilter): boolean {
   if (filter === "wished") return status === "TO_VISIT";
@@ -42,13 +46,14 @@ export interface LocationItem {
   reminderAt: string | null;
   priceThreshold: number | null;
   starred: boolean;
+  sortOrder: number;
+  isPublic: boolean;
   coverImageUrl: string | null;
   seasonSpring: boolean;
   seasonSummer: boolean;
   seasonFall: boolean;
   seasonWinter: boolean;
   media: MediaItem[];
-  sortOrder: number;
   latestPrice: LatestPrice | null;
   isDeal: boolean;
   createdAt: string;
@@ -67,6 +72,58 @@ export interface SessionUser {
   id: string;
   username: string;
   role?: "OWNER" | "EDITOR" | "VIEWER";
+}
+
+/** A selectable account in the sidebar profile switcher. */
+export interface UserProfile {
+  id: string;
+  username: string;
+}
+
+/** A user as shown in the friends list / inbox. */
+export interface FriendUser {
+  id: string;
+  username: string;
+}
+
+/** An accepted friend. */
+export interface FriendItem {
+  friendshipId: string;
+  user: FriendUser;
+  /** When the friendship was accepted (or created, if older rows). */
+  since: string;
+}
+
+/** A pending friend request (incoming = to me, outgoing = from me). */
+export interface PendingRequest {
+  friendshipId: string;
+  user: FriendUser;
+  createdAt: string;
+}
+
+export interface FriendsData {
+  friends: FriendItem[];
+  incoming: PendingRequest[];
+  outgoing: PendingRequest[];
+}
+
+/** Aggregated board stats shown in a friend's profile preview card. */
+export interface ProfileStats {
+  total: number;
+  visited: number;
+  toVisit: number;
+  countries: number;
+}
+
+export type NotificationType = "FRIEND_REQUEST" | "FRIEND_ACCEPTED";
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  actor: FriendUser | null;
+  friendshipId: string | null;
+  read: boolean;
+  createdAt: string;
 }
 
 export interface GeocodeResult {
@@ -93,10 +150,4 @@ export interface DraftPrefill {
   /** URL to fetch smart metadata from when opening a draft */
   enrichUrl?: string;
   enrichRawText?: string | null;
-}
-
-/** A selectable account in the sidebar profile switcher. */
-export interface UserProfile {
-  id: string;
-  username: string;
 }

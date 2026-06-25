@@ -29,6 +29,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+dev.log
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -37,6 +38,13 @@ yarn-error.log*
 # user-uploaded media
 /public/uploads/*
 !/public/uploads/.gitkeep
+
+# local database backups (never commit)
+/backups/
+
+# PlatformIO / embedded firmware build artifacts
+esp32-touch/.pio/
+esp32-touch/include/secrets.h
 
 # whatsapp-web.js session
 .whatsapp-auth/
@@ -54,3 +62,8 @@ prisma/prisma/
 
 # turbo
 .turbo
+
+# Local dev server logs
+dev3000.log
+dev3001.log
+*.log

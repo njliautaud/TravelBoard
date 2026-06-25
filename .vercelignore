@@ -1,0 +1,11 @@
+# Keep the Vercel upload to the Next.js web app only. The CLI does NOT read
+# .gitignore, so exclude local-only / non-web dirs here (some hold OS-locked
+# files like the WhatsApp bot's Chrome cache, which break `vercel deploy`).
+.whatsapp-auth
+.wwebjs_cache
+esp32-touch
+backups
+*.log
+.next
+node_modules
+.git

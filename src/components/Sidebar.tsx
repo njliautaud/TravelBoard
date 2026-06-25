@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { isInSeason, sortBySeason } from "@/lib/season";
-import type { LocationItem, UserProfile } from "@/lib/types";
+import type { LocationItem, Panel, StatusFilter, UserProfile } from "@/lib/types";
 import type { UserSettings } from "@/lib/settings";
 import SettingsPanel from "./SettingsPanel";
-
-/** "world" is a one-shot action (reset the map), not a persistent view. */
-export type SidebarView = "world" | "wishes" | "visited" | "settings";
+import FriendsTab from "./FriendsTab";
+import PassportPanel from "./PassportPanel";
+import { NAV_PILLARS, NavIcon } from "./navConfig";
 
 interface SidebarProps {
   locations: LocationItem[];
@@ -19,18 +19,24 @@ interface SidebarProps {
   open: boolean;
   settings: UserSettings;
   settingsSaving: boolean;
-  /** Other accounts you can view, and which one (if any) you're viewing now. */
-  profiles: UserProfile[];
+  /** Shared wished/visited/all filter (single source of truth with the map toggle). */
+  statusFilter: StatusFilter;
+  onStatusFilterChange: (filter: StatusFilter) => void;
+  /** Active section, lifted so the bottom-center selector can drive it too. */
+  panel: Panel;
+  onPanelChange: (panel: Panel) => void;
+  /** The friend's board you're viewing now (null = your own). */
   viewedUser: UserProfile | null;
-  currentUserId: string | null;
+  /** Bumped by the parent to force the Friends tab to refetch (e.g. after an inbox accept). */
+  friendsRefresh: number;
+  /** Friends list changed in the tab — let the parent refresh the inbox badge. */
+  onFriendsChanged: () => void;
   onSelectProfile: (profile: UserProfile | null) => void;
   onClose: () => void;
   onAddPlace: () => void;
   onSelectWish: (loc: LocationItem) => void;
   onToggleStar: (loc: LocationItem) => void;
   onSettingsChange: (patch: Partial<UserSettings>) => void;
-  /** Reset the map to the world view (the "World" dropdown option). */
-  onResetWorld: () => void;
 }
 
 function reminderDueSoon(loc: LocationItem): boolean {
@@ -82,82 +88,57 @@ export default function Sidebar({
   open,
   settings,
   settingsSaving,
-  profiles,
+  statusFilter,
+  onStatusFilterChange,
+  panel,
+  onPanelChange,
   viewedUser,
-  currentUserId,
+  friendsRefresh,
+  onFriendsChanged,
   onSelectProfile,
   onClose,
   onAddPlace,
   onSelectWish,
   onToggleStar,
   onSettingsChange,
-  onResetWorld,
 }: SidebarProps) {
-  const [view, setView] = useState<SidebarView>("wishes");
-  // Bumped on one-shot dropdown picks (World / a profile) so the component re-renders
-  // and the controlled <select> snaps back to `view` instead of sticking on the pick
-  // (otherwise picking the same one-shot again fires no onChange).
-  const [, bumpSelect] = useState(0);
   const sorted = useMemo(() => sortBySeason(locations), [locations]);
-  const otherProfiles = useMemo(
-    () => profiles.filter((p) => p.id !== currentUserId),
-    [profiles, currentUserId],
-  );
 
-  // The list shown depends on the dropdown: Wishes = to-visit, Visited = visited,
-  // Select = everything.
+  // The list mirrors the shared filter: Wished = to-visit, Visited = visited, World = everything.
   const listed = useMemo(() => {
-    if (view === "wishes") return sorted.filter((l) => l.status === "TO_VISIT");
-    if (view === "visited") return sorted.filter((l) => l.status === "VISITED");
+    if (statusFilter === "wished") return sorted.filter((l) => l.status === "TO_VISIT");
+    if (statusFilter === "visited") return sorted.filter((l) => l.status === "VISITED");
     return sorted;
-  }, [sorted, view]);
+  }, [sorted, statusFilter]);
   const starredCount = listed.filter((l) => l.starred).length;
 
-  const handleViewChange = (value: string) => {
-    if (value.startsWith("profile:")) {
-      // One-shot: switch the board we're viewing; the <select> snaps back to `view`.
-      const id = value.slice("profile:".length);
-      if (id === "self") onSelectProfile(null);
-      else {
-        const picked = profiles.find((p) => p.id === id);
-        if (picked) onSelectProfile(picked);
-      }
-      bumpSelect((n) => n + 1);
-      return;
-    }
-    if (value === "world") {
-      // One-shot action: reset the map, leave the list view as-is.
-      onResetWorld();
-      onClose();
-      bumpSelect((n) => n + 1);
-      return;
-    }
-    setView(value as SidebarView);
-  };
-
   const ownHeading =
-    view === "wishes" ? "Wishes" : view === "visited" ? "Visited" : "Your wishes";
-  const friendNoun = view === "wishes" ? "wishes" : view === "visited" ? "visited" : "places";
+    statusFilter === "wished" ? "Wishes" : statusFilter === "visited" ? "Visited" : "All places";
+  const friendNoun =
+    statusFilter === "wished" ? "wishes" : statusFilter === "visited" ? "visited" : "places";
   const listHeading = viewedUser ? `${viewedUser.username}'s ${friendNoun}` : ownHeading;
 
   return (
     <>
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm sm:hidden"
+          className="fixed inset-0 z-30 bg-black/30 sm:hidden"
           onClick={onClose}
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-950/95 backdrop-blur transition-transform duration-300
-          sm:static sm:z-auto sm:translate-x-0 sm:bg-slate-950 sm:backdrop-blur-none
-          ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-x-0 bottom-16 z-40 flex h-[70vh] w-full flex-col rounded-t-2xl border-t border-slate-800 bg-slate-950/97 backdrop-blur transition-transform duration-300
+          sm:static sm:inset-auto sm:bottom-auto sm:h-auto sm:w-72 sm:shrink-0 sm:rounded-none sm:border-r sm:border-t-0 sm:bg-slate-950 sm:backdrop-blur-none
+          ${open ? "translate-y-0" : "translate-y-full"} sm:translate-y-0`}
       >
+        {/* Grab handle (mobile bottom sheet) */}
+        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-700 sm:hidden" />
+
         <div className="flex items-center justify-between border-b border-slate-800 p-4">
           <h1 className="text-base font-bold tracking-wide text-amber-300 glow-text">TravelBoard</h1>
           <button
             onClick={onClose}
-            aria-label="Close sidebar"
+            aria-label="Close"
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 sm:hidden"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -166,34 +147,35 @@ export default function Sidebar({
           </button>
         </div>
 
-        <div className="border-b border-slate-800 px-3 py-2">
-          <label htmlFor="sidebar-view" className="sr-only">
-            Sidebar section
-          </label>
-          <select
-            id="sidebar-view"
-            value={view}
-            onChange={(e) => handleViewChange(e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm font-medium text-slate-200 focus:border-amber-500/60 focus:outline-none"
-          >
-            <optgroup label="View">
-              <option value="world">World</option>
-              <option value="wishes">Wishes</option>
-              <option value="visited">Visited</option>
-              <option value="settings">Settings</option>
-            </optgroup>
-            {(otherProfiles.length > 0 || viewedUser) && (
-              <optgroup label="Profiles">
-                <option value="profile:self">{viewedUser ? "← Your board" : "You"}</option>
-                {otherProfiles.map((p) => (
-                  <option key={p.id} value={`profile:${p.id}`}>
-                    {p.username}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-        </div>
+        {/* Edge-dock nav — always-visible pillars (desktop). Mobile uses BottomNav. */}
+        <nav className="hidden border-b border-slate-800 py-2 sm:block">
+          {NAV_PILLARS.filter((p) => editor || p.panel !== "passport").map((item) => {
+            const active = panel === item.panel;
+            const isTeal = item.accent === "teal";
+            return (
+              <button
+                key={item.panel}
+                onClick={() => onPanelChange(item.panel)}
+                aria-current={active ? "page" : undefined}
+                className={`relative flex w-full items-center gap-3 px-4 py-2.5 text-sm font-medium transition ${
+                  active
+                    ? isTeal
+                      ? "bg-teal-500/10 text-teal-200"
+                      : "bg-amber-500/10 text-amber-200"
+                    : "text-slate-400 hover:bg-slate-900/60 hover:text-slate-200"
+                }`}
+              >
+                {active && (
+                  <span
+                    className={`absolute left-0 top-0 h-full w-0.5 ${isTeal ? "bg-teal-400" : "bg-amber-400"}`}
+                  />
+                )}
+                <NavIcon panel={item.panel} size={18} />
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
 
         {viewedUser && (
           <div className="flex items-center justify-between gap-2 border-b border-slate-800 bg-amber-500/5 px-4 py-2 text-xs">
@@ -209,7 +191,61 @@ export default function Sidebar({
           </div>
         )}
 
-        {view !== "settings" ? (
+        {panel === "passport" ? (
+          !loggedIn ? (
+            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+              <p className="text-sm text-slate-400">Log in to build your passport.</p>
+            </div>
+          ) : !editor ? (
+            <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+              <p className="text-sm text-slate-400">
+                You can only edit your own passport. Switch back to your board to add visited
+                countries and states.
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="px-4 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                Passport <span className="text-slate-600">— where you&apos;ve been</span>
+              </p>
+              <PassportPanel
+                visitedRegions={settings.visitedRegions}
+                usaAsStates={settings.usaAsStates}
+                onSettingsChange={onSettingsChange}
+              />
+            </>
+          )
+        ) : panel === "friends" ? (
+          loggedIn ? (
+            <FriendsTab
+              refreshKey={friendsRefresh}
+              onChanged={onFriendsChanged}
+              onSelectProfile={(friend) => {
+                onSelectProfile(friend);
+                onClose();
+              }}
+            />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+              <p className="text-sm text-slate-400">Log in to add friends.</p>
+            </div>
+          )
+        ) : panel === "flights" ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+            <p className="text-sm font-medium text-slate-300">Flight Tracker</p>
+            <p className="text-xs text-slate-500">
+              Price tracking and deal alerts for your wishes are coming here soon.
+            </p>
+          </div>
+        ) : panel === "settings" ? (
+          loggedIn ? (
+            <SettingsPanel settings={settings} saving={settingsSaving} onChange={onSettingsChange} />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+              <p className="text-sm text-slate-400">Log in to change theme and home airports.</p>
+            </div>
+          )
+        ) : (
           <>
             {editor && (
               <div className="p-3">
@@ -221,6 +257,36 @@ export default function Sidebar({
                 </button>
               </div>
             )}
+
+            {/* World / Wished / Visited — the journal's sub-categories, synced with
+                the bottom-center map toggle. */}
+            <div className="px-3 pb-2">
+              <div className="flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900/80 p-1 text-xs">
+                {([
+                  ["world", "World"],
+                  ["wished", "Wished"],
+                  ["visited", "Visited"],
+                ] as const).map(([key, label]) => {
+                  const active = key === "world" ? statusFilter === "all" : statusFilter === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => onStatusFilterChange(key === "world" ? "all" : key)}
+                      className={`flex-1 rounded-full px-2 py-1 font-medium transition ${
+                        active
+                          ? key === "visited"
+                            ? "bg-emerald-500/90 text-slate-950"
+                            : "bg-amber-500/90 text-slate-950"
+                          : "text-slate-300 hover:text-amber-200"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <p className="px-4 pb-1 text-[11px] font-medium uppercase tracking-wider text-slate-500">
               {listHeading}{" "}
@@ -234,7 +300,7 @@ export default function Sidebar({
                 <p className="px-2 pt-2 text-sm text-slate-500">
                   {viewedUser
                     ? `${viewedUser.username} has no ${friendNoun} yet.`
-                    : view === "visited"
+                    : statusFilter === "visited"
                       ? "No visited places yet."
                       : "No places yet. Add your first wish!"}
                 </p>
@@ -245,9 +311,19 @@ export default function Sidebar({
                   const due = reminderDueSoon(loc);
                   return (
                     <li key={loc.id}>
-                      <button
+                      {/* A div (not a button) so the inner StarButton isn't an
+                          invalid nested <button> — that caused a hydration error. */}
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() => onSelectWish(loc)}
-                        className={`group flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-slate-800/70 ${
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onSelectWish(loc);
+                          }
+                        }}
+                        className={`group flex w-full cursor-pointer items-start gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-slate-800/70 ${
                           loc.starred ? "bg-amber-500/5" : ""
                         }`}
                       >
@@ -292,19 +368,13 @@ export default function Sidebar({
                             </span>
                           )}
                         </span>
-                      </button>
+                      </div>
                     </li>
                   );
                 })}
               </ul>
             </nav>
           </>
-        ) : loggedIn ? (
-          <SettingsPanel settings={settings} saving={settingsSaving} onChange={onSettingsChange} />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
-            <p className="text-sm text-slate-400">Log in to change theme and home airports.</p>
-          </div>
         )}
       </aside>
     </>

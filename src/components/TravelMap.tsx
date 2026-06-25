@@ -11,36 +11,6 @@ import { countByUnit } from "@/lib/geoUnits";
 import type { UsStateFeature } from "@/lib/usStates";
 import type { MapTheme } from "@/lib/settings";
 
-/** Country-level deal data for map heatmap overlay. */
-export interface CountryDeal {
-  countryCode: string;
-  cheapestPrice: number;
-  tier: "cheap" | "fair" | "splurge";
-}
-
-/** Journal country data for highlighting countries with memories. */
-export interface JournalCountry {
-  country: string;
-  countryCode?: string;
-  entryCount: number;
-  lat: number | null;
-  lon: number | null;
-}
-
-/** Flight route for arc rendering on the map. */
-export interface DealRoute {
-  origin: string;
-  destination: string;
-  destCity: string;
-  price: number;
-  dealScore: number | null;
-  tier: string | null;
-  originLat: number;
-  originLon: number;
-  destLat: number;
-  destLon: number;
-}
-
 export interface FocusPoint {
   lng: number;
   lat: number;
@@ -61,16 +31,22 @@ interface TravelMapProps {
   statusFilter: StatusFilter;
   /** Treat each US state as its own map unit. */
   usaAsStates: boolean;
+  /** Passport: visited country (ISO-3) / US-state (US-XX) codes — static "been there" glow. */
+  visitedRegions: string[];
+  /** Show the static "been there" glow (hidden while filtering to wishes). */
+  showVisitedGlow: boolean;
+  /** Passport editing mode: double-click a country/state toggles it (no zoom). */
+  passportMode: boolean;
+  onPassportToggle: (code: string) => void;
   /** US-state polygons (loaded by the parent); null until available. */
   states: UsStateFeature[] | null;
-  /** Flight deal routes to render as arcs on the map. */
-  dealRoutes?: DealRoute[];
-  /** Key like "MCO-NRT" identifying the currently highlighted route. */
-  activeDealRoute?: string | null;
   onCountryClick: (code: string, name: string) => void;
   onDotClick: (id: string) => void;
   onPinDrop: (lat: number, lng: number) => void;
   onZoomStateChange?: (zoomedIn: boolean) => void;
+  /** Show the right-click "Add wish here" menu (only on your own editable board). */
+  canAddWish: boolean;
+  onAddWishHere: (lat: number, lng: number) => void;
 }
 
 type GeoFeature = {
@@ -213,8 +189,12 @@ function restoreThreshold(fitZoom: number): number {
   return Math.min(3, Math.max(1.2, fitZoom - 1.2));
 }
 
-/** Below this zoom the map is treated as world view (panel closes, world button hides). */
-const WORLD_VIEW_ZOOM = 2.5;
+/**
+ * Below this zoom the map is treated as world view (panel closes, world button
+ * hides). Raised from 2.5 → 4.0 so the right panel closes after roughly half the
+ * zoom-out distance from a focused wish (~5.5) instead of the full way out.
+ */
+const WORLD_VIEW_ZOOM = 4.0;
 
 function fillOpacityExpr(maxCount: number) {
   return [
@@ -284,118 +264,103 @@ const FILL_LAYER = "country-fill";
 const GLOW_LINE_LAYER = "country-glow-line";
 const ACCENT_GLOW_LAYER = "country-accent-glow";
 const BORDER_LAYER = "country-border";
+// Passport "been there" glow — static, binary, independent of the wish heatmap.
+const VISITED_FILL_LAYER = "country-visited-fill";
+const VISITED_GLOW_LAYER = "country-visited-glow";
+const VISITED_COLOR = "#5eead4"; // soft teal — distinct from amber wishes / emerald wish-dots
+
+/**
+ * Which rendered feature ids should carry the static "visited" glow, given the
+ * passport codes and whether the map currently splits the USA into states.
+ * - country ISO-3 → that country (when its polygon is rendered)
+ * - "US-XX" + states mode → that state; otherwise it lights the whole USA
+ * - "USA" + states mode → all rendered US states
+ */
+function visitedFeatureIds(
+  codes: string[],
+  usaAsStates: boolean,
+  displayIds: Set<string>,
+): Set<string> {
+  const out = new Set<string>();
+  let lightWholeUsa = false;
+  for (const raw of codes) {
+    const c = raw.toUpperCase();
+    if (c.startsWith("US-")) {
+      if (usaAsStates && displayIds.has(c)) out.add(c);
+      else lightWholeUsa = true;
+    } else if (c === "USA") {
+      if (usaAsStates) {
+        for (const id of displayIds) if (id.startsWith("US-")) out.add(id);
+      } else if (displayIds.has("USA")) {
+        out.add("USA");
+      }
+    } else if (displayIds.has(c)) {
+      out.add(c);
+    }
+  }
+  if (lightWholeUsa) {
+    if (usaAsStates) {
+      for (const id of displayIds) if (id.startsWith("US-")) out.add(id);
+    } else if (displayIds.has("USA")) {
+      out.add("USA");
+    }
+  }
+  return out;
+}
 const DOTS_GLOW = "dots-glow";
 const DOTS_CORE = "dots-core";
 const DOTS_DEAL = "dots-deal";
 
-// Deal route layer IDs
-const DEAL_ROUTES_LINE = "deal-routes-line";
-const DEAL_ROUTES_ACTIVE = "deal-routes-active";
-const DEAL_AIRPORTS_ORIGIN = "deal-airports-origin";
-const DEAL_AIRPORTS_DEST = "deal-airports-dest";
-const DEAL_ROUTE_PRICES = "deal-route-prices";
+// --- Cinematic 2D⇄3D terrain (active only while the map is tilted) ---
+const TERRAIN_SOURCE = "terrain-dem";
+const HILLSHADE_LAYER = "terrain-hillshade";
+const OCEAN_MASK_SOURCE = "ocean-mask";
+const OCEAN_MASK_LAYER = "ocean-mask-fill";
+const OCEAN_COLOR = "#0a0f1c"; // smooth, dark, flat sea
+// Free global DEM (Tilezen Terrarium tiles on AWS Open Data, CORS-enabled).
+const TERRAIN_DEM_TILES = ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"];
+const TILT_ENTER_DEG = 3; // pitch above this turns terrain + rotation ON
+const TILT_EXIT_DEG = 1; // pitch below this turns them OFF (hysteresis band)
 
 /**
- * Generate intermediate points along a great circle arc between two coordinates.
- * This produces the curved flight-path look on the map.
+ * Zoom-dependent terrain exaggeration. Mountain ranges are invisibly small
+ * relative to the globe at low zoom, so we amplify them hard when zoomed out and
+ * taper to realistic heights up close. MapLibre's terrain `exaggeration` is a
+ * plain number (no zoom expressions), so a zoom listener applies this curve live.
+ *   z ≤ 3  (continent/global) → 4.0   ranges like the Andes pop from afar
+ *   z = 7  (country/state)     → 2.4
+ *   z ≥ 12 (city/close)        → 1.2   natural & accurate up close
  */
-function generateArc(
-  originLon: number,
-  originLat: number,
-  destLon: number,
-  destLat: number,
-  numPoints = 50
-): [number, number][] {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const toDeg = (r: number) => (r * 180) / Math.PI;
-
-  const lat1 = toRad(originLat);
-  const lon1 = toRad(originLon);
-  const lat2 = toRad(destLat);
-  const lon2 = toRad(destLon);
-
-  const d = 2 * Math.asin(
-    Math.sqrt(
-      Math.sin((lat2 - lat1) / 2) ** 2 +
-      Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2
-    )
-  );
-
-  if (d < 1e-10) return [[originLon, originLat], [destLon, destLat]];
-
-  const points: [number, number][] = [];
-  for (let i = 0; i <= numPoints; i++) {
-    const f = i / numPoints;
-    const a = Math.sin((1 - f) * d) / Math.sin(d);
-    const b = Math.sin(f * d) / Math.sin(d);
-    const x = a * Math.cos(lat1) * Math.cos(lon1) + b * Math.cos(lat2) * Math.cos(lon2);
-    const y = a * Math.cos(lat1) * Math.sin(lon1) + b * Math.cos(lat2) * Math.sin(lon2);
-    const z = a * Math.sin(lat1) + b * Math.sin(lat2);
-    const lat = toDeg(Math.atan2(z, Math.sqrt(x * x + y * y)));
-    const lon = toDeg(Math.atan2(y, x));
-    points.push([lon, lat]);
-  }
-  return points;
+function exaggerationForZoom(zoom: number): number {
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  if (zoom <= 3) return 4.0;
+  if (zoom <= 7) return lerp(4.0, 2.4, (zoom - 3) / 4);
+  if (zoom <= 12) return lerp(2.4, 1.2, (zoom - 7) / 5);
+  return 1.2;
 }
 
-/** Build GeoJSON FeatureCollection for route arc lines. */
-function routesGeoJson(routes: DealRoute[]) {
-  return {
-    type: "FeatureCollection" as const,
-    features: routes.map((r) => ({
-      type: "Feature" as const,
-      properties: {
-        key: `${r.origin}-${r.destination}`,
-        price: r.price,
-        tier: r.tier ?? "fair",
-        origin: r.origin,
-        destination: r.destination,
-        destCity: r.destCity,
-      },
-      geometry: {
-        type: "LineString" as const,
-        coordinates: generateArc(r.originLon, r.originLat, r.destLon, r.destLat, 50),
-      },
-    })),
-  };
-}
-
-/** Build GeoJSON FeatureCollection for airport dots (origin + destination). */
-function airportsGeoJson(routes: DealRoute[]) {
-  const seen = new Map<string, { lon: number; lat: number; role: "origin" | "dest"; code: string }>();
-  for (const r of routes) {
-    if (!seen.has(`o-${r.origin}`)) {
-      seen.set(`o-${r.origin}`, { lon: r.originLon, lat: r.originLat, role: "origin", code: r.origin });
-    }
-    if (!seen.has(`d-${r.destination}`)) {
-      seen.set(`d-${r.destination}`, { lon: r.destLon, lat: r.destLat, role: "dest", code: r.destination });
+/**
+ * A "world rectangle with every country punched out as a hole" polygon — i.e.
+ * the oceans. Drawn as a flat dark fill above the hillshade so the sea stays a
+ * smooth dark surface (hiding the DEM's seafloor bathymetry) while the land
+ * holes let the 3D land relief + hillshade show through.
+ */
+function buildOceanMask(features: GeoFeature[]): GeoJSON.Feature<GeoJSON.Polygon> {
+  const world: number[][] = [
+    [-180, -89], [180, -89], [180, 89], [-180, 89], [-180, -89],
+  ];
+  const holes: number[][][] = [];
+  for (const f of features) {
+    if (f.geometry.type === "Polygon") {
+      holes.push((f.geometry.coordinates as number[][][])[0]);
+    } else {
+      for (const poly of f.geometry.coordinates as number[][][][]) holes.push(poly[0]);
     }
   }
   return {
-    type: "FeatureCollection" as const,
-    features: [...seen.values()].map((a) => ({
-      type: "Feature" as const,
-      properties: { code: a.code, role: a.role },
-      geometry: { type: "Point" as const, coordinates: [a.lon, a.lat] },
-    })),
-  };
-}
-
-/** Build GeoJSON for price labels at arc midpoints. */
-function routePricesGeoJson(routes: DealRoute[]) {
-  return {
-    type: "FeatureCollection" as const,
-    features: routes.map((r) => {
-      const mid = generateArc(r.originLon, r.originLat, r.destLon, r.destLat, 2)[1]!;
-      return {
-        type: "Feature" as const,
-        properties: {
-          key: `${r.origin}-${r.destination}`,
-          label: `$${r.price}`,
-        },
-        geometry: { type: "Point" as const, coordinates: mid },
-      };
-    }),
+    type: "Feature",
+    properties: {},
+    geometry: { type: "Polygon", coordinates: [world, ...holes] },
   };
 }
 
@@ -436,6 +401,12 @@ function attachDualButtonRotate(map: MlMap): () => void {
       resumePan();
       return;
     }
+    // Rotation is only unlocked in the tilted (3D) state — flat view is locked
+    // to north. Below the tilt threshold, ignore the dual-button drag.
+    if (map.getPitch() <= TILT_EXIT_DEG) {
+      resumePan();
+      return;
+    }
     suspendPan();
     if (!rotating) {
       rotating = true;
@@ -460,6 +431,208 @@ function attachDualButtonRotate(map: MlMap): () => void {
   };
 }
 
+/**
+ * Cinematic 2D⇄3D: realistic LAND topography + free rotation appear ONLY while
+ * the map is tilted. Flat view stays rigid and fast (no DEM fetched, bearing
+ * locked to north, rotation gestures off). The moment the user pitches up
+ * (two-finger swipe-down), the DEM terrain morphs in, the flat country fill is
+ * hidden so the land relief shows through, and 360° rotation unlocks; pitch back
+ * to flat and it smoothly flattens, removes the terrain, restores the fill, and
+ * relocks to north. A hysteresis band avoids flicker around the threshold.
+ *
+ * Land vs water: a hillshade gives the land its visible "pop" (raised geometry
+ * alone is nearly invisible on the flat dark basemap). But hillshade would also
+ * shade the DEM's seafloor bathymetry and make the ocean look like high-contrast
+ * underwater terrain — so a flat dark "ocean mask" (a world polygon with every
+ * country cut out) is drawn above the hillshade to keep the sea smooth and dark
+ * while the land holes show the relief.
+ */
+function attachTiltTerrain(map: MlMap, getCountries: () => GeoFeature[]): () => void {
+  let tilted = false;
+  let raf = 0;
+  // 0 → 1 tilt morph factor. Actual terrain exaggeration = morph × the
+  // zoom-dependent curve, so it ramps in on tilt AND tracks zoom while tilted.
+  let morph = 0;
+  // One-shot "initial style is ready" flag. We must NOT use isStyleLoaded() per
+  // event: once terrain is active its DEM tiles stream continuously and
+  // isStyleLoaded() stays false, which would freeze the flatten transition.
+  let ready = map.isStyleLoaded();
+  const onLoad = () => {
+    ready = true;
+  };
+  map.on("load", onLoad);
+
+  // Lazily create the DEM source, the land hillshade, and the flat ocean mask
+  // the first time the user tilts, so the flat view never fetches elevation tiles
+  // or builds the mask geometry.
+  const beforeId = () => (map.getLayer(FILL_LAYER) ? FILL_LAYER : undefined);
+  const ensureTerrainLayers = () => {
+    if (!map.getSource(TERRAIN_SOURCE)) {
+      map.addSource(TERRAIN_SOURCE, {
+        type: "raster-dem",
+        tiles: TERRAIN_DEM_TILES,
+        encoding: "terrarium",
+        tileSize: 256,
+        maxzoom: 14,
+        attribution:
+          '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">Tilezen Joerd</a>',
+      });
+    }
+    // Shaded relief gives the land its visible depth (below the country layers).
+    if (!map.getLayer(HILLSHADE_LAYER)) {
+      map.addLayer(
+        {
+          id: HILLSHADE_LAYER,
+          type: "hillshade",
+          source: TERRAIN_SOURCE,
+          layout: { visibility: "none" },
+          paint: {
+            "hillshade-exaggeration": 0.55,
+            "hillshade-shadow-color": "#0b1220",
+            "hillshade-highlight-color": "#b8c6dc",
+            "hillshade-accent-color": "#334155",
+          },
+        },
+        beforeId(),
+      );
+    }
+    // Flat dark ocean over the seafloor relief (above hillshade, below countries).
+    if (!map.getSource(OCEAN_MASK_SOURCE)) {
+      const countries = getCountries();
+      if (countries.length) {
+        map.addSource(OCEAN_MASK_SOURCE, { type: "geojson", data: buildOceanMask(countries) });
+        map.addLayer(
+          {
+            id: OCEAN_MASK_LAYER,
+            type: "fill",
+            source: OCEAN_MASK_SOURCE,
+            layout: { visibility: "none" },
+            paint: { "fill-color": OCEAN_COLOR, "fill-opacity": 1 },
+          },
+          beforeId(),
+        );
+      }
+    }
+  };
+
+  const setTerrainLayersVisible = (visible: boolean) => {
+    const v = visible ? "visible" : "none";
+    if (map.getLayer(HILLSHADE_LAYER)) map.setLayoutProperty(HILLSHADE_LAYER, "visibility", v);
+    if (map.getLayer(OCEAN_MASK_LAYER)) map.setLayoutProperty(OCEAN_MASK_LAYER, "visibility", v);
+  };
+
+  // While tilted, hide the flat country fill so the land's 3D relief (the draped
+  // basemap on the DEM) shows through. Opacity 0 — not visibility:none — so the
+  // fill stays query-able and country clicks keep working in 3D. We snapshot the
+  // live value so it restores exactly when flattening.
+  let savedFillOpacity: unknown;
+  const hideLandFill = () => {
+    if (!map.getLayer(FILL_LAYER)) return;
+    if (savedFillOpacity === undefined) {
+      savedFillOpacity = map.getPaintProperty(FILL_LAYER, "fill-opacity");
+    }
+    map.setPaintProperty(FILL_LAYER, "fill-opacity", 0);
+  };
+  const restoreLandFill = () => {
+    if (map.getLayer(FILL_LAYER) && savedFillOpacity !== undefined) {
+      map.setPaintProperty(FILL_LAYER, "fill-opacity", savedFillOpacity as never);
+      savedFillOpacity = undefined;
+    }
+  };
+
+  // Apply the current exaggeration = morph × zoom curve. Called every frame of
+  // the tilt morph AND on every zoom change while tilted, so ranges stay big
+  // when zoomed out and normalize smoothly as you zoom in.
+  const applyTerrain = () => {
+    if (morph <= 0) return;
+    map.setTerrain({
+      source: TERRAIN_SOURCE,
+      exaggeration: morph * exaggerationForZoom(map.getZoom()),
+    });
+  };
+
+  // Ramp the morph factor so the relief grows/shrinks instead of popping.
+  const animateMorph = (target: number, onDone?: () => void) => {
+    cancelAnimationFrame(raf);
+    const from = morph;
+    const start = performance.now();
+    const duration = 600;
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      morph = from + (target - from) * easeOutCubic(t);
+      applyTerrain();
+      if (t < 1) {
+        raf = requestAnimationFrame(step);
+      } else {
+        morph = target;
+        onDone?.();
+      }
+    };
+    raf = requestAnimationFrame(step);
+  };
+
+  const enterTilt = () => {
+    ensureTerrainLayers();
+    setTerrainLayersVisible(true); // shaded land relief + flat dark ocean
+    hideLandFill(); // reveal the land terrain by dropping the flat country tint
+    // Unlock 360° rotation: touch twist + the dual-button drag (gated on pitch).
+    map.touchZoomRotate.enableRotation();
+    animateMorph(1);
+  };
+
+  const exitTilt = () => {
+    // Relock to north and disable rotation gestures.
+    map.touchZoomRotate.disableRotation();
+    // Animate the bearing back to north on the next frame — starting an easeTo
+    // synchronously from inside a pitch event handler is re-entrant and throws.
+    if (Math.abs(map.getBearing()) > 0.01) {
+      requestAnimationFrame(() => {
+        if (!tilted && Math.abs(map.getBearing()) > 0.01) {
+          map.easeTo({ bearing: 0, duration: 500, easing: (t) => 1 - Math.pow(1 - t, 3) });
+        }
+      });
+    }
+    animateMorph(0, () => {
+      cancelAnimationFrame(raf);
+      morph = 0;
+      map.setTerrain(null);
+      setTerrainLayersVisible(false); // hide hillshade + ocean mask in 2D
+      restoreLandFill(); // bring the flat country tint back for 2D view
+    });
+  };
+
+  const onPitch = () => {
+    if (!ready) return;
+    const pitch = map.getPitch();
+    if (!tilted && pitch > TILT_ENTER_DEG) {
+      tilted = true;
+      enterTilt();
+    } else if (tilted && pitch < TILT_EXIT_DEG) {
+      tilted = false;
+      exitTilt();
+    }
+  };
+
+  // While tilted, re-apply the zoom-dependent exaggeration as the user zooms so
+  // the mountains scale smoothly (the 'zoom' event fires per frame during zoom).
+  const onZoom = () => {
+    if (morph > 0) applyTerrain();
+  };
+
+  map.on("pitch", onPitch);
+  map.on("pitchend", onPitch);
+  map.on("zoom", onZoom);
+
+  return () => {
+    cancelAnimationFrame(raf);
+    map.off("pitch", onPitch);
+    map.off("pitchend", onPitch);
+    map.off("zoom", onZoom);
+    map.off("load", onLoad);
+  };
+}
+
 export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   {
     locations,
@@ -468,13 +641,17 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     mapTheme,
     statusFilter,
     usaAsStates,
+    visitedRegions,
+    showVisitedGlow,
+    passportMode,
+    onPassportToggle,
     states,
-    dealRoutes = [],
-    activeDealRoute = null,
     onCountryClick,
     onDotClick,
     onPinDrop,
     onZoomStateChange,
+    canAddWish,
+    onAddWishHere,
   },
   ref
 ) {
@@ -488,15 +665,23 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
   const locationsRef = useRef(locations);
   const statusFilterRef = useRef(statusFilter);
   const usaAsStatesRef = useRef(usaAsStates);
+  const visitedRegionsRef = useRef(visitedRegions);
+  // Feature ids currently carrying the "visited" feature-state, so we can diff.
+  const litVisitedRef = useRef<Set<string>>(new Set());
   const statesRef = useRef(states);
   const pinDropRef = useRef(pinDropMode);
-  const callbacksRef = useRef({ onCountryClick, onDotClick, onPinDrop, onZoomStateChange });
+  const canAddWishRef = useRef(canAddWish);
+  const passportModeRef = useRef(passportMode);
+  const showVisitedGlowRef = useRef(showVisitedGlow);
+  const callbacksRef = useRef({
+    onCountryClick,
+    onDotClick,
+    onPinDrop,
+    onZoomStateChange,
+    onAddWishHere,
+    onPassportToggle,
+  });
   const pulseRafRef = useRef<number>(0);
-  const routePulseRafRef = useRef<number>(0);
-  const dealRoutesRef = useRef(dealRoutes);
-  const activeDealRouteRef = useRef(activeDealRoute);
-  dealRoutesRef.current = dealRoutes;
-  activeDealRouteRef.current = activeDealRoute;
   const selectedIsoRef = useRef<string | null>(null);
   const hoveredIsoRef = useRef<string | null>(null);
   const restoreBelowZoomRef = useRef(1.2);
@@ -512,15 +697,34 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     name: string;
     cover?: string;
   } | null>(null);
+  // Right-click "Add wish here" menu over a country.
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    name: string;
+    lat: number;
+    lng: number;
+  } | null>(null);
 
   const mapThemeRef = useRef(mapTheme);
   mapThemeRef.current = mapTheme;
   locationsRef.current = locations;
   statusFilterRef.current = statusFilter;
   usaAsStatesRef.current = usaAsStates;
+  visitedRegionsRef.current = visitedRegions;
   statesRef.current = states;
   pinDropRef.current = pinDropMode;
-  callbacksRef.current = { onCountryClick, onDotClick, onPinDrop, onZoomStateChange };
+  canAddWishRef.current = canAddWish;
+  passportModeRef.current = passportMode;
+  showVisitedGlowRef.current = showVisitedGlow;
+  callbacksRef.current = {
+    onCountryClick,
+    onDotClick,
+    onPinDrop,
+    onZoomStateChange,
+    onAddWishHere,
+    onPassportToggle,
+  };
 
   // Rebuild the country/state heatmap + dots from the current locations, status
   // filter, and states-mode setting. Single source of truth for all of them.
@@ -530,9 +734,11 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
 
     const usaAsStates = usaAsStatesRef.current;
     const states = statesRef.current;
-    const filtered = locationsRef.current.filter((l) =>
-      matchesStatusFilter(l.status, statusFilterRef.current),
-    );
+    // Passport view: hide wishes (to-visit) and show only visited places — the
+    // same set as the "Visited" filter — beneath the static "been there" glow.
+    const filtered = passportModeRef.current
+      ? locationsRef.current.filter((l) => l.status === "VISITED")
+      : locationsRef.current.filter((l) => matchesStatusFilter(l.status, statusFilterRef.current));
 
     const feats: GeoFeature[] =
       usaAsStates && states?.length
@@ -556,6 +762,30 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
 
     const dotsSource = map.getSource("dots") as maplibregl.GeoJSONSource | undefined;
     dotsSource?.setData(dotsGeoJson(filtered));
+
+    applyVisited();
+  }, []);
+
+  // Recompute the static "been there" glow: diff the desired lit set against the
+  // currently-lit set and flip only the feature-states that changed.
+  const applyVisited = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !map.getSource("countries")) return;
+    const displayIds = new Set(displayFeaturesRef.current.map((f) => f.id));
+    const next = visitedFeatureIds(visitedRegionsRef.current, usaAsStatesRef.current, displayIds);
+    const prev = litVisitedRef.current;
+    for (const id of prev) {
+      if (!next.has(id)) map.removeFeatureState({ source: "countries", id }, "visited");
+    }
+    for (const id of next) {
+      if (!prev.has(id)) map.setFeatureState({ source: "countries", id }, { visited: true });
+    }
+    litVisitedRef.current = next;
+
+    // Apply current glow visibility (covers the initial load before the effect runs).
+    const vis = showVisitedGlowRef.current ? "visible" : "none";
+    if (map.getLayer(VISITED_FILL_LAYER)) map.setLayoutProperty(VISITED_FILL_LAYER, "visibility", vis);
+    if (map.getLayer(VISITED_GLOW_LAYER)) map.setLayoutProperty(VISITED_GLOW_LAYER, "visibility", vis);
   }, []);
 
   const hideHover = () => setHover(null);
@@ -629,14 +859,18 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       minZoom: 1,
       maxZoom: 17,
       dragRotate: false,
-      attributionControl: { compact: true },
+      // Attribution is shown at the bottom of the Settings panel instead of on the map.
+      attributionControl: false,
     });
     mapRef.current = map;
     const detachDualRotate = attachDualButtonRotate(map);
+    // Flat view starts rotation-locked (touch twist off); the tilt engine
+    // unlocks it on pitch. Two-finger pitch (touchPitch) stays enabled.
+    map.touchZoomRotate.disableRotation();
+    const detachTiltTerrain = attachTiltTerrain(map, () => countriesRef.current);
     if (process.env.NODE_ENV !== "production") {
       (window as unknown as { __map?: MlMap }).__map = map;
     }
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 
     map.on("load", async () => {
       const res = await fetch("/data/countries.geo.json");
@@ -704,113 +938,46 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
         },
       });
 
-      // ── Deal route layers (rendered below dots) ──────────────────────
-      const emptyFC = { type: "FeatureCollection" as const, features: [] as unknown[] };
-      map.addSource("deal-routes", { type: "geojson", data: emptyFC as GeoJSON.GeoJSON });
-      map.addSource("deal-airports", { type: "geojson", data: emptyFC as GeoJSON.GeoJSON });
-      map.addSource("deal-route-prices", { type: "geojson", data: emptyFC as GeoJSON.GeoJSON });
-
-      // Default (inactive) route arcs — thin semi-transparent lines
-      map.addLayer({
-        id: DEAL_ROUTES_LINE,
-        type: "line",
-        source: "deal-routes",
-        paint: {
-          "line-color": "rgba(203,213,225,0.25)",
-          "line-width": 1.5,
+      // Passport "been there" glow — binary, static, driven only by the
+      // `visited` feature-state (no `count`), so it never tracks wish density.
+      // Faint fill sits beneath the wish heatmap fill; the soft outline beneath
+      // the wish glow line so wishes stay the brighter signal.
+      map.addLayer(
+        {
+          id: VISITED_FILL_LAYER,
+          type: "fill",
+          source: "countries",
+          paint: {
+            "fill-color": VISITED_COLOR,
+            "fill-opacity": [
+              "case",
+              ["boolean", ["feature-state", "visited"], false],
+              0.1,
+              0,
+            ] as unknown as number,
+          },
         },
-        layout: { "line-cap": "round", "line-join": "round" },
-      });
-
-      // Active/highlighted route arc — thicker, animated dash
-      map.addLayer({
-        id: DEAL_ROUTES_ACTIVE,
-        type: "line",
-        source: "deal-routes",
-        filter: ["==", ["get", "key"], ""],
-        paint: {
-          "line-color": "#2dd4bf",
-          "line-width": 3,
-          "line-dasharray": [2, 2],
+        FILL_LAYER,
+      );
+      map.addLayer(
+        {
+          id: VISITED_GLOW_LAYER,
+          type: "line",
+          source: "countries",
+          paint: {
+            "line-color": VISITED_COLOR,
+            "line-opacity": [
+              "case",
+              ["boolean", ["feature-state", "visited"], false],
+              0.7,
+              0,
+            ] as unknown as number,
+            "line-width": ["interpolate", ["linear"], ["zoom"], 1, 1.2, 4, 2, 8, 3.5, 14, 5] as unknown as number,
+            "line-blur": ["interpolate", ["linear"], ["zoom"], 1, 1.5, 8, 4, 14, 6] as unknown as number,
+          },
         },
-        layout: { "line-cap": "round", "line-join": "round" },
-      });
-
-      // Origin airport dots (amber)
-      map.addLayer({
-        id: DEAL_AIRPORTS_ORIGIN,
-        type: "circle",
-        source: "deal-airports",
-        filter: ["==", ["get", "role"], "origin"],
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 3, 8, 5, 14, 7],
-          "circle-color": "#fbbf24",
-          "circle-stroke-color": "rgba(251,191,36,0.4)",
-          "circle-stroke-width": 2,
-          "circle-opacity": 0.85,
-        },
-      });
-
-      // Destination airport dots (teal/cyan)
-      map.addLayer({
-        id: DEAL_AIRPORTS_DEST,
-        type: "circle",
-        source: "deal-airports",
-        filter: ["==", ["get", "role"], "dest"],
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 3, 8, 5, 14, 7],
-          "circle-color": "#2dd4bf",
-          "circle-stroke-color": "rgba(45,212,191,0.4)",
-          "circle-stroke-width": 2,
-          "circle-opacity": 0.85,
-        },
-      });
-
-      // Price labels at arc midpoints
-      map.addLayer({
-        id: DEAL_ROUTE_PRICES,
-        type: "symbol",
-        source: "deal-route-prices",
-        layout: {
-          "text-field": ["get", "label"],
-          "text-size": 11,
-          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-          "text-allow-overlap": false,
-          "text-ignore-placement": false,
-          "text-offset": [0, -0.8],
-        },
-        paint: {
-          "text-color": "#ffffff",
-          "text-halo-color": "rgba(15,23,42,0.85)",
-          "text-halo-width": 1.5,
-          "text-opacity": 0.9,
-        },
-      });
-
-      // Animated dash offset for the active route arc
-      {
-        const routeStart = performance.now();
-        const routePulse = (now: number) => {
-          if (!map.getLayer(DEAL_ROUTES_ACTIVE)) return;
-          const t = ((now - routeStart) % 1200) / 1200;
-          // Animate by shifting the dash pattern phase via line-dasharray tweaking
-          const dashLen = 2 + 2 * t;
-          const gapLen = 4 - 2 * t;
-          map.setPaintProperty(DEAL_ROUTES_ACTIVE, "line-dasharray", [dashLen, gapLen]);
-          routePulseRafRef.current = requestAnimationFrame(routePulse);
-        };
-        routePulseRafRef.current = requestAnimationFrame(routePulse);
-      }
-
-      // Seed initial deal route data if already available
-      if (dealRoutesRef.current.length > 0) {
-        const rSrc = map.getSource("deal-routes") as maplibregl.GeoJSONSource;
-        rSrc?.setData(routesGeoJson(dealRoutesRef.current) as GeoJSON.GeoJSON);
-        const aSrc = map.getSource("deal-airports") as maplibregl.GeoJSONSource;
-        aSrc?.setData(airportsGeoJson(dealRoutesRef.current) as GeoJSON.GeoJSON);
-        const pSrc = map.getSource("deal-route-prices") as maplibregl.GeoJSONSource;
-        pSrc?.setData(routePricesGeoJson(dealRoutesRef.current) as GeoJSON.GeoJSON);
-      }
+        GLOW_LINE_LAYER,
+      );
 
       map.addSource("dots", { type: "geojson", data: dotsGeoJson(locationsRef.current) });
       map.addLayer({
@@ -865,9 +1032,33 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       // Apply status filter + states-mode (if already set) now that sources exist.
       rebuildGeo();
 
+      // Right-click a country -> floating "Add wish here" button (own board only).
+      map.on("contextmenu", (e: MapMouseEvent) => {
+        if (pinDropRef.current || !canAddWishRef.current) {
+          setCtxMenu(null);
+          return;
+        }
+        const hits = map.queryRenderedFeatures(e.point, { layers: [FILL_LAYER] });
+        if (hits.length === 0) {
+          setCtxMenu(null);
+          return;
+        }
+        const { name } = hits[0].properties as { name: string };
+        setCtxMenu({ x: e.point.x, y: e.point.y, name, lat: e.lngLat.lat, lng: e.lngLat.lng });
+      });
+
       map.on("click", (e: MapMouseEvent) => {
+        setCtxMenu(null);
         if (pinDropRef.current) {
           callbacksRef.current.onPinDrop(e.lngLat.lat, e.lngLat.lng);
+          return;
+        }
+        // Passport mode: a single click on a country/state toggles "been there"
+        // (no zoom, no wish selection).
+        if (passportModeRef.current) {
+          const hits = map.queryRenderedFeatures(e.point, { layers: [FILL_LAYER] });
+          const iso = hits[0]?.properties?.iso as string | undefined;
+          if (iso) callbacksRef.current.onPassportToggle(iso);
           return;
         }
         const dots = map.queryRenderedFeatures(e.point, { layers: [DOTS_CORE, DOTS_GLOW] });
@@ -963,13 +1154,14 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
       map.on("movestart", () => {
         setCountryHover(null);
         hideHover();
+        setCtxMenu(null);
       });
     });
 
     return () => {
       detachDualRotate();
+      detachTiltTerrain();
       cancelAnimationFrame(pulseRafRef.current);
-      cancelAnimationFrame(routePulseRafRef.current);
       Object.values(dimRafsRef.current).forEach(cancelAnimationFrame);
       map.remove();
       mapRef.current = null;
@@ -978,37 +1170,11 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep heatmap + dots in sync with locations, theme, status filter, and states mode.
+  // Keep heatmap + dots + visited glow in sync with locations, theme, status
+  // filter, states mode, and the passport.
   useEffect(() => {
     rebuildGeo();
-  }, [locations, mapTheme, statusFilter, usaAsStates, states, rebuildGeo]);
-
-  // Keep deal route layers in sync with dealRoutes prop.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-    const rSrc = map.getSource("deal-routes") as maplibregl.GeoJSONSource | undefined;
-    const aSrc = map.getSource("deal-airports") as maplibregl.GeoJSONSource | undefined;
-    const pSrc = map.getSource("deal-route-prices") as maplibregl.GeoJSONSource | undefined;
-    if (!rSrc) return;
-    if (dealRoutes.length === 0) {
-      const empty = { type: "FeatureCollection" as const, features: [] as unknown[] } as GeoJSON.GeoJSON;
-      rSrc.setData(empty);
-      aSrc?.setData(empty);
-      pSrc?.setData(empty);
-    } else {
-      rSrc.setData(routesGeoJson(dealRoutes) as GeoJSON.GeoJSON);
-      aSrc?.setData(airportsGeoJson(dealRoutes) as GeoJSON.GeoJSON);
-      pSrc?.setData(routePricesGeoJson(dealRoutes) as GeoJSON.GeoJSON);
-    }
-  }, [dealRoutes]);
-
-  // Highlight the active deal route.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current || !map.getLayer(DEAL_ROUTES_ACTIVE)) return;
-    map.setFilter(DEAL_ROUTES_ACTIVE, ["==", ["get", "key"], activeDealRoute ?? ""]);
-  }, [activeDealRoute]);
+  }, [locations, mapTheme, statusFilter, usaAsStates, visitedRegions, passportMode, states, rebuildGeo]);
 
   // Fly to a wish selected in the sidebar
   useEffect(() => {
@@ -1058,6 +1224,24 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
     if (pinDropMode) hideHover();
   }, [pinDropMode]);
 
+  // Passport mode: disable double-click zoom (single click toggles "been there",
+  // so a quick double-tap must not zoom the map).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (passportMode) map.doubleClickZoom.disable();
+    else map.doubleClickZoom.enable();
+  }, [passportMode]);
+
+  // Show/hide the static "been there" glow (off while filtering to wishes).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const v = showVisitedGlow ? "visible" : "none";
+    if (map.getLayer(VISITED_FILL_LAYER)) map.setLayoutProperty(VISITED_FILL_LAYER, "visibility", v);
+    if (map.getLayer(VISITED_GLOW_LAYER)) map.setLayoutProperty(VISITED_GLOW_LAYER, "visibility", v);
+  }, [showVisitedGlow]);
+
   return (
     <div className="absolute inset-0 h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
@@ -1071,6 +1255,24 @@ export default forwardRef<TravelMapHandle, TravelMapProps>(function TravelMap(
             <img src={hover.cover} alt="" className="h-24 w-full object-cover" />
           )}
           <p className="px-2 py-1.5 text-xs font-medium text-slate-100">{hover.name}</p>
+        </div>
+      )}
+      {ctxMenu && (
+        <div
+          className="absolute z-20 overflow-hidden rounded-lg border border-slate-700 bg-slate-900/95 shadow-xl"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              callbacksRef.current.onAddWishHere(ctxMenu.lat, ctxMenu.lng);
+              setCtxMenu(null);
+            }}
+            className="flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-100 hover:bg-amber-500/15 hover:text-amber-200"
+          >
+            <span className="text-amber-400">＋</span>
+            Add wish in {ctxMenu.name}
+          </button>
         </div>
       )}
     </div>

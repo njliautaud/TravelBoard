@@ -1,7 +1,6 @@
 import { alpha2ToAlpha3 } from "./countryCodes";
-import { resolveCoverFromPlace, resolveCoverImage } from "./coverImage";
 
-export type LinkPlatform = "instagram" | "tiktok" | "youtube" | "other";
+export type LinkPlatform = "instagram" | "tiktok" | "youtube" | "facebook" | "other";
 
 export interface LinkEnrichment {
   platform: LinkPlatform;
@@ -51,10 +50,17 @@ export function detectPlatform(url: string): LinkPlatform {
     if (host.includes("instagram.com")) return "instagram";
     if (host.includes("tiktok.com")) return "tiktok";
     if (host === "youtu.be" || host.includes("youtube.com")) return "youtube";
+    if (host.includes("facebook.com") || host === "fb.watch" || host === "fb.me")
+      return "facebook";
   } catch {
     /* ignore */
   }
   return "other";
+}
+
+/** True for a social link we can analyze (Instagram / TikTok / Facebook / YouTube). */
+export function isSocialUrl(url: string): boolean {
+  return detectPlatform(url) !== "other";
 }
 
 function metaContent(html: string, key: string, attr: "property" | "name" = "property"): string | null {
@@ -140,45 +146,160 @@ function stripPlatformSuffix(title: string): string {
     .trim();
 }
 
-function cleanActivityName(title: string | null, description: string | null): string | null {
-  const badTitle = Boolean(title && /post shared by|reel shared by|video by @/i.test(title));
-  const raw =
-    (!badTitle && title?.trim()) ||
-    description?.split(/[.!?\n]/)[0]?.trim() ||
-    description?.trim();
-  if (!raw) return null;
-  let name = stripPlatformSuffix(raw)
-    .replace(/#\w+/g, "")
+/**
+ * Engagement-bait / call-to-action lines that travel creators open or close
+ * with — never the activity title (e.g. "Follow for more", "Save this",
+ * "Tag someone", "Send to a friend", "Comment X for the link").
+ */
+const FILLER_RE =
+  /\b(follow|followed|fav|favou?rite|save|saved|share|shared|tag|tagged|comment|like|subscribe|swipe|repost|dm)\b|link in (bio|profile)|send (this|it|to)|drop a|who('?s| is| wants| else| would)|would you|double tap|turn on|check (the|out)|credit|link below|🔗/i;
+
+/** Strip emoji, hashtags, @mentions, and bullet glyphs so we judge the words. */
+function captionLineText(line: string): string {
+  return stripEmoji(line)
+    .replace(/#[^\s#]+/g, "")
+    .replace(/@[^\s@]+/g, "")
+    .replace(/[•·►▶\-–—|]+/g, " ")
     .replace(/\s{2,}/g, " ")
     .trim();
-  if (name.length > 90) name = name.slice(0, 87) + "…";
-  if (name.length < 3) return null;
-  if (/^(@\w+\s*)+$/i.test(name)) return null;
-  return name;
 }
 
-/** Pull a place name from captions — pin emoji, "in City", location tags, etc. */
-export function extractLocationQuery(text: string): string | null {
-  const t = text.replace(/\s+/g, " ").trim();
-  if (!t) return null;
+/** True for blank / emoji-only / hashtag-only / call-to-action lines. */
+function isFillerLine(line: string): boolean {
+  const t = captionLineText(line);
+  if (t.length < 3) return true;
+  return FILLER_RE.test(t);
+}
 
-  const patterns = [
-    /📍\s*([^|\n#@]+?)(?:\s*[|#@]|$)/,
-    /(?:location|place|spot|where)\s*:\s*([^|\n#@]+?)(?:\s*[|#@]|$)/i,
-    /\bin\s+([A-Z][A-Za-zÀ-ÿ\s''-]{2,40}(?:,\s*[A-Z][A-Za-zÀ-ÿ\s''-]{2,40}){0,2})/,
-    /(?:at|@)\s+([A-Z][A-Za-zÀ-ÿ\s''-]{2,40}(?:,\s*[A-Z][A-Za-zÀ-ÿ\s''-]{2,40})?)/,
-  ];
+/**
+ * Generate geocode-ready place strings from a caption, strongest first.
+ * Line-aware (does NOT collapse newlines) so the 📍 line is read on its own.
+ */
+function placeStringsFromCaption(caption: string | null, extra: string | null): string[] {
+  const out: string[] = [];
+  const push = (v: string | null | undefined) => {
+    const t = v
+      ? stripEmoji(v)
+          .replace(/#[^\s#]+/g, "")
+          .replace(/@[^\s@]+/g, "")
+          .replace(/[•·►▶|]+/g, " ")
+          .replace(/[.,!]+$/, "")
+          .replace(/\s{2,}/g, " ")
+          .trim()
+      : "";
+    if (t.length >= 3 && t.length <= 70 && !out.includes(t)) out.push(t);
+  };
 
-  for (const re of patterns) {
-    const m = t.match(re);
-    const place = m?.[1]?.trim().replace(/[.,!]+$/, "");
-    if (place && place.length >= 3 && !/^me\b/i.test(place)) return place;
+  const lines = (caption ?? "").split(/\n+/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    // 📍 pin marker — the strongest, most explicit signal.
+    const pin = line.match(/📍\s*(.+)$/u);
+    if (pin) push(pin[1]);
+    // "Location: X", "Spot: X", "Where: X"
+    const lab = line.match(/^(?:location|place|spot|where|find it)\s*:\s*(.+)$/i);
+    if (lab) push(lab[1]);
   }
 
-  const tags = [...t.matchAll(/#([A-Z][a-zA-Z]{3,30})/g)].map((x) => x[1]);
-  if (tags.length === 1) return tags[0];
+  // A "City, Country" / "Place, Country" pair anywhere in the caption.
+  const cc = stripEmoji(caption ?? "").match(
+    /([A-Z][A-Za-zÀ-ÿ'-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'-]+){0,3}),\s*([A-Z][A-Za-zÀ-ÿ'-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'-]+){0,2})/,
+  );
+  if (cc) push(cc[0]);
+
+  // "in Patagonia", "at Mount Bromo" anywhere.
+  const inAt = stripEmoji([caption, extra].filter(Boolean).join("\n")).match(
+    /\b(?:in|at)\s+([A-Z][A-Za-zÀ-ÿ\s'-]{2,40}(?:,\s*[A-Z][A-Za-zÀ-ÿ\s'-]{2,40})?)/,
+  );
+  if (inAt) push(inAt[1]);
+
+  // A single descriptive hashtag as a last resort (#Patagonia).
+  const tags = [...(caption ?? "").matchAll(/#([A-Z][a-zA-Z]{3,30})/g)].map((x) => x[1]);
+  if (tags.length === 1) push(tags[0]);
+
+  return out;
+}
+
+/**
+ * Expand a place string into geocode attempts, most-specific first.
+ *
+ * Nominatim is fussy with POI names: "Lisong Hot Springs, Taiwan" and even the
+ * plural "Lisong Hot Springs" return nothing, yet "Lisong, Taiwan" pins right
+ * next to it. So for a "Place Words, Country" we try the full string, the place
+ * on its own, then the place anchored to its country while progressively
+ * dropping trailing (often generic) words — but never the bare country, whose
+ * centroid would drop a misleading pin.
+ */
+function geocodeVariants(place: string): string[] {
+  const variants: string[] = [place];
+  const parts = place.split(",").map((s) => s.trim()).filter(Boolean);
+  const head = parts[0] ?? place;
+  const country = parts.length >= 2 ? parts[parts.length - 1] : null;
+  const words = head.split(/\s+/).filter(Boolean);
+
+  if (country) variants.push(head); // place without the country/region
+  // Progressively shorten the place, keeping the country as an anchor.
+  for (let k = words.length; k >= 1; k--) {
+    const shortened = words.slice(0, k).join(" ");
+    if (country) variants.push(`${shortened}, ${country}`);
+    else if (k < words.length) variants.push(shortened);
+  }
+
+  return [...new Set(variants)].filter((v) => v.replace(/[^A-Za-zÀ-ÿ]/g, "").length >= 3);
+}
+
+/**
+ * A clean activity title from a caption. Prefers the explicit place name
+ * (e.g. "Lisong Hot Springs"); otherwise the first substantive, non-filler
+ * line. Never the engagement-bait first line.
+ */
+function activityFromCaption(
+  caption: string | null,
+  title: string | null,
+  placeName: string | null,
+): string | null {
+  const clamp = (s: string) => (s.length > 90 ? s.slice(0, 87) + "…" : s);
+
+  // 1) The place itself makes the best, most specific title.
+  if (placeName) {
+    const p = captionLineText(placeName.split(",")[0]);
+    if (p.length >= 3) return clamp(p);
+  }
+
+  // 2) First substantive caption line that isn't filler or a full sentence.
+  for (const raw of (caption ?? "").split(/\n+/)) {
+    if (isFillerLine(raw)) continue;
+    const line = captionLineText(raw).replace(/📍/gu, "").replace(/[.,!?:]+$/, "").trim();
+    if (line.length < 3) continue;
+    if (line.split(/\s+/).length > 12) continue; // a paragraph, not a title
+    return clamp(line);
+  }
+
+  // 3) Fall back to a cleaned-up post title.
+  const t = title ? captionLineText(stripPlatformSuffix(title)) : "";
+  if (t.length >= 3 && !/^(@\w+\s*)+$/i.test(t) && !isFillerLine(title ?? "")) return clamp(t);
 
   return null;
+}
+
+/**
+ * Resolve a caption to a geocoded location + a clean activity name.
+ * Tries every candidate place (and its country-stripped variants) in order.
+ */
+async function resolveLocation(
+  caption: string | null,
+  extra: string | null,
+): Promise<{ geocode: Awaited<ReturnType<typeof geocodeQuery>>; locationQuery: string | null; placeName: string | null }> {
+  const places = placeStringsFromCaption(caption, extra);
+  const placeName: string | null = places[0] ?? null;
+  for (const place of places) {
+    for (const variant of geocodeVariants(place)) {
+      const geocode = await geocodeQuery(variant);
+      if (geocode) return { geocode, locationQuery: variant, placeName: place };
+    }
+  }
+  return { geocode: null, locationQuery: placeName, placeName };
 }
 
 function buildNotes(opts: {
@@ -206,25 +327,6 @@ function buildNotes(opts: {
   }
 
   return parts.length ? parts.join("\n\n") : null;
-}
-
-/** A clean cover photo for the place, independent of the reel's play-button thumbnail. */
-async function resolveEnrichmentCover(opts: {
-  locationQuery: string | null;
-  geocode: { city: string | null; region: string | null; countryName: string | null } | null;
-  activityName: string | null;
-}): Promise<string | null> {
-  const fromPlace = await resolveCoverFromPlace(opts.locationQuery, opts.geocode);
-  if (fromPlace) return fromPlace;
-  if (opts.activityName || opts.geocode) {
-    return resolveCoverImage({
-      activityName: opts.activityName ?? opts.locationQuery ?? "",
-      city: opts.geocode?.city,
-      region: opts.geocode?.region,
-      countryName: opts.geocode?.countryName,
-    });
-  }
-  return null;
 }
 
 async function fetchOEmbed(
@@ -286,29 +388,6 @@ async function fetchOpenGraph(
   }
 }
 
-/** Ordered list of place-name guesses pulled from a caption. */
-function locationCandidates(caption: string | null, extra: string | null): string[] {
-  const candidates: string[] = [];
-  const push = (v: string | null | undefined) => {
-    const t = v ? stripEmoji(v).replace(/[#@][\s\S]*$/, "").replace(/[.,!]+$/, "").trim() : "";
-    if (t.length >= 3 && t.length <= 70 && !candidates.includes(t)) candidates.push(t);
-  };
-
-  const fromPattern = extractLocationQuery([caption, extra].filter(Boolean).join("\n"));
-  push(fromPattern);
-
-  if (caption) {
-    // Travel creators usually put the place on the first line.
-    const firstLine = caption.split("\n")[0];
-    push(firstLine);
-    // A "City, Country" anywhere in the caption.
-    const cc = stripEmoji(caption).match(/([A-Z][A-Za-zÀ-ÿ'-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'-]+)*),\s*([A-Z][A-Za-zÀ-ÿ'-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'-]+)*)/);
-    if (cc) push(cc[0]);
-  }
-
-  return candidates;
-}
-
 async function geocodeQuery(query: string) {
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&q=${encodeURIComponent(query)}`;
@@ -348,26 +427,20 @@ export async function enrichLink(url: string, rawText?: string | null): Promise<
   const thumbnailUrl = oembed?.thumbnail ?? og.image;
   const author = oembed?.author ?? null;
 
-  const candidates = locationCandidates(description ?? title, rawText ?? null);
-  let geocode = null;
-  let locationQuery: string | null = candidates[0] ?? null;
-  for (const c of candidates) {
-    geocode = await geocodeQuery(c);
-    if (geocode) {
-      locationQuery = c;
-      break;
-    }
-  }
-
-  const activityName = cleanActivityName(title, description);
-  const coverImageUrl = await resolveEnrichmentCover({ locationQuery, geocode, activityName });
+  const { geocode, locationQuery, placeName } = await resolveLocation(
+    description ?? title,
+    rawText ?? null,
+  );
+  const activityName = activityFromCaption(description ?? title, title, placeName);
 
   return {
     platform,
     title,
     description,
     thumbnailUrl,
-    coverImageUrl,
+    // Cover is left to the post's own thumbnail (set in the form); we no longer
+    // auto-generate a Wikipedia/Google cover on import.
+    coverImageUrl: null,
     author,
     activityName,
     notes: buildNotes({ description, author, url, platform, rawText }),
@@ -384,29 +457,20 @@ async function enrichInstagram(url: string, rawText?: string | null): Promise<Li
   const author = authorHandle ?? authorName;
   const description = caption;
 
-  const candidates = locationCandidates(caption, rawText ?? null);
-  let geocode = null;
-  let locationQuery: string | null = candidates[0] ?? null;
-  for (const c of candidates) {
-    geocode = await geocodeQuery(c);
-    if (geocode) {
-      locationQuery = c;
-      break;
-    }
-  }
+  const { geocode, locationQuery, placeName } = await resolveLocation(caption, rawText ?? null);
 
-  // Activity name: caption's first line (the creator's own words), trimmed.
-  const firstLine = caption ? stripEmoji(caption.split("\n")[0]).replace(/#\w+/g, "").trim() : null;
-  const activityName = firstLine && firstLine.length >= 3 ? firstLine.slice(0, 90) : null;
-
-  const coverImageUrl = await resolveEnrichmentCover({ locationQuery, geocode, activityName });
+  // Activity name from a real analysis of the whole caption (place name first,
+  // then the first substantive line) — never the engagement-bait first line.
+  const activityName = activityFromCaption(caption, og.title, placeName);
 
   return {
     platform: "instagram",
     title: og.title,
     description,
     thumbnailUrl: og.image,
-    coverImageUrl,
+    // Default cover = the reel's own thumbnail (applied in the form). We no
+    // longer auto-generate a Wikipedia/Google cover on import.
+    coverImageUrl: null,
     author,
     activityName,
     notes: buildNotes({ description, author, url, platform: "instagram", rawText }),

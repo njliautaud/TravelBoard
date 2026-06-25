@@ -1,9 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
 import ApiPatchProvider from "@/components/ApiPatchProvider";
 import "./globals.css";
+import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,46 +33,18 @@ export const viewport: Viewport = {
   themeColor: "#f59e0b",
 };
 
-/**
- * Clerk is enabled only when the publishable key env var is set.
- * Without it the app gracefully falls back to the custom auth modal.
- */
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const inner = <ApiPatchProvider>{children}</ApiPatchProvider>;
-
   return (
     <html lang="en" className="dark">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {clerkEnabled ? (
-          <ClerkProvider
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            appearance={{
-              baseTheme: dark,
-              variables: {
-                colorPrimary: "#f59e0b",              // amber-500
-                colorBackground: "#020617",            // slate-950
-                colorTextOnPrimaryBackground: "#0f172a",
-                colorTextSecondary: "#94a3b8",         // slate-400
-                colorInputBackground: "#0f172a",       // slate-900
-                colorInputText: "#e2e8f0",             // slate-200
-                colorNeutral: "#e2e8f0",               // slate-200
-                colorDanger: "#f87171",                // red-400
-              },
-            } as any}
-          >
-            {inner}
-          </ClerkProvider>
-        ) : (
-          inner
-        )}
+        <ServiceWorkerRegistrar />
+        <ApiPatchProvider>{children}</ApiPatchProvider>
       </body>
     </html>
   );
