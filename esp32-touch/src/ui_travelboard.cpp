@@ -67,6 +67,20 @@ static lv_img_dsc_t g_cover_dsc = {};
 static int g_pending_cover_index = -1;
 static uint32_t g_cover_deadline_ms = 0;
 
+// Flights overlay
+static lv_obj_t *g_flights_overlay = nullptr;
+static lv_obj_t *g_flights_card = nullptr;
+static lv_obj_t *g_flights_btn = nullptr;
+static lv_obj_t *g_flights_btn_lbl = nullptr;
+static lv_obj_t *g_deal_rows[kTbMaxDeals] = {};
+static lv_obj_t *g_deal_dest[kTbMaxDeals] = {};
+static lv_obj_t *g_deal_price[kTbMaxDeals] = {};
+static lv_obj_t *g_deal_score[kTbMaxDeals] = {};
+static lv_obj_t *g_trip_section = nullptr;
+static lv_obj_t *g_trip_name = nullptr;
+static lv_obj_t *g_trip_date = nullptr;
+static lv_obj_t *g_no_deals_label = nullptr;
+
 static int32_t mapWidth() { return kLcdWidth - kSidebarW; }
 static int32_t mapHeight() { return kLcdHeight - kStatusH; }
 
@@ -634,14 +648,262 @@ static void buildDetailOverlay() {
   lv_obj_center(close_lbl);
 }
 
+// ─── Flights overlay ───────────────────────────────────────────────────────
+
+static void hideFlights() {
+  if (g_flights_overlay != nullptr) {
+    lv_obj_add_flag(g_flights_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(g_flights_overlay, LV_OBJ_FLAG_CLICKABLE);
+    app_lvgl_invalidate(g_flights_overlay);
+    app_lvgl_refresh_now();
+  }
+}
+
+static void closeFlights(lv_event_t *e) {
+  (void)e;
+  hideFlights();
+}
+
+static void stopFlightsCardClick(lv_event_t *e) {
+  lv_event_stop_bubbling(e);
+}
+
+static void refreshFlightsContent() {
+  // Deals
+  const bool hasDeals = g_data.dealCount > 0;
+  for (int i = 0; i < kTbMaxDeals; ++i) {
+    if (g_deal_rows[i] == nullptr) continue;
+    if (i < g_data.dealCount) {
+      const TbFlightDeal &d = g_data.deals[i];
+      lv_label_set_text(g_deal_dest[i], d.destination);
+
+      char price_buf[32];
+      if (d.currency[0] != '\0' && strncmp(d.currency, "USD", 4) == 0) {
+        snprintf(price_buf, sizeof(price_buf), "$%.0f", d.price);
+      } else {
+        snprintf(price_buf, sizeof(price_buf), "%.0f %s", d.price, d.currency);
+      }
+      lv_label_set_text(g_deal_price[i], price_buf);
+
+      char score_buf[24];
+      int pct = static_cast<int>(d.dealScore * 100);
+      if (pct > 100) pct = 100;
+      snprintf(score_buf, sizeof(score_buf), "Score: %d%%", pct);
+      lv_label_set_text(g_deal_score[i], score_buf);
+
+      lv_obj_clear_flag(g_deal_rows[i], LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(g_deal_rows[i], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (g_no_deals_label != nullptr) {
+    if (hasDeals) {
+      lv_obj_add_flag(g_no_deals_label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_clear_flag(g_no_deals_label, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
+  // Next trip
+  if (g_trip_section != nullptr) {
+    if (g_data.nextTrip.valid) {
+      lv_obj_clear_flag(g_trip_section, LV_OBJ_FLAG_HIDDEN);
+      if (g_trip_name != nullptr) {
+        char trip_buf[96];
+        snprintf(trip_buf, sizeof(trip_buf), "%s  (%s)", g_data.nextTrip.city, g_data.nextTrip.status);
+        lv_label_set_text(g_trip_name, trip_buf);
+      }
+      if (g_trip_date != nullptr) {
+        // Show just the date portion (first 10 chars of ISO string)
+        char date_buf[48];
+        char start[11] = "";
+        char end[11] = "";
+        if (g_data.nextTrip.startDate[0] != '\0') {
+          strncpy(start, g_data.nextTrip.startDate, 10);
+          start[10] = '\0';
+        }
+        if (g_data.nextTrip.endDate[0] != '\0') {
+          strncpy(end, g_data.nextTrip.endDate, 10);
+          end[10] = '\0';
+        }
+        if (start[0] != '\0' && end[0] != '\0') {
+          snprintf(date_buf, sizeof(date_buf), "%s  to  %s", start, end);
+        } else if (start[0] != '\0') {
+          snprintf(date_buf, sizeof(date_buf), "Starts %s", start);
+        } else {
+          snprintf(date_buf, sizeof(date_buf), "Date TBD");
+        }
+        lv_label_set_text(g_trip_date, date_buf);
+      }
+    } else {
+      lv_obj_add_flag(g_trip_section, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
+static void showFlights() {
+  if (g_flights_overlay == nullptr) return;
+  refreshFlightsContent();
+  lv_obj_clear_flag(g_flights_overlay, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(g_flights_overlay, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_move_foreground(g_flights_overlay);
+  app_lvgl_invalidate(g_flights_overlay);
+  app_lvgl_refresh_now();
+}
+
+static void onFlightsToggle(lv_event_t *e) {
+  (void)e;
+  if (g_flights_overlay != nullptr && !lv_obj_has_flag(g_flights_overlay, LV_OBJ_FLAG_HIDDEN)) {
+    hideFlights();
+  } else {
+    showFlights();
+  }
+}
+
+static void buildFlightsOverlay() {
+  g_flights_overlay = lv_obj_create(g_root);
+  lv_obj_remove_style_all(g_flights_overlay);
+  lv_obj_set_size(g_flights_overlay, kLcdWidth, kLcdHeight);
+  lv_obj_set_style_bg_color(g_flights_overlay, lv_color_hex(0x05080f), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(g_flights_overlay, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_add_flag(g_flights_overlay, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(g_flights_overlay, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(g_flights_overlay, closeFlights, LV_EVENT_CLICKED, nullptr);
+
+  g_flights_card = lv_obj_create(g_flights_overlay);
+  stylePanel(g_flights_card, kColorSidebar);
+  lv_obj_set_size(g_flights_card, 700, 480);
+  lv_obj_center(g_flights_card);
+  lv_obj_set_style_radius(g_flights_card, 16, LV_PART_MAIN);
+  lv_obj_set_style_border_color(g_flights_card, lv_color_hex(0x334155), LV_PART_MAIN);
+  lv_obj_set_style_border_width(g_flights_card, 1, LV_PART_MAIN);
+  lv_obj_set_style_pad_all(g_flights_card, 28, LV_PART_MAIN);
+  lv_obj_set_style_pad_row(g_flights_card, 16, LV_PART_MAIN);
+  lv_obj_set_flex_flow(g_flights_card, LV_FLEX_FLOW_COLUMN);
+  lv_obj_clear_flag(g_flights_card, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(g_flights_card, stopFlightsCardClick, LV_EVENT_CLICKED, nullptr);
+
+  // Title
+  lv_obj_t *title = lv_label_create(g_flights_card);
+  lv_label_set_text(title, LV_SYMBOL_SHUFFLE "  Flight Deals");
+  lv_obj_set_style_text_color(title, kColorAmber, LV_PART_MAIN);
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_24, LV_PART_MAIN);
+
+  // Divider
+  lv_obj_t *div1 = lv_obj_create(g_flights_card);
+  lv_obj_remove_style_all(div1);
+  lv_obj_set_size(div1, LV_PCT(100), 2);
+  lv_obj_set_style_bg_color(div1, lv_color_hex(0x334155), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(div1, LV_OPA_COVER, LV_PART_MAIN);
+
+  // "No deals" fallback label
+  g_no_deals_label = lv_label_create(g_flights_card);
+  lv_label_set_text(g_no_deals_label, "No flight deals available.\nSet your home airports to see deals.");
+  lv_obj_set_style_text_color(g_no_deals_label, kColorMuted, LV_PART_MAIN);
+  lv_obj_set_style_text_font(g_no_deals_label, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_set_width(g_no_deals_label, LV_PCT(100));
+  lv_label_set_long_mode(g_no_deals_label, LV_LABEL_LONG_WRAP);
+  lv_obj_add_flag(g_no_deals_label, LV_OBJ_FLAG_HIDDEN);
+
+  // Deal rows (up to 3)
+  for (int i = 0; i < kTbMaxDeals; ++i) {
+    lv_obj_t *row = lv_obj_create(g_flights_card);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_width(row, LV_PCT(100));
+    lv_obj_set_height(row, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(row, kColorBg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(row, 10, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(row, 12, LV_PART_MAIN);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
+    g_deal_rows[i] = row;
+
+    // Destination label (left)
+    lv_obj_t *dest = lv_label_create(row);
+    lv_obj_set_width(dest, 320);
+    lv_label_set_long_mode(dest, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_color(dest, kColorText, LV_PART_MAIN);
+    lv_obj_set_style_text_font(dest, &lv_font_montserrat_14, LV_PART_MAIN);
+    g_deal_dest[i] = dest;
+
+    // Price label (center)
+    lv_obj_t *price = lv_label_create(row);
+    lv_obj_set_style_text_color(price, kColorEmerald, LV_PART_MAIN);
+    lv_obj_set_style_text_font(price, &lv_font_montserrat_14, LV_PART_MAIN);
+    g_deal_price[i] = price;
+
+    // Score label (right)
+    lv_obj_t *score = lv_label_create(row);
+    lv_obj_set_style_text_color(score, kColorRose, LV_PART_MAIN);
+    lv_obj_set_style_text_font(score, &lv_font_montserrat_14, LV_PART_MAIN);
+    g_deal_score[i] = score;
+  }
+
+  // Next trip section
+  g_trip_section = lv_obj_create(g_flights_card);
+  lv_obj_remove_style_all(g_trip_section);
+  lv_obj_set_width(g_trip_section, LV_PCT(100));
+  lv_obj_set_height(g_trip_section, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(g_trip_section, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(g_trip_section, 6, LV_PART_MAIN);
+  lv_obj_clear_flag(g_trip_section, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(g_trip_section, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t *div2 = lv_obj_create(g_trip_section);
+  lv_obj_remove_style_all(div2);
+  lv_obj_set_size(div2, LV_PCT(100), 2);
+  lv_obj_set_style_bg_color(div2, lv_color_hex(0x334155), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(div2, LV_OPA_COVER, LV_PART_MAIN);
+
+  lv_obj_t *trip_caption = lv_label_create(g_trip_section);
+  lv_label_set_text(trip_caption, "NEXT TRIP");
+  styleCaption(trip_caption);
+
+  g_trip_name = lv_label_create(g_trip_section);
+  lv_obj_set_width(g_trip_name, LV_PCT(100));
+  lv_label_set_long_mode(g_trip_name, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_color(g_trip_name, kColorText, LV_PART_MAIN);
+  lv_obj_set_style_text_font(g_trip_name, &lv_font_montserrat_14, LV_PART_MAIN);
+
+  g_trip_date = lv_label_create(g_trip_section);
+  lv_obj_set_width(g_trip_date, LV_PCT(100));
+  lv_obj_set_style_text_color(g_trip_date, kColorAmber, LV_PART_MAIN);
+  lv_obj_set_style_text_font(g_trip_date, &lv_font_montserrat_14, LV_PART_MAIN);
+
+  // Close button
+  lv_obj_t *close_btn = lv_btn_create(g_flights_card);
+  lv_obj_set_size(close_btn, 180, 48);
+  lv_obj_set_style_bg_color(close_btn, kColorAmber, LV_PART_MAIN);
+  lv_obj_set_style_radius(close_btn, 10, LV_PART_MAIN);
+  lv_obj_add_event_cb(close_btn, closeFlights, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t *close_lbl = lv_label_create(close_btn);
+  lv_label_set_text(close_lbl, "Close");
+  lv_obj_set_style_text_color(close_lbl, lv_color_hex(0x0b1120), LV_PART_MAIN);
+  lv_obj_set_style_text_font(close_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_center(close_lbl);
+}
+
 static bool dataEqual(const TbSyncData *a, const TbSyncData *b) {
   if (a == nullptr || b == nullptr) {
     return false;
   }
-  if (a->count != b->count) {
+  if (a->count != b->count || a->dealCount != b->dealCount) {
     return false;
   }
-  return memcmp(a->locations, b->locations, static_cast<size_t>(a->count) * sizeof(TbLocation)) == 0;
+  if (memcmp(a->locations, b->locations, static_cast<size_t>(a->count) * sizeof(TbLocation)) != 0) {
+    return false;
+  }
+  if (a->dealCount > 0 && memcmp(a->deals, b->deals, static_cast<size_t>(a->dealCount) * sizeof(TbFlightDeal)) != 0) {
+    return false;
+  }
+  if (memcmp(&a->nextTrip, &b->nextTrip, sizeof(TbNextTrip)) != 0) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -776,11 +1038,24 @@ void ui_travelboard_init() {
   lv_obj_set_style_text_color(g_filter_btn_lbl, kColorAmber, LV_PART_MAIN);
   lv_obj_center(g_filter_btn_lbl);
 
+  g_flights_btn = lv_btn_create(status);
+  lv_obj_set_size(g_flights_btn, 100, 28);
+  lv_obj_set_style_bg_color(g_flights_btn, kColorBg, LV_PART_MAIN);
+  lv_obj_set_style_border_color(g_flights_btn, kColorRose, LV_PART_MAIN);
+  lv_obj_set_style_border_width(g_flights_btn, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(g_flights_btn, 8, LV_PART_MAIN);
+  lv_obj_add_event_cb(g_flights_btn, onFlightsToggle, LV_EVENT_CLICKED, nullptr);
+  g_flights_btn_lbl = lv_label_create(g_flights_btn);
+  lv_label_set_text(g_flights_btn_lbl, "Flights");
+  lv_obj_set_style_text_color(g_flights_btn_lbl, kColorRose, LV_PART_MAIN);
+  lv_obj_center(g_flights_btn_lbl);
+
   g_sync_label = lv_label_create(status);
   lv_label_set_text(g_sync_label, "Sync: waiting");
   lv_obj_set_style_text_color(g_sync_label, kColorMuted, LV_PART_MAIN);
 
   buildDetailOverlay();
+  buildFlightsOverlay();
   rebuildList();
 }
 
@@ -877,4 +1152,8 @@ void ui_travelboard_loop() {
     app_lvgl_refresh_now();
   }
   // else: still being downloaded by the background task — try again shortly
+}
+
+bool ui_travelboard_flights_visible() {
+  return g_flights_overlay != nullptr && !lv_obj_has_flag(g_flights_overlay, LV_OBJ_FLAG_HIDDEN);
 }

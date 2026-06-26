@@ -98,6 +98,13 @@ uint32_t hashData(const TbSyncData *d) {
   mix(reinterpret_cast<const uint8_t *>(&d->count), sizeof(d->count));
   mix(reinterpret_cast<const uint8_t *>(d->locations),
       static_cast<size_t>(d->count) * sizeof(TbLocation));
+  // Include flight deals and trip in hash so UI refreshes when they change
+  mix(reinterpret_cast<const uint8_t *>(&d->dealCount), sizeof(d->dealCount));
+  if (d->dealCount > 0) {
+    mix(reinterpret_cast<const uint8_t *>(d->deals),
+        static_cast<size_t>(d->dealCount) * sizeof(TbFlightDeal));
+  }
+  mix(reinterpret_cast<const uint8_t *>(&d->nextTrip), sizeof(d->nextTrip));
   return h;
 }
 

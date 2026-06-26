@@ -102,6 +102,35 @@ bool parse_sync_json(const char *body, TbSyncData *out) {
   }
 
   sortLocations(out);
+
+  // Parse flight deals (backward-compatible — missing fields are fine)
+  out->dealCount = 0;
+  JsonArray dealsArr = doc["topDeals"].as<JsonArray>();
+  for (JsonObject deal : dealsArr) {
+    if (out->dealCount >= kTbMaxDeals) break;
+    TbFlightDeal &d = out->deals[out->dealCount];
+    memset(&d, 0, sizeof(d));
+    copyField(d.destination, sizeof(d.destination), deal["destination"] | "");
+    copyField(d.origin, sizeof(d.origin), deal["origin"] | "");
+    copyField(d.currency, sizeof(d.currency), deal["currency"] | "USD");
+    d.price = deal["price"] | 0.0f;
+    d.dealScore = deal["dealScore"] | 0.0f;
+    out->dealCount++;
+  }
+
+  // Parse next trip (backward-compatible)
+  memset(&out->nextTrip, 0, sizeof(out->nextTrip));
+  out->nextTrip.valid = false;
+  JsonObject tripObj = doc["nextTrip"].as<JsonObject>();
+  if (tripObj) {
+    copyField(out->nextTrip.name, sizeof(out->nextTrip.name), tripObj["name"] | "");
+    copyField(out->nextTrip.city, sizeof(out->nextTrip.city), tripObj["city"] | "");
+    copyField(out->nextTrip.startDate, sizeof(out->nextTrip.startDate), tripObj["startDate"] | "");
+    copyField(out->nextTrip.endDate, sizeof(out->nextTrip.endDate), tripObj["endDate"] | "");
+    copyField(out->nextTrip.status, sizeof(out->nextTrip.status), tripObj["status"] | "");
+    out->nextTrip.valid = out->nextTrip.name[0] != '\0';
+  }
+
   return true;
 }
 
