@@ -21,6 +21,7 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   allowedDevOrigins: ["100.127.72.12", "*.ts.net", "10.0.0.73", "192.168.56.1"],
   transpilePackages: ["@travelboard/core"],
+  turbopack: {},
   webpack: (config) => {
     config.resolve.extensionAlias = {
       ".js": [".ts", ".tsx", ".js"],
