@@ -18,7 +18,7 @@ import type { SeasonalActivity } from '../data/seasonal_activities';
 // board's critical-path bundle; markers simply render without glyphs until it arrives
 // (the canvas redraws continuously, so glyphs appear within a frame of the chunk loading).
 let activitiesLookup: ((code: string, month: number) => SeasonalActivity[]) | null = null;
-import('../data/seasonal_activities.js')
+import('../data/seasonal_activities')
   .then((m) => { activitiesLookup = m.activitiesFor; })
   .catch(() => { /* glyphs are cosmetic — render without them */ });
 
