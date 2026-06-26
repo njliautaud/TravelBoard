@@ -4,6 +4,10 @@ import ApiPatchProvider from "@/components/ApiPatchProvider";
 import "./globals.css";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 
+// Force all pages to be server-rendered (not pre-rendered during build)
+// because the Supabase Auth client needs runtime env vars.
+export const dynamic = "force-dynamic";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
