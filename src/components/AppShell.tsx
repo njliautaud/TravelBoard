@@ -126,6 +126,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
   const [appEntered, setAppEntered] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
+  const [authInitialMode, setAuthInitialMode] = useState<"login" | "register">("register");
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
 
   // Map always shows deals — unified experience, no separate deals tab
@@ -281,11 +282,8 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             </div>
             <button
               onClick={() => {
-                if (SUPABASE_ENABLED) {
-                  router.push("/sign-up");
-                } else {
-                  setShowAuth(true);
-                }
+                setAuthInitialMode("register");
+                setShowAuth(true);
               }}
               className="mt-1 w-full rounded-2xl bg-amber-500 px-8 py-3.5 text-base font-bold text-slate-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-400 hover:shadow-amber-400/30 active:scale-95"
             >
@@ -293,11 +291,8 @@ export default function AppShell({ initialLocations }: AppShellProps) {
             </button>
             <button
               onClick={() => {
-                if (SUPABASE_ENABLED) {
-                  router.push("/sign-in");
-                } else {
-                  setShowAuth(true);
-                }
+                setAuthInitialMode("login");
+                setShowAuth(true);
               }}
               className="w-full rounded-2xl border border-slate-700 px-8 py-3 text-sm font-medium text-slate-300 transition hover:border-slate-600 hover:text-slate-100"
             >
@@ -342,7 +337,7 @@ export default function AppShell({ initialLocations }: AppShellProps) {
                 setShowOnboarding(true);
               });
           }}
-          initialMode="register"
+          initialMode={authInitialMode}
         />
       )}
 
