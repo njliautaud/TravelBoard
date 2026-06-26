@@ -8,7 +8,7 @@ import {
   durationBandForDistance,
   isLongStay,
   nightsBetween,
-} from './duration-bands.js';
+} from './duration-bands';
 
 describe('durationBandForDistance', () => {
   it('short-haul <1500mi → 3–7 nights', () => {

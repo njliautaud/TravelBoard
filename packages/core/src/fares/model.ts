@@ -4,8 +4,8 @@
  * (Reconcile exact constants with prototype/travelboard.html when available.)
  */
 
-import type { Destination, GeoPoint } from '../types.js';
-import { haversineMiles } from '../geo.js';
+import type { Destination, GeoPoint } from '../types';
+import { haversineMiles } from '../geo';
 
 /** FNV-1a hash → deterministic float in [0, 1). Used for stable per-city jitter. */
 export function hash01(seed: string): number {

@@ -1,4 +1,4 @@
-import type { Destination } from '../types.js';
+import type { Destination } from '../types';
 void ({} as Destination); // type-only side-channel keeps tree-shaking happy
 
 /** Activity categories surfaced as chips on destination cards. */
@@ -3302,7 +3302,7 @@ export const SEASONAL_ACTIVITIES: Record<string, Array<[number, SeasonalActivity
   'VLV': [[0, ['Beach', 'Hiking']], [1, ['Beach', 'Hiking']], [2, ['Beach', 'Hiking']], [3, ['Beach', 'Hiking']], [4, ['Beach']], [5, ['Beach']], [6, ['Beach']], [7, ['Beach']], [8, ['Beach']], [9, ['Beach']], [10, ['Beach', 'Hiking']], [11, ['Beach', 'Hiking']]],
 };
 
-import { resolveMetro } from './metros.js';
+import { resolveMetro } from './metros';
 
 /** Convenience: activities active for `code` in given 0-11 month, or [] when unknown.
  *  Falls through metro->primary-airport (e.g. NYC->JFK) so Travelpayouts metro codes

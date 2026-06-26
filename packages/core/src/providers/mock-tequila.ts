@@ -4,9 +4,9 @@
  * product is runnable with no accounts. (Golden rule 5: runs fully with zero keys.)
  */
 
-import type { FlightProvider, FareQuote, GetCheapestOptions } from './types.js';
-import { DESTINATIONS } from '../data/destinations.js';
-import { estimateFare } from '../fares/model.js';
+import type { FlightProvider, FareQuote, GetCheapestOptions } from './types';
+import { DESTINATIONS } from '../data/destinations';
+import { estimateFare } from '../fares/model';
 
 /** Build a working Google Flights deep-link. Fares are inspiration; always link out (Golden rule 4). */
 function bookingDeepLink(origin: string, dest: string, month: number): string {

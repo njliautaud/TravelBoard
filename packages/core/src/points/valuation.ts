@@ -23,20 +23,20 @@ import type {
   PointsValuation,
   ProgramId,
   TransferBonus,
-} from './types.js';
+} from './types';
 import {
   AWARD_CHART_BY_PARTNER,
   CARD_CATALOG,
   PARTNER_BY_ID,
   PROGRAM_BY_ID,
   TRANSFER_EDGES,
-} from './data/transfer-partners.js';
+} from './data/transfer-partners';
 import {
   CABIN_LABELS,
   type Cabin,
   type VerifiedCabinAward,
   type VerifiedCabinValuation,
-} from './sources/seats-aero.js';
+} from './sources/seats-aero';
 
 /** Round-trip economy award estimate for a partner at a one-way distance. */
 export function estimateAwardMiles(partnerId: string, oneWayDistanceMiles: number): {

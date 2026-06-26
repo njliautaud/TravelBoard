@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { CircuitBreaker, RetryProvider } from './resilience.js';
-import type { FlightProvider, FareQuote, GetCheapestOptions } from './types.js';
+import { CircuitBreaker, RetryProvider } from './resilience';
+import type { FlightProvider, FareQuote, GetCheapestOptions } from './types';
 
 // ---------------------------------------------------------------------------
 // Helpers

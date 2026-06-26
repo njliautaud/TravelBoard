@@ -7,11 +7,11 @@
  * and an edge vignette frame. Function signatures unchanged so the board and mobile keep working.
  */
 
-import type { FareTier, GeoPoint, Trip } from '../types.js';
-import type { FareQuote } from '../providers/types.js';
-import { TIER_COLORS } from '../fares/tiering.js';
-import { project, greatCirclePoints, subsolarPoint, isDaylight } from '../geo.js';
-import type { SeasonalActivity } from '../data/seasonal_activities.js';
+import type { FareTier, GeoPoint, Trip } from '../types';
+import type { FareQuote } from '../providers/types';
+import { TIER_COLORS } from '../fares/tiering';
+import { project, greatCirclePoints, subsolarPoint, isDaylight } from '../geo';
+import type { SeasonalActivity } from '../data/seasonal_activities';
 
 // HC #612 perf: the seasonal-activities dataset (~1 MB of source literals) is only used here
 // to pick a label glyph per marker. Self-load it as a lazy chunk so it stays OUT of the
@@ -697,7 +697,7 @@ export function drawEdgeVignette(ctx: CanvasRenderingContext2D, w: number, h: nu
 
 // ---- HC #527 R5: country borders + city labels ---------------------------
 
-import type { PopulatedPlace } from '../data/places.js';
+import type { PopulatedPlace } from '../data/places';
 
 /**
  * Stroke country borders as subtle polylines.

@@ -11,7 +11,7 @@
  * of waiting for timeouts each time.
  */
 
-import type { FlightProvider, FareQuote, GetCheapestOptions } from './types.js';
+import type { FlightProvider, FareQuote, GetCheapestOptions } from './types';
 
 // ---------------------------------------------------------------------------
 // Circuit Breaker

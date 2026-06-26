@@ -13,7 +13,7 @@ import {
   estimateLayoverBounds,
   exceedsMaxLayover,
   exceedsMaxTravelTime,
-} from './feasibility.js';
+} from './feasibility';
 
 describe('estimateAirMinutes', () => {
   it('lo is strictly below hi for any sane distance', () => {

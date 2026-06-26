@@ -18,11 +18,11 @@
  * Implements the sacred FlightProvider interface.
  */
 
-import type { FlightProvider, FareQuote, GetCheapestOptions } from './types.js';
-import { findDestination } from '../data/destinations.js';
-import { findAirport } from '../data/airports.js';
-import { resolveMetro } from '../data/metros.js';
-import { haversineMiles } from '../geo.js';
+import type { FlightProvider, FareQuote, GetCheapestOptions } from './types';
+import { findDestination } from '../data/destinations';
+import { findAirport } from '../data/airports';
+import { resolveMetro } from '../data/metros';
+import { haversineMiles } from '../geo';
 
 export interface AmadeusProviderOptions {
   clientId: string;

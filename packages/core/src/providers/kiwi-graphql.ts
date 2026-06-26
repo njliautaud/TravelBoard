@@ -12,10 +12,10 @@
  * Implements the sacred FlightProvider interface. Swappable via FLIGHT_PROVIDER=kiwi env var.
  */
 
-import type { FlightProvider, FareQuote, GetCheapestOptions } from './types.js';
-import { DESTINATIONS, findDestination } from '../data/destinations.js';
-import { VACATION_CODES } from '../data/vacations.js';
-import { defaultProviderNightsWindow, clampToConsumerCap } from '../fares/duration-bands.js';
+import type { FlightProvider, FareQuote, GetCheapestOptions } from './types';
+import { DESTINATIONS, findDestination } from '../data/destinations';
+import { VACATION_CODES } from '../data/vacations';
+import { defaultProviderNightsWindow, clampToConsumerCap } from '../fares/duration-bands';
 
 const GRAPHQL_URL = 'https://api.skypicker.com/umbrella/v2/graphql';
 

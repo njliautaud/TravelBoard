@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { tierForPrice, tierFares } from './tiering.js';
-import type { FareQuote } from '../providers/types.js';
+import { tierForPrice, tierFares } from './tiering';
+import type { FareQuote } from '../providers/types';
 
 function fare(code: string, price: number): FareQuote {
   return {

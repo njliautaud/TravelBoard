@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { AggregateProvider } from './aggregate.js';
-import type { FlightProvider, FareQuote, GetCheapestOptions } from './types.js';
+import { AggregateProvider } from './aggregate';
+import type { FlightProvider, FareQuote, GetCheapestOptions } from './types';
 
 const OPTS: GetCheapestOptions = { origin: { code: 'MCO', lat: 28.43, lon: -81.31 }, month: 6 };
 

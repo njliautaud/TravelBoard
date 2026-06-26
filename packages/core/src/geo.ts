@@ -1,6 +1,6 @@
 /** Pure geo math — no DOM, safe to import anywhere (api, board, mobile). */
 
-import type { GeoPoint } from './types.js';
+import type { GeoPoint } from './types';
 
 export const EARTH_RADIUS_MILES = 3958.8;
 const DEG2RAD = Math.PI / 180;

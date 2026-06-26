@@ -1,7 +1,7 @@
 /** HC #617 — award deal generation from bulk seats.aero availability. Pure unit tests, no network. */
 import { describe, expect, it } from 'vitest';
-import { awardDealSummary, benchmarkMiles, generateAwardDeals, type AirportInfo } from './award-deals.js';
-import { parseBulkRecord, type BulkAwardRecord } from './sources/seats-aero-bulk.js';
+import { awardDealSummary, benchmarkMiles, generateAwardDeals, type AirportInfo } from './award-deals';
+import { parseBulkRecord, type BulkAwardRecord } from './sources/seats-aero-bulk';
 
 const AIRPORTS: Record<string, AirportInfo> = {
   MCO: { code: 'MCO', city: 'Orlando', country: 'United States', lat: 28.43, lon: -81.31 },

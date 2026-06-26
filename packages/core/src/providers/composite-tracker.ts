@@ -9,7 +9,7 @@
  * Implements the sacred FlightTrackerProvider interface.
  */
 
-import type { FlightTrackerProvider, FlightTelemetry } from './types.js';
+import type { FlightTrackerProvider, FlightTelemetry } from './types';
 
 interface CacheEntry {
   data: FlightTelemetry;

@@ -14,8 +14,8 @@
  * framework (6h TTL, stale-grace) is the design answer, not a hack.
  */
 
-import type { PointsSourceAdapter, TransferBonus, ProgramId } from '../types.js';
-import { fetchText } from './adapter.js';
+import type { PointsSourceAdapter, TransferBonus, ProgramId } from '../types';
+import { fetchText } from './adapter';
 
 const URL = 'https://frequentmiler.com/current-point-transfer-bonuses/';
 

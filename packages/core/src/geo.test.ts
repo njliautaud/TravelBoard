@@ -6,7 +6,7 @@ import {
   project,
   subsolarPoint,
   isDaylight,
-} from './geo.js';
+} from './geo';
 
 describe('haversineMiles', () => {
   it('is zero for identical points', () => {

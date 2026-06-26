@@ -14,7 +14,7 @@ export type {
   Watch,
   BoardMode,
   BoardState,
-} from './types.js';
+} from './types';
 
 // Provider boundary (sacred interface)
 export type {
@@ -23,37 +23,37 @@ export type {
   FlightProvider,
   FlightTelemetry,
   FlightTrackerProvider,
-} from './providers/types.js';
-export { MockTequilaProvider } from './providers/mock-tequila.js';
-export { TequilaProvider, type TequilaProviderOptions } from './providers/tequila.js';
-export { TravelpayoutsProvider, type TravelpayoutsProviderOptions } from './providers/travelpayouts.js';
-export { KiwiGraphQLProvider, type KiwiGraphQLProviderOptions } from './providers/kiwi-graphql.js';
-export { TravelpayoutsDirectionsProvider, type TravelpayoutsDirectionsProviderOptions } from './providers/travelpayouts-directions.js';
-export { AmadeusProvider, type AmadeusProviderOptions } from './providers/amadeus.js';
-export { AggregateProvider, type AggregateProviderOptions, type AggregateSource } from './providers/aggregate.js';
-export { MockFlightTracker } from './providers/mock-tracker.js';
-export { OpenSkyProvider, type OpenSkyProviderOptions } from './providers/opensky.js';
-export { AirLabsProvider, type AirLabsProviderOptions } from './providers/airlabs.js';
+} from './providers/types';
+export { MockTequilaProvider } from './providers/mock-tequila';
+export { TequilaProvider, type TequilaProviderOptions } from './providers/tequila';
+export { TravelpayoutsProvider, type TravelpayoutsProviderOptions } from './providers/travelpayouts';
+export { KiwiGraphQLProvider, type KiwiGraphQLProviderOptions } from './providers/kiwi-graphql';
+export { TravelpayoutsDirectionsProvider, type TravelpayoutsDirectionsProviderOptions } from './providers/travelpayouts-directions';
+export { AmadeusProvider, type AmadeusProviderOptions } from './providers/amadeus';
+export { AggregateProvider, type AggregateProviderOptions, type AggregateSource } from './providers/aggregate';
+export { MockFlightTracker } from './providers/mock-tracker';
+export { OpenSkyProvider, type OpenSkyProviderOptions } from './providers/opensky';
+export { AirLabsProvider, type AirLabsProviderOptions } from './providers/airlabs';
 export {
   CompositeFlightTracker,
   type CompositeTrackerOptions,
-} from './providers/composite-tracker.js';
+} from './providers/composite-tracker';
 export {
   RetryProvider,
   CircuitBreaker,
   type RetryOptions,
   type CircuitBreakerOptions,
   type CircuitState,
-} from './providers/resilience.js';
+} from './providers/resilience';
 
 // Data
-export { DESTINATIONS, findDestination } from './data/destinations.js';
-export { SEASONAL_ACTIVITIES, activitiesFor, type SeasonalActivity } from './data/seasonal_activities.js';
-export { METRO_TO_AIRPORT, resolveMetro } from './data/metros.js';
-export { HUB_CLUSTERS, hubsForHome, isHomeHub } from './data/hubs.js';
-export { CONTINENT_POLYGONS } from './data/continents.js';
-export { COUNTRY_BORDERS } from './data/borders.js';
-export { POPULATED_PLACES, type PopulatedPlace } from './data/places.js';
+export { DESTINATIONS, findDestination } from './data/destinations';
+export { SEASONAL_ACTIVITIES, activitiesFor, type SeasonalActivity } from './data/seasonal_activities';
+export { METRO_TO_AIRPORT, resolveMetro } from './data/metros';
+export { HUB_CLUSTERS, hubsForHome, isHomeHub } from './data/hubs';
+export { CONTINENT_POLYGONS } from './data/continents';
+export { COUNTRY_BORDERS } from './data/borders';
+export { POPULATED_PLACES, type PopulatedPlace } from './data/places';
 export {
   INTERNATIONAL_AIRPORTS,
   ORIGIN_AIRPORTS,
@@ -62,16 +62,16 @@ export {
   getAirportsByRegion,
   searchAirports,
   type InternationalAirport,
-} from './data/airports.js';
+} from './data/airports';
 
 // Fares
-export { hash01, seasonalFactor, estimateFare } from './fares/model.js';
+export { hash01, seasonalFactor, estimateFare } from './fares/model';
 export {
   TIER_COLORS,
   tierForPrice,
   tierFares,
   type TieringOptions,
-} from './fares/tiering.js';
+} from './fares/tiering';
 export {
   DAY_TRIP_MIN_LAYOVER_MIN,
   DAY_TRIP_MAX_LAYOVER_MIN,
@@ -85,7 +85,7 @@ export {
   type AirTimeBounds,
   type DayTripKind,
   type DayTripAssessment,
-} from './fares/feasibility.js';
+} from './fares/feasibility';
 export {
   DEFAULT_MAX_NIGHTS,
   LONG_STAY_THRESHOLD_NIGHTS,
@@ -95,7 +95,7 @@ export {
   isLongStay,
   nightsBetween,
   type DurationBand,
-} from './fares/duration-bands.js';
+} from './fares/duration-bands';
 
 // Points-transfer game (HC #602)
 export type {
@@ -117,7 +117,7 @@ export type {
   SourceRunnerOptions,
   SourcePersistence,
   SourceResult,
-} from './points/types.js';
+} from './points/types';
 export {
   DATASET_VERSION as POINTS_DATASET_VERSION,
   DATASET_UPDATED as POINTS_DATASET_UPDATED,
@@ -129,14 +129,14 @@ export {
   PROGRAM_BY_ID,
   PARTNER_BY_ID,
   AWARD_CHART_BY_PARTNER,
-} from './points/data/transfer-partners.js';
-export { SourceRunner, fetchText, BROWSER_UA } from './points/sources/adapter.js';
+} from './points/data/transfer-partners';
+export { SourceRunner, fetchText, BROWSER_UA } from './points/sources/adapter';
 export {
   FrequentMilerBonusesAdapter,
   parseFrequentMilerBonuses,
   parseFmDate,
-} from './points/sources/frequentmiler-bonuses.js';
-export { RssNewsAdapter, parseRssItems, type PointsNewsItem } from './points/sources/rss-news.js';
+} from './points/sources/frequentmiler-bonuses';
+export { RssNewsAdapter, parseRssItems, type PointsNewsItem } from './points/sources/rss-news';
 export {
   SeatsAeroAdapter,
   summarizeVerifiedAwards,
@@ -151,14 +151,14 @@ export {
   cabinOf,
   type Cabin,
   type CabinAvailability,
-} from './points/sources/seats-aero.js';
+} from './points/sources/seats-aero';
 export {
   SeatsAeroBulkAdapter,
   parseBulkRecord,
   DEFAULT_BULK_SOURCES,
   type BulkAwardRecord,
   type SeatsAeroBulkAdapterOptions,
-} from './points/sources/seats-aero-bulk.js';
+} from './points/sources/seats-aero-bulk';
 export {
   generateAwardDeals,
   benchmarkMiles,
@@ -167,7 +167,7 @@ export {
   type AwardDeal,
   type AirportInfo,
   type GenerateAwardDealsOptions,
-} from './points/award-deals.js';
+} from './points/award-deals';
 export {
   valuateDeal,
   estimateAwardMiles,
@@ -177,7 +177,7 @@ export {
   CABIN_FARE_MULTIPLIERS,
   type ValuationInputs,
   type VerifiedCabinValuationInputs,
-} from './points/valuation.js';
+} from './points/valuation';
 
 // Geo
 export {
@@ -188,7 +188,7 @@ export {
   project,
   subsolarPoint,
   isDaylight,
-} from './geo.js';
+} from './geo';
 
 // Map renderer
 export {
@@ -210,6 +210,6 @@ export {
   type OceanStyle,
   drawWishPins,
   type WishPin,
-} from './map/renderer.js';
-export { countryNameToISO2 } from './data/country_iso2.js';
-export { VACATION_SPOTS, VACATION_CODES, vacationRegionFor, type VacationSpot, type VacationRegion } from "./data/vacations.js";
+} from './map/renderer';
+export { countryNameToISO2 } from './data/country_iso2';
+export { VACATION_SPOTS, VACATION_CODES, vacationRegionFor, type VacationSpot, type VacationRegion } from "./data/vacations";

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { hash01, seasonalFactor, estimateFare } from './model.js';
-import { findDestination } from '../data/destinations.js';
+import { hash01, seasonalFactor, estimateFare } from './model';
+import { findDestination } from '../data/destinations';
 
 describe('hash01', () => {
   it('is deterministic', () => {

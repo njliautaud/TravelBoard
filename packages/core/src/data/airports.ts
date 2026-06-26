@@ -30,7 +30,7 @@ export interface InternationalAirport {
 }
 
 /** Legacy Airport type re-export for backward compat with ORIGIN_AIRPORTS consumers */
-import type { Airport } from '../types.js';
+import type { Airport } from '../types';
 
 export const INTERNATIONAL_AIRPORTS: InternationalAirport[] = [
   { iata: 'AZR', name: "Touat-Cheikh Sidi Mohamed Belkebir", city: "Adrar", country: "Algeria", lat: 27.8376, lon: -0.1864, region: 'Africa' },

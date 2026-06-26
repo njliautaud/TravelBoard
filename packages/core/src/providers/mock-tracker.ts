@@ -4,11 +4,11 @@
  * board shows realistic movement with zero keys. Implements the sacred FlightTrackerProvider shape.
  */
 
-import type { FlightTrackerProvider, FlightTelemetry } from './types.js';
-import { ORIGIN_AIRPORTS } from '../data/airports.js';
-import { DESTINATIONS } from '../data/destinations.js';
-import { haversineMiles, interpolateGreatCircle } from '../geo.js';
-import { hash01 } from '../fares/model.js';
+import type { FlightTrackerProvider, FlightTelemetry } from './types';
+import { ORIGIN_AIRPORTS } from '../data/airports';
+import { DESTINATIONS } from '../data/destinations';
+import { haversineMiles, interpolateGreatCircle } from '../geo';
+import { hash01 } from '../fares/model';
 
 type Pt = { code: string; lat: number; lon: number };
 

@@ -21,7 +21,7 @@ import type {
   SourcePersistence,
   SourceResult,
   SourceRunnerOptions,
-} from '../types.js';
+} from '../types';
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {

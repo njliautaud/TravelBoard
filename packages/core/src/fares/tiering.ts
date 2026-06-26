@@ -4,8 +4,8 @@
  * re-tints live as the budget slider moves. (Reconcile thresholds with prototype/travelboard.html.)
  */
 
-import type { FareTier, TieredFare } from '../types.js';
-import type { FareQuote } from '../providers/types.js';
+import type { FareTier, TieredFare } from '../types';
+import type { FareQuote } from '../providers/types';
 
 /** The board palette. */
 export const TIER_COLORS: Record<FareTier, string> = {

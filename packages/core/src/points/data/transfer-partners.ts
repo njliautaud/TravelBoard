@@ -21,7 +21,7 @@ import type {
   PointsProgram,
   TransferEdge,
   TransferPartner,
-} from '../types.js';
+} from '../types';
 
 export const DATASET_VERSION = '2026.06.2';
 export const DATASET_UPDATED = '2026-06-16';

@@ -37,14 +37,14 @@
  *   returns one-way segments — labeling is honest, never fake round-trips).
  */
 
-import type { BulkAwardRecord } from './sources/seats-aero-bulk.js';
-import { SEATS_PROGRAM_NAMES, CABIN_LABELS, type Cabin } from './sources/seats-aero.js';
-import { hubsForHome } from '../data/hubs.js';
+import type { BulkAwardRecord } from './sources/seats-aero-bulk';
+import { SEATS_PROGRAM_NAMES, CABIN_LABELS, type Cabin } from './sources/seats-aero';
+import { hubsForHome } from '../data/hubs';
 import {
   durationBandForDistance,
   LONG_STAY_THRESHOLD_NIGHTS,
   nightsBetween,
-} from '../fares/duration-bands.js';
+} from '../fares/duration-bands';
 
 export interface AwardDeal {
   /** stable id: ORIGIN-DEST-cabin */

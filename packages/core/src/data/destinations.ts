@@ -1,6 +1,6 @@
 // @ts-nocheck — auto-generated 3.3k-row dataset; literal-union inference exceeds TS2590 limit.
 // Exported consts carry explicit type annotations, so consumers remain fully type-checked.
-import type { Destination } from '../types.js';
+import type { Destination } from '../types';
 
 /**
  * Destination dataset for Discovery — auto-generated from INTERNATIONAL_AIRPORTS (HC 2026-06-04).

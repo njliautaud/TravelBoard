@@ -31,7 +31,7 @@
  *   so dynamically-priced junk awards never become "deals".
  */
 
-import type { PointsSourceAdapter } from '../types.js';
+import type { PointsSourceAdapter } from '../types';
 
 /** One route+date worth of verified bulk availability (all four cabins). */
 export interface BulkAwardRecord {

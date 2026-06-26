@@ -13,10 +13,10 @@
  * Implements the sacred FlightProvider interface.
  */
 
-import type { FlightProvider, FareQuote, GetCheapestOptions } from './types.js';
-import { DESTINATIONS, findDestination } from '../data/destinations.js';
-import { findAirport } from '../data/airports.js';
-import { resolveMetro } from '../data/metros.js';
+import type { FlightProvider, FareQuote, GetCheapestOptions } from './types';
+import { DESTINATIONS, findDestination } from '../data/destinations';
+import { findAirport } from '../data/airports';
+import { resolveMetro } from '../data/metros';
 
 export interface TravelpayoutsProviderOptions {
   apiToken: string;

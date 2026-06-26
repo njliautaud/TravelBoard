@@ -5,7 +5,7 @@
  * Implements the sacred FlightTrackerProvider interface.
  */
 
-import type { FlightTrackerProvider, FlightTelemetry } from './types.js';
+import type { FlightTrackerProvider, FlightTelemetry } from './types';
 
 /** Shape of a single flight in the AirLabs /flights response. */
 export interface AirLabsFlightResult {

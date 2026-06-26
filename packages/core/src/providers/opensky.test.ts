@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { flightToCallsigns, mapStateToTelemetry } from "./opensky.js";
+import { flightToCallsigns, mapStateToTelemetry } from "./opensky";
 
 describe("flightToCallsigns", () => {
   it("converts IATA flight number to ICAO callsign candidates", () => {

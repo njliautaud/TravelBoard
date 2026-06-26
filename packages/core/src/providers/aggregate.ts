@@ -20,7 +20,7 @@
  * app) cannot tell it is talking to many sources. (Golden rule 1.)
  */
 
-import type { FlightProvider, FareQuote, GetCheapestOptions } from './types.js';
+import type { FlightProvider, FareQuote, GetCheapestOptions } from './types';
 
 export interface AggregateSource {
   /** short id used for attribution, e.g. "tp-latest", "tp-directions", "kiwi", "amadeus" */

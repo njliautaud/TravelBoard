@@ -14,12 +14,12 @@ import {
   AWARD_CHARTS,
   PARTNER_BY_ID,
   PROGRAM_BY_ID,
-} from './data/transfer-partners.js';
-import { parseFrequentMilerBonuses, parseFmDate } from './sources/frequentmiler-bonuses.js';
-import { SourceRunner } from './sources/adapter.js';
-import { summarizeVerifiedAwards, type AwardAvailability } from './sources/seats-aero.js';
-import { valuateDeal, estimateAwardMiles, transferablePrograms } from './valuation.js';
-import type { PointsSourceAdapter, TransferBonus } from './types.js';
+} from './data/transfer-partners';
+import { parseFrequentMilerBonuses, parseFmDate } from './sources/frequentmiler-bonuses';
+import { SourceRunner } from './sources/adapter';
+import { summarizeVerifiedAwards, type AwardAvailability } from './sources/seats-aero';
+import { valuateDeal, estimateAwardMiles, transferablePrograms } from './valuation';
+import type { PointsSourceAdapter, TransferBonus } from './types';
 
 // ---------------------------------------------------------------------------
 describe('transfer-partner knowledge graph integrity', () => {
@@ -355,8 +355,8 @@ describe('summarizeVerifiedAwards (seats.aero)', () => {
 // ---------------------------------------------------------------------------
 // HC #608 — premium cabins (W/J/F) + verified-award cpp valuation
 // ---------------------------------------------------------------------------
-import { valuateVerifiedCabin, CABIN_FARE_MULTIPLIERS } from './valuation.js';
-import type { VerifiedCabinAward } from './sources/seats-aero.js';
+import { valuateVerifiedCabin, CABIN_FARE_MULTIPLIERS } from './valuation';
+import type { VerifiedCabinAward } from './sources/seats-aero';
 
 describe('summarizeVerifiedAwards premium cabins (HC #608)', () => {
   it('rolls up premium-economy and first space, and tolerates pre-HC608 cached records', () => {

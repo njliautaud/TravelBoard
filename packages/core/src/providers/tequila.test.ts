@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { mapResultToFareQuote, TequilaProvider, type TequilaSearchResult } from './tequila.js';
+import { mapResultToFareQuote, TequilaProvider, type TequilaSearchResult } from './tequila';
 
 /** Realistic sample Tequila search result, shaped from the verified API contract. */
 const SAMPLE_RESULT: TequilaSearchResult = {

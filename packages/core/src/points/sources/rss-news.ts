@@ -8,8 +8,8 @@
  * "points news" ticker and they corroborate the scraped bonus table.
  */
 
-import type { PointsSourceAdapter } from '../types.js';
-import { fetchText } from './adapter.js';
+import type { PointsSourceAdapter } from '../types';
+import { fetchText } from './adapter';
 
 export interface PointsNewsItem {
   title: string;

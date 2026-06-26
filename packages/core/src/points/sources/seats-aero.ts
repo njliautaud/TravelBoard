@@ -37,7 +37,7 @@
  * the earlier defer-until-premium-cash-source note).
  */
 
-import type { PointsSourceAdapter } from '../types.js';
+import type { PointsSourceAdapter } from '../types';
 
 /** Cabin keys, in display order. seats.aero letter codes: Y/W/J/F. */
 export const CABINS = ['economy', 'premiumEconomy', 'business', 'first'] as const;

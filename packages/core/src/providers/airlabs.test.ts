@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { mapAirLabsToTelemetry, AirLabsProvider, type AirLabsFlightResult } from "./airlabs.js";
+import { mapAirLabsToTelemetry, AirLabsProvider, type AirLabsFlightResult } from "./airlabs";
 
 /** Realistic sample AirLabs flight result. */
 const SAMPLE_FLIGHT: AirLabsFlightResult = {

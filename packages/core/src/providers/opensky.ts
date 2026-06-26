@@ -8,7 +8,7 @@
  * Implements the sacred FlightTrackerProvider interface.
  */
 
-import type { FlightTrackerProvider, FlightTelemetry } from './types.js';
+import type { FlightTrackerProvider, FlightTelemetry } from './types';
 
 // ── IATA → ICAO mapping for major airlines ──────────────────────────────────
 

@@ -11,8 +11,8 @@
  * See docs/FLIGHT_DATA.md for the full verified contract.
  */
 
-import type { FlightProvider, FareQuote, GetCheapestOptions } from './types.js';
-import { DESTINATIONS, findDestination } from '../data/destinations.js';
+import type { FlightProvider, FareQuote, GetCheapestOptions } from './types';
+import { DESTINATIONS, findDestination } from '../data/destinations';
 
 /** Raw shape of one result in the Tequila /v2/search response `data` array. */
 export interface TequilaSearchResult {
