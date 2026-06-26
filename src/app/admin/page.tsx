@@ -51,7 +51,29 @@ interface AdminUser {
   };
 }
 
-type TabId = "users" | "content" | "system";
+interface ActivityEvent {
+  id: string;
+  type: string;
+  username: string | null;
+  userImage: string | null;
+  timestamp: string;
+  details: string;
+}
+
+interface ActivityData {
+  events: ActivityEvent[];
+  summary: {
+    totalEvents: number;
+    searches: number;
+    signups: number;
+    locationsAdded: number;
+    journalEntries: number;
+    watchesCreated: number;
+    dealsSaved: number;
+  };
+}
+
+type TabId = "users" | "content" | "system" | "activity";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -605,7 +627,7 @@ function SystemTab({ stats }: { stats: AdminStats }) {
             </div>
             <div>
               <p className="text-xs text-slate-500 uppercase">Database</p>
-              <p className="text-sm text-slate-300">SQLite via Prisma</p>
+              <p className="text-sm text-slate-300">Supabase PostgreSQL</p>
             </div>
             <div>
               <p className="text-xs text-slate-500 uppercase">Auth Provider</p>
@@ -625,12 +647,134 @@ function SystemTab({ stats }: { stats: AdminStats }) {
 }
 
 // ---------------------------------------------------------------------------
+// Tab: Activity
+// ---------------------------------------------------------------------------
+
+const EVENT_STYLES: Record<string, { dot: string; label: string }> = {
+  search: { dot: "bg-blue-400", label: "Search" },
+  signup: { dot: "bg-emerald-400", label: "Signup" },
+  location_added: { dot: "bg-amber-400", label: "Location" },
+  journal_entry: { dot: "bg-purple-400", label: "Journal" },
+  watch_created: { dot: "bg-cyan-400", label: "Watch" },
+  deal_saved: { dot: "bg-rose-400", label: "Deal" },
+};
+
+function ActivityTab({
+  activity,
+  loading: actLoading,
+}: {
+  activity: ActivityData | null;
+  loading: boolean;
+}) {
+  if (actLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="flex items-center gap-2 text-slate-400 text-sm">
+          <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+          Loading activity...
+        </div>
+      </div>
+    );
+  }
+
+  if (!activity) {
+    return (
+      <p className="py-8 text-center text-sm text-slate-500">
+        Failed to load activity data.
+      </p>
+    );
+  }
+
+  const { events, summary } = activity;
+
+  return (
+    <div className="space-y-6">
+      {/* Summary row */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+        <StatCard label="Total Events" value={summary.totalEvents} accent />
+        <StatCard label="Searches" value={summary.searches} />
+        <StatCard label="Signups" value={summary.signups} />
+        <StatCard label="Locations" value={summary.locationsAdded} />
+        <StatCard label="Journals" value={summary.journalEntries} />
+        <StatCard label="Watches" value={summary.watchesCreated} />
+        <StatCard label="Deals" value={summary.dealsSaved} />
+      </div>
+
+      {/* Timeline */}
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-slate-400 uppercase tracking-wider">
+          Recent Activity (last 50 events)
+        </h3>
+        {events.length === 0 ? (
+          <p className="text-sm text-slate-500">No activity recorded yet.</p>
+        ) : (
+          <div className="rounded-xl border border-slate-800 divide-y divide-slate-800/50">
+            {events.map((ev) => {
+              const style = EVENT_STYLES[ev.type] ?? {
+                dot: "bg-slate-500",
+                label: ev.type,
+              };
+              return (
+                <div
+                  key={ev.id}
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-800/30 transition"
+                >
+                  {/* Colored dot */}
+                  <span
+                    className={`inline-block h-2 w-2 shrink-0 rounded-full ${style.dot}`}
+                  />
+
+                  {/* Type badge */}
+                  <span className="shrink-0 rounded bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-400 w-16 text-center">
+                    {style.label}
+                  </span>
+
+                  {/* User avatar + name */}
+                  <div className="flex items-center gap-2 shrink-0 w-28">
+                    {ev.userImage ? (
+                      <img
+                        src={ev.userImage}
+                        alt=""
+                        className="h-5 w-5 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-[10px] font-medium text-slate-400">
+                        {ev.username?.charAt(0).toUpperCase() ?? "?"}
+                      </div>
+                    )}
+                    <span className="text-sm text-slate-300 truncate">
+                      {ev.username ?? "anonymous"}
+                    </span>
+                  </div>
+
+                  {/* Details */}
+                  <span className="flex-1 text-sm text-slate-400 truncate">
+                    {ev.details}
+                  </span>
+
+                  {/* Timestamp */}
+                  <span className="shrink-0 text-xs text-slate-600">
+                    {fmtDateTime(ev.timestamp)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 
 export default function AdminPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [activity, setActivity] = useState<ActivityData | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>("users");
@@ -659,12 +803,23 @@ export default function AdminPage() {
       .then((d) => setUsers(d.users));
   }, []);
 
+  const loadActivity = useCallback(() => {
+    setActivityLoading(true);
+    return fetch("/api/admin/activity")
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to load activity");
+        return r.json();
+      })
+      .then((d) => setActivity(d))
+      .finally(() => setActivityLoading(false));
+  }, []);
+
   const loadAll = useCallback(() => {
     setLoading(true);
-    Promise.all([loadStats(), loadUsers()])
+    Promise.all([loadStats(), loadUsers(), loadActivity()])
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, [loadStats, loadUsers]);
+  }, [loadStats, loadUsers, loadActivity]);
 
   useEffect(() => {
     loadAll();
@@ -702,6 +857,7 @@ export default function AdminPage() {
   const tabs: { id: TabId; label: string; count?: number }[] = [
     { id: "users", label: "Users", count: users.length },
     { id: "content", label: "Content" },
+    { id: "activity", label: "Activity", count: activity?.events.length },
     { id: "system", label: "System" },
   ];
 
@@ -778,6 +934,9 @@ export default function AdminPage() {
           <UsersTab users={users} onRefresh={loadAll} />
         )}
         {activeTab === "content" && <ContentTab stats={stats} />}
+        {activeTab === "activity" && (
+          <ActivityTab activity={activity} loading={activityLoading} />
+        )}
         {activeTab === "system" && <SystemTab stats={stats} />}
       </main>
     </div>
