@@ -1,7 +1,5 @@
 {
   "framework": "nextjs",
-  "installCommand": "npm install",
-  "buildCommand": "node_modules/.bin/prisma generate && next build",
   "functions": {
     "src/app/api/**/*.ts": {
       "maxDuration": 30
