@@ -77,7 +77,9 @@ export async function GET() {
     // Provider status
     const hasFlightApiKey = !!process.env.FLIGHT_API_KEY;
     const hasTequilaKey = !!process.env.TEQUILA_API_KEY;
+    const hasTravelpayoutsKey = !!process.env.TRAVELPAYOUTS_TOKEN;
     const hasAirlabsKey = !!process.env.AIRLABS_API_KEY;
+    const flightProviderMode = process.env.FLIGHT_PROVIDER ?? (hasTravelpayoutsKey ? "aggregate" : "kiwi");
 
     return NextResponse.json({
       stats: {
@@ -112,7 +114,9 @@ export async function GET() {
         providers: {
           flightApi: hasFlightApiKey,
           tequila: hasTequilaKey,
+          travelpayouts: hasTravelpayoutsKey,
           airlabs: hasAirlabsKey,
+          flightProviderMode,
         },
         extras: {
           imageCacheEntries: imageCacheCount,

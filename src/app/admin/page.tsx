@@ -24,7 +24,7 @@ interface AdminStats {
     coverageByOrigin: { origin: string; count: number }[];
   };
   analytics: { totalEvents: number; searches: number };
-  providers: { flightApi: boolean; tequila: boolean; airlabs: boolean };
+  providers: { flightApi: boolean; tequila: boolean; travelpayouts?: boolean; airlabs: boolean; flightProviderMode?: string };
   extras: {
     imageCacheEntries: number;
     cardProfiles: number;
@@ -572,6 +572,11 @@ function SystemTab({ stats }: { stats: AdminStats }) {
               name: "Supabase (Auth)",
               ok: authConfigured,
               description: "User authentication and session management",
+            },
+            {
+              name: "Travelpayouts (Fare Data)",
+              ok: !!stats.providers.travelpayouts,
+              description: `Flight deal pricing — mode: ${stats.providers.flightProviderMode ?? "kiwi"}`,
             },
             {
               name: "Flight API (Tequila/Kiwi)",
