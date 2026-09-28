@@ -1,139 +1,178 @@
 # TravelBoard
 
-Personal travel bucket list and journal on an interactive world map. Countries glow with your saved wishes; click to zoom in, read entries, and add places from Instagram reels via WhatsApp or the **Android share sheet**.
+**A map-first travel journal and flight-deals board.** Countries glow with the places you want to go, a "passport" layer lights up where you have been, and a fare engine finds cheap flights and award seats from your home airport.
 
-**Live:** https://travel-board-psi.vercel.app (Vercel; push to `master` auto-deploys). Boards are private (owner + accepted friends); individual spots can be published to a public feed at [`/feed`](https://travel-board-psi.vercel.app/feed). See `PROJECT_CONTEXT.md` §14 + `SUPABASE_MIGRATION.md`.
+> **Status: archived prototype.** TravelBoard was an early version of the travel app that later became **TrekMap**. Active development moved to a new repository. This repo is kept as a reference for the architecture and the deal engine that grew out of it.
 
-## Stack
+---
 
-- Next.js 15 (App Router, TypeScript) + Tailwind CSS 4
-- MapLibre GL JS (Carto dark basemap, no API token)
-- **Supabase** Postgres (cloud, shared dev+prod) + Prisma ORM 6; media via Supabase Storage in prod
-- Nominatim (OpenStreetMap) geocoding
-- Wikipedia / Wikimedia Commons + Serper.dev (Google Images) for cover photos, cached in Postgres
-- WhatsApp Web.js bot for driving Claude Code from your phone (optional)
-- Android WebView app with a native share target (see [`android/`](android/README.md))
+## Highlights
+
+- **Interactive world map** built on MapLibre GL: a choropleth "wish glow" by country, flag-colored borders, a separate teal "been there" layer, and US-state granularity.
+- **Travel journal**: pins carry notes, photos, links, seasons, reminders and per-place fare thresholds.
+- **Flight-deals engine** (`packages/core`): fans one query out to several fare sources in parallel, de-duplicates to one best offer per destination, then tiers, scores and filters the results for realistic trips.
+- **Points and awards**: card-to-program-to-airline transfer paths, cents-per-point valuation, and award-seat "deals" anchored to your home airport or nearest hub.
+- **Social layer**: private-by-default boards, friends and read-only friend boards, plus a public feed where individual spots can be published.
+- **Beyond the browser**: installable PWA with offline fallback, Capacitor Android/iOS shells with a native share target, and ESP32 firmware for a 7" wall display.
+
+## Features
+
+### Journal and map
+| Feature | What it does |
+| --- | --- |
+| Wish glow | Countries are shaded by how many wishes they hold. Two themes: classic amber or per-country flag colors. |
+| Passport | Mark visited countries and US states from the map or a searchable checklist. Stored separately from wishes, so it never skews the glow. |
+| Country panel | Clicking a country opens its places. Several places show as compact cards you can drag to reorder; one place shows a full card. |
+| Add places | Search OpenStreetMap, drop a pin, right-click a country, or share a link from your phone. Shared Instagram/TikTok links open a prefilled form. |
+| Cover photos | Wikimedia plus an optional image-search API. Results are cached in Postgres with fuzzy and cross-language reuse, then re-served through an SSRF-guarded image proxy. |
+| Duplicate guard | Warns before saving a wish that matches an existing one, even across languages (for example *salar* and *salt flat*). |
+| Draft inbox | A keyed ingest endpoint collects links as drafts and auto-enriches them from captions, locations and cover images. |
+
+### Deals, points and tools
+| Area | What it does |
+| --- | --- |
+| Explore / Search | Map-based deal discovery with price-labeled airport dots and flight arcs, plus search with calendar and trend views. |
+| Fare model | Affordability tiers (cheap / fair / splurge), distance-banded trip lengths (short-haul 3-7 nights up to ultra-long-haul 10-21), and a layover and day-trip feasibility estimator that labels its own uncertainty. |
+| Alerts and watches | Watch a route and get alerted when fares drop below your threshold. |
+| Points tools | Points calculator, transfer optimizer, card manager and loyalty tracker. |
+| Trip tools | Trip planner with multi-leg plans, fare prediction, flight tracker, memory map, savings dashboard and packing list. |
+| Community | Shared deal boards with votes and comments, activity feed and gamification badges. |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Clients
+    WEB["Next.js web app / PWA"]
+    AND["Android app<br/>(Capacitor + native share target)"]
+    IOS["iOS app (Capacitor)"]
+    ESP["ESP32-S3 touch display<br/>(LVGL firmware)"]
+  end
+
+  subgraph Server["Next.js server (App Router)"]
+    API["~100 API route handlers"]
+    CORE["@travelboard/core<br/>fare providers · tiering · points valuation"]
+  end
+
+  WEB --> API
+  AND --> API
+  IOS --> API
+  ESP -- "/api/hardware-sync" --> API
+
+  API --> CORE
+  API --> PRISMA["Prisma ORM"] --> DB[("Postgres")]
+  API --> STORE["Object storage<br/>(media uploads)"]
+  API --> GEO["Geocoding + Wikimedia<br/>+ image search"]
+  CORE --> FARES["Fare, award-availability<br/>and flight-tracking APIs"]
+  AUTH["Supabase Auth<br/>(email + Google OAuth)"] -.-> WEB
+  AUTH -.-> API
+```
+
+**Design choices**
+
+- **Provider boundary.** Every fare source implements one `FlightProvider` interface. An aggregate provider fans out with `Promise.allSettled`, keeps the best sane price per destination and records which sources quoted it. Composable retry (exponential backoff) and circuit-breaker wrappers are provided for any source.
+- **Cache first.** Fares, searches, award availability and image lookups are cached in Postgres, so the UI reads from cache instead of paying per request.
+- **Honest numbers.** Award costs, layovers and trip feasibility are estimates, and they are labeled as estimates in the data model and the UI.
+- **Access control in one place.** Board visibility (owner or accepted friend) and public-feed exposure are enforced server-side. Only safe fields ever reach the public feed.
+
+## Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Web | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4 |
+| Map | MapLibre GL JS over a free CARTO dark basemap (no map API token) with GeoJSON country and US-state boundaries |
+| Data | PostgreSQL (Supabase) with Prisma 6, 30 models, versioned migrations |
+| Auth | Supabase Auth (email/password and Google OAuth) via `@supabase/ssr` session cookies |
+| Media | `sharp` for resizing and decluttering, local disk in dev or Supabase Storage in prod |
+| Shared logic | `@travelboard/core`, a TypeScript package for providers, fare tiering, geo math and points valuation |
+| Mobile | Capacitor 8 (Android and iOS) plus a Kotlin share-target activity |
+| Hardware | ESP32-S3 (Waveshare 7" 1024x600 touch LCD), PlatformIO, LVGL 8 |
+| Testing | Vitest (app integration tests and core unit tests) |
+| Hosting | Vercel (earlier builds ran as a static export on Cloudflare Pages) |
+
+## Repository layout
+
+```
+src/
+  app/            Next.js routes, pages and ~100 API route handlers under app/api
+  components/     React UI: map, side panels, journal, deals, tools, settings
+  lib/            auth, access control, storage, geocoding, image search/proxy, similarity
+packages/core/    @travelboard/core: fare providers, aggregation, tiering, points, geo
+prisma/           schema, migrations and seed scripts
+android/          Capacitor Android shell + native share target
+ios/              Capacitor iOS shell
+esp32-touch/      PlatformIO firmware for the ESP32-S3 touch display
+scripts/          backups, cache warming, deploy helpers, dev tooling
+__tests__/        API and fare-engine integration tests
+public/           static assets, GeoJSON, PWA manifest and service worker
+```
 
 ## Getting started
 
-```bash
-npm install
-cp .env.example .env        # set DATABASE_URL/DIRECT_URL to the shared Supabase DB + keys
+Requires Node 20 and a PostgreSQL database (a free Supabase project works).
 
-npx prisma migrate deploy   # apply migrations (never `migrate dev` — see below)
-npm run dev                 # http://localhost:3000 (port 3000 pinned)
+```bash
+npm install                 # also runs `prisma generate`
+cp .env.example .env        # fill in the variables below
+npx prisma migrate deploy   # apply migrations
+npm run dev                 # http://localhost:3000
 ```
 
-**Do not run `npx prisma db seed` if you already have your own places** — seed only loads demo data when your account is empty. To force a wipe and re-seed demo data: `TRAVELBOARD_SEED_RESET=1 npx prisma db seed`.
+Without any fare-provider keys the app still runs, falling back to mock data.
 
-## Environment variables (`.env`)
+### Environment variables
 
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` / `DIRECT_URL` | Supabase Postgres connection strings (runtime / migrations) |
-| `STORAGE_DRIVER` | `local` (public/uploads) or `supabase` (Storage bucket) for media uploads |
-| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_STORAGE_BUCKET` | Supabase Storage (service-role key is server-only) |
-| `SESSION_SECRET` | Signs the httpOnly session cookie |
-| `FLIGHT_API_KEY` | `X-API-Key` for `POST /api/flight-prices` |
-| `WHATSAPP_INGEST_KEY` | Shared secret for draft ingest (`POST /api/drafts/ingest`) |
-| `WHATSAPP_OWNER_USERNAME` | Owner username for drafts + ESP32 `/api/hardware-sync` scope (e.g. `swann`) |
-| `CLAUDE_CHANNEL_SECRET` | Shared secret for the WhatsApp → Claude Code remote-control bot (must match in `.env`) |
-| `SERPER_API_KEY` | [Serper.dev](https://serper.dev) key for Google-Images cover search (`/api/fetch-previews`); blank ⇒ placeholder images |
+Set these in `.env`. Never commit real values.
 
-## Using the app
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL`, `DIRECT_URL` | yes | Postgres connection strings (pooled runtime and direct for migrations) |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Supabase Auth (public client values) |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET` | prod | Media storage. The service-role key is server-only. |
+| `STORAGE_DRIVER` | no | `local` (default) or `supabase` |
+| `FLIGHT_PROVIDER`, `TEQUILA_API_KEY`, `TRAVELPAYOUTS_TOKEN`, `SEATSAERO_API_KEY`, `AIRLABS_API_KEY` | no | Fare, award and flight-tracking providers. Mock data is used when unset. |
+| `FLIGHT_API_KEY` | no | API key required to `POST /api/flight-prices` |
+| `SERPER_API_KEY`, `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_CX` | no | Image search for cover photos. Placeholders are used when unset. |
+| `WHATSAPP_INGEST_KEY`, `WHATSAPP_OWNER_USERNAME` | no | Shared secret and owner account for the draft-ingest endpoint, share target and cache-warm job |
 
-- **Accounts**: sign up / log in with email + password or **Continue with Google** (via Supabase Auth). Log in with your email **or** username; "Forgot password?" emails a reset link. Each user has their own map and wishlist.
-- **Profiles**: switch the sidebar dropdown to any other account to view their board **read-only** — your own editing and settings are unaffected.
-- **Navigation**: a permanent **left edge-dock** (desktop) / **bottom nav bar** (mobile) with pillars — **Travel Journal**, **Passport**, **Travel Mates**, **Flight Tracker**, **Settings**. The Journal has a World / Wished / Visited toggle (synced with the bottom-center map toggle).
-- **Passport ("been there")**: mark the countries and US states you've already visited — they glow a soft teal, separate from your wishes (logging them creates no wish and doesn't change wish brightness). In Passport view, **single-click a country/state** on the map to toggle it, or use the searchable checklist. A one-time "map where you've been" prompt greets new (and existing) accounts.
-- **Map themes** (Settings): **Classic** (amber glow) or **Flag colors** (each country uses its flag accent color). Hover/click borders also use flag colors.
-- **Add places**: search OpenStreetMap, drop a pin, send an Instagram/TikTok link to yourself on WhatsApp, or share a link to the Android app.
-- **Cover photos**: **Generate image** searches Google Images (Serper.dev), cached in Postgres so repeat/similar searches cost 0 API credits; **Regenerate** forces a fresh pull. Results route through `/api/cover-proxy` so they load reliably; play-button overlays on social thumbnails are stripped server-side.
-- **Duplicate guard**: adding a wish that matches an existing one (same country + similar activity, across languages — e.g. *salar* ≈ *salt flat*) prompts before saving.
-- **Details**: every wish has a **Details** button opening a full read-only view.
-- **Country panel**: clicking a country opens its wishes in the right panel (and stays open while the map pans in). A country with **multiple** wishes shows condensed cards — a large cover photo fills the left, with name/location and edit/delete on the right — and you can **drag the grip handle to reorder** them (saved per country). A country with a **single** wish shows the full large card.
-- **World view**: bottom-center button when zoomed in; zooming out or clicking it closes the right detail panel.
-- **Flight deals**: set a price threshold per place; ingest prices via API; pins pulse red when below threshold.
-
-## Scripts
+### Scripts
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Dev server on port 3000 (frees port first) |
-| `npm run start:all` | Open two windows: dev server + WhatsApp bot |
-| `npm run whatsapp-bot` | WhatsApp → Claude Code remote-control bot |
-| `npm run whatsapp-bot:stop` | Kill stale bot / Chrome processes |
-| `npm run whatsapp-bot:setup` | Install Puppeteer Chrome for the bot |
-| `npm run db:seed` | Demo data only (skipped if you already have places) |
+| `npm run dev` | Dev server on port 3000 |
+| `npm run build` / `npm start` | Production build and server |
+| `npm test` | Vitest suite |
+| `npm run db:seed` | Load demo data, but only into an empty account |
+| `npm run cap:build:android` / `cap:build:ios` | Build the Capacitor mobile shells |
+| `npm run esp32:upload` | Flash the ESP32 display firmware (PlatformIO) |
 
-## API (summary)
+### Data safety
 
-| Route | Auth | Purpose |
+Your places live in Postgres, not in the repo. Avoid `npx prisma migrate reset` and `TRAVELBOARD_SEED_RESET=1 npx prisma db seed` unless you intend to wipe data. For a version-independent logical backup and restore:
+
+```bash
+node scripts/export-db-backup.mjs                       # writes backups/travelboard-data-<timestamp>.json
+node scripts/import-db-backup.mjs backups/<file>.json   # restore into a migrated, empty database
+```
+
+## API overview
+
+| Group | Routes | Notes |
 | --- | --- | --- |
-| `/api/auth/login`, `/logout`, `/me`, `/username` | — | Supabase Auth (login by email or username; signup/Google/reset run client-side). `/auth/callback` exchanges OAuth/recovery codes |
-| `/api/users` | session | List accounts for the profile switcher |
-| `/api/locations` | session for writes | CRUD wishlist entries; `GET ?userId=` views another user's board (read-only) |
-| `/api/locations/:id/star` | session | Star / unstar a wish |
-| `/api/locations/reorder` | session | Save manual wish order within a country (`sortOrder`) |
-| `/api/settings` | session | Map theme + home airports |
-| `/api/drafts`, `/drafts/ingest`, `/drafts/enrich` | session / ingest key | Draft inbox + link enrichment |
-| `/api/cover-image` | public | Wikimedia cover search (multi-candidate) |
-| `/api/fetch-previews` | public | Google Images (Serper.dev), Postgres-cached with fuzzy/cross-language reuse; `refresh=1` forces a fresh pull |
-| `/api/cover-proxy` | public | Re-serve any public https image (browser UA, content-type checked, SSRF-guarded) so covers load reliably |
-| `/api/image-proxy` | public | Strip play button from social thumbnails |
-| `/api/geocode` | public | Nominatim search / reverse |
-| `/api/upload` | session | Image upload to `public/uploads/` |
-| `/api/flight-prices` | `X-API-Key` on POST | Flight price ingest |
-| `/api/hardware-sync` | public | Flat JSON for ESP32 LED map |
+| Auth and users | `/api/auth/*`, `/api/users`, `/api/profile`, `/api/onboarding` | Supabase sessions. Log in with email or username. |
+| Journal | `/api/locations`, `/api/journal`, `/api/drafts`, `/api/upload` | CRUD, starring, reordering, draft enrichment |
+| Social | `/api/friends`, `/api/boards`, `/api/public/feed`, `/api/notifications` | Private boards, friend access, public spots |
+| Deals | `/api/deals`, `/api/fares`, `/api/search`, `/api/awards`, `/api/fare-prediction` | Cached, aggregated fare data |
+| Points | `/api/points`, `/api/loyalty` | Valuation, transfer optimization, balances |
+| Planning | `/api/trips`, `/api/watches`, `/api/alerts`, `/api/track`, `/api/lounges`, `/api/packing` | Trip plans, fare watches, flight status |
+| Media and geo | `/api/geocode`, `/api/cover-image`, `/api/fetch-previews`, `/api/cover-proxy`, `/api/image-proxy` | Geocoding, cover search, safe image proxying |
+| Devices | `/api/hardware-sync`, `/api/hardware-cover` | Compact JSON and images for the ESP32 display |
 
-## Sharing a stable instance (port 3001)
+## Companion clients
 
-To let someone use a frozen build while you keep developing, run a second server from a **git
-worktree** against the same database (so their wishes save to your PC):
+- **Android / iOS**: Capacitor shells around the web app. On Android, a native share target sends any link (for example an Instagram reel) straight into a prefilled "Add a place" form. See [`android/README.md`](android/README.md).
+- **ESP32 wall display**: firmware for a Waveshare ESP32-S3 7" touch LCD that renders the wishlist and a world pin map, syncing over Wi-Fi or a USB serial bridge. See [`esp32-touch/README.md`](esp32-touch/README.md).
 
-```bash
-git worktree add ../TravelBoard-stable stable   # 'stable' branch = known-good commit
-cd ../TravelBoard-stable
-cp ../TravelBoard/.env .env                       # .env is gitignored
-npm install && npx prisma generate
-npx next dev --turbopack -p 3001 -H 0.0.0.0       # NOT `npm run dev` (its predev kills :3000)
-```
+## Project history
 
-Keep developing in the main folder on `:3000`. To promote new code to the stable instance:
-`cd ../TravelBoard-stable && git merge master`, then restart `:3001`. See `PROJECT_CONTEXT.md` §13.
-
-See `PROJECT_CONTEXT.md` for architecture, data safety, and handoff notes.
-
-## Data safety
-
-Your places live in the **shared Supabase Postgres**, not in the repo. Restarting the dev server or editing code does not delete them.
-
-**Avoid** unless you intend to wipe data:
-
-- `npx prisma migrate reset`
-- `TRAVELBOARD_SEED_RESET=1 npx prisma db seed`
-
-**Backup** — a version-independent logical export (works regardless of the local
-`pg_dump` version; writes a timestamped JSON to `backups/`):
-
-```bash
-node scripts/export-db-backup.mjs
-# restore into a fresh DB (after `prisma migrate deploy` builds the schema):
-node scripts/import-db-backup.mjs backups/travelboard-data-<timestamp>.json
-```
-
-## WhatsApp bot (Claude Code remote control)
-
-Drive this Claude Code session from your phone — the bot relays `Claude <instruction>`
-messages to the live session and sends replies/permission prompts back. It no longer
-ingests links to the inbox (share links straight to the app instead).
-
-1. Set `CLAUDE_CHANNEL_SECRET` in `.env` (the same value is used by `scripts/claude-channel.mjs`).
-2. `npm run whatsapp-bot:setup` once.
-3. Launch Claude Code with the channel: `claude --dangerously-load-development-channels server:claude-whatsapp`.
-4. Run `npm run whatsapp-bot` in a separate terminal and scan the QR code.
-5. Message yourself `Claude <instruction>` (e.g. `Claude list the open TODOs`).
-
-## Android app
-
-A thin Kotlin WebView wrapper plus a native share target lets you share Instagram reels / TikToks / journal links straight to TravelBoard — no WhatsApp. **Sharing a link always opens the prefilled "Add a place" form** to finish the details. Reach the server from anywhere via **Tailscale** (point the app at the PC's tailnet address, e.g. `http://100.x.x.x:3000`); the Settings screen stores **multiple servers** (e.g. Home Wi-Fi and Tailscale) and switches between them. Open `android/` in Android Studio and follow [`android/README.md`](android/README.md) (set a server URL, your username, and `WHATSAPP_INGEST_KEY`).
+TravelBoard began as a personal travel bucket-list map. It was then merged with the flight-deals engine from an earlier prototype, which brought in the shared `@travelboard/core` package, and later moved from Clerk to Supabase Auth and from local Postgres to Supabase. The project continued as **TrekMap**, which carries these ideas forward in a new codebase.
