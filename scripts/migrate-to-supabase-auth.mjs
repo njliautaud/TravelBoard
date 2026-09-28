@@ -1,7 +1,7 @@
 // One-shot migration for the Supabase Auth switchover (2026-06-25).
 //
-// Keeps `swann` (-> OWNER, legoewokninja@gmail.com) and `billyisgay`
-// (-> masonpace1@gmail.com) with all their travel data; their existing Prisma
+// Keeps `swann` (-> OWNER, user1@example.com) and `billyisgay`
+// (-> user2@example.com) with all their travel data; their existing Prisma
 // rows get an `email` so that the first time that email signs in via Supabase
 // Auth, getSessionUser() claims the row (sets authId). Everyone else (william,
 // nick, devingator) is deleted — onDelete: Cascade removes their locations,
@@ -28,8 +28,8 @@ try {
 const prisma = new PrismaClient();
 
 const KEEP = [
-  { username: "swann", email: "legoewokninja@gmail.com", role: "OWNER" },
-  { username: "billyisgay", email: "masonpace1@gmail.com", role: "EDITOR" },
+  { username: "swann", email: "user1@example.com", role: "OWNER" },
+  { username: "billyisgay", email: "user2@example.com", role: "EDITOR" },
 ];
 const DELETE = ["william", "nick", "devingator"];
 
